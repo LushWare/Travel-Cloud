@@ -1,43 +1,46 @@
+import React from 'react';
 import { ArrowRight } from 'lucide-react';
-import PORTALS from '../config/portals';
 
-export default function CtaBanner() {
+export default function CtaBanner({ onOpenDemo }) {
   return (
-    <section id="contact" className="py-20 md:py-24">
-      <div className="max-w-6xl mx-auto px-6">
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-brand to-primary-800 px-8 py-14 md:px-16 md:py-16 text-center">
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute -top-16 -right-16 h-64 w-64 rounded-full bg-white/10"
-          />
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute -bottom-20 -left-10 h-56 w-56 rounded-full bg-white/10"
-          />
+    <section className="relative overflow-hidden bg-brand-forest">
+      {/* Background Mountain Panorama with dark green tint matching reference */}
+      <div className="absolute inset-0 z-0">
+        <img
+          src="https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=2000&q=80"
+          alt="Scenic green mountain landscape"
+          className="w-full h-full object-cover object-center opacity-30 mix-blend-overlay"
+        />
+        <div className="absolute inset-0 bg-gradient-to-r from-brand-forestDark via-brand-forest/95 to-brand-forest/85" />
+      </div>
 
-          <h2 className="relative text-3xl md:text-4xl font-extrabold text-white">
-            Ready to modernize your travel business?
-          </h2>
-          <p className="relative mt-4 max-w-xl mx-auto text-primary-50">
-            Sign in to your Management Portal, or send your travelers to the Client site to start
-            exploring packages today.
-          </p>
+      <div className="relative z-10 max-w-7xl mx-auto px-6 sm:px-8 py-14 sm:py-16">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-8">
+          {/* Left Text */}
+          <div className="space-y-2 max-w-2xl">
+            <span className="text-[11px] sm:text-xs font-bold tracking-[0.18em] uppercase text-emerald-300">
+              READY TO TRANSFORM YOUR TRAVEL BUSINESS?
+            </span>
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-white tracking-tight leading-tight">
+              Let&apos;s Build Better Travel Experiences Together.
+            </h2>
+            <p className="text-sm sm:text-base text-emerald-100/90 font-normal">
+              Explore our travel solutions and management portal today.
+            </p>
+          </div>
 
-          <div className="relative mt-9 flex flex-col sm:flex-row items-center justify-center gap-4">
-            <a
-              href={PORTALS.management.url}
-              className="inline-flex items-center justify-center gap-2 rounded-full bg-white px-7 py-3.5 text-base font-semibold text-brand hover:bg-primary-50 transition-colors"
+          {/* Right Action Button */}
+          <div className="flex-shrink-0">
+            <button
+              onClick={() => onOpenDemo('both')}
+              className="group inline-flex items-center gap-2.5 px-7 py-3.5 rounded-full bg-brand-forestDark/80 hover:bg-black/40 text-white text-sm font-semibold border border-emerald-400/60 hover:border-emerald-300 transition-all duration-200 shadow-lg active:scale-95"
             >
-              Open Management Portal
-              <ArrowRight size={18} />
-            </a>
-            <a
-              href={PORTALS.client.url}
-              className="inline-flex items-center justify-center gap-2 rounded-full border-2 border-white/60 px-7 py-3.5 text-base font-semibold text-white hover:bg-white/10 transition-colors"
-            >
-              Visit Client Site
-              <ArrowRight size={18} />
-            </a>
+              <span>Get Started</span>
+              <ArrowRight
+                size={16}
+                className="transition-transform duration-200 group-hover:translate-x-1"
+              />
+            </button>
           </div>
         </div>
       </div>
