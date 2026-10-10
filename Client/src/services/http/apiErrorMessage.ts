@@ -84,6 +84,21 @@ export function apiErrorMessage(error: unknown): string {
   return MESSAGE_BY_STATUS[status] ?? FALLBACK_MESSAGE;
 }
 
+export function authErrorMessage(error: unknown, mode: 'login' | 'register'): string {
+  const details = apiFieldErrors(error);
+  if (details.length > 0) {
+    return mode === 'login'
+      ? 'We could not sign you in. Check these details and try again.'
+      : 'We could not create your account. Check these details and try again.';
+  }
+
+  if (mode === 'login' && statusOf(asRecord(error)) === 401) {
+    return 'Email or password is incorrect. Check your details or reset your password.';
+  }
+
+  return apiErrorMessage(error);
+}
+
 /** Field-level validation detail, when the server sent any. */
 export function apiFieldErrors(error: unknown): FieldError[] {
   const e = asRecord(error);

@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { requestPasswordReset, resetPassword } from '../services/api/auth';
-import { apiErrorMessage, apiFieldErrors, type FieldError } from '../services/http/apiErrorMessage';
+import { apiErrorMessage, apiFieldErrors, authErrorMessage, type FieldError } from '../services/http/apiErrorMessage';
 
 type AuthMode = 'login' | 'register' | 'forgot' | 'reset';
 
@@ -72,11 +72,7 @@ export default function AuthPage() {
     } catch (submitError) {
       const details = apiFieldErrors(submitError);
       setErrorDetails(details);
-      setError(
-        details.length > 0 && mode === 'register'
-          ? 'We could not create your account. Check these details and try again.'
-          : apiErrorMessage(submitError),
-      );
+      setError(mode === 'login' || mode === 'register' ? authErrorMessage(submitError, mode) : apiErrorMessage(submitError));
     } finally {
       setSubmitting(false);
     }

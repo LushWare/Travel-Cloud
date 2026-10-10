@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { apiErrorMessage, apiFieldErrors } from '../apiErrorMessage';
+import { apiErrorMessage, apiFieldErrors, authErrorMessage } from '../apiErrorMessage';
 
 describe('apiErrorMessage', () => {
   it('reports a network failure when there was no response at all', () => {
@@ -86,5 +86,28 @@ describe('apiFieldErrors', () => {
   it('returns an empty array when there is nothing to report', () => {
     expect(apiFieldErrors(new Error('boom'))).toEqual([]);
     expect(apiFieldErrors({ data: { errors: 'not-an-array' } })).toEqual([]);
+  });
+});
+
+describe('authErrorMessage', () => {
+  it('explains login credential failures without implying the session expired', () => {
+    expect(authErrorMessage({ status: 401 }, 'login')).toBe(
+      'Email or password is incorrect. Check your details or reset your password.',
+    );
+  });
+
+  it('preserves specific backend messages for registration failures', () => {
+    expect(
+      authErrorMessage({ status: 400, data: { message: 'User with this email already exists' } }, 'register'),
+    ).toBe('User with this email already exists');
+  });
+
+  it('preserves the deactivated-account message on login', () => {
+    expect(
+      authErrorMessage(
+        { status: 403, data: { message: 'Your account has been deactivated. Please contact support.' } },
+        'login',
+      ),
+    ).toBe('Your account has been deactivated. Please contact support.');
   });
 });
