@@ -41,6 +41,8 @@ interface ErrorLike {
   statusCode?: unknown;
   isNetworkError?: unknown;
   code?: unknown;
+  errors?: unknown;
+  issues?: unknown;
   data?: ServerPayload;
   response?: { status?: unknown; data?: ServerPayload };
   fieldErrors?: unknown;
@@ -85,14 +87,16 @@ export function apiErrorMessage(error: unknown): string {
 /** Field-level validation detail, when the server sent any. */
 export function apiFieldErrors(error: unknown): FieldError[] {
   const e = asRecord(error);
-  const raw = payloadOf(e)?.errors ?? e.fieldErrors;
+  const raw = payloadOf(e)?.errors ?? e.errors ?? e.fieldErrors ?? e.issues;
   if (!Array.isArray(raw)) return [];
 
   const out: FieldError[] = [];
   for (const entry of raw) {
     if (typeof entry !== 'object' || entry === null) continue;
-    const { field, message } = entry as { field?: unknown; message?: unknown };
-    if (typeof field === 'string' && typeof message === 'string') out.push({ field, message });
+    const { field, path, message } = entry as { field?: unknown; path?: unknown; message?: unknown };
+    const normalizedField =
+      typeof field === 'string' ? field : Array.isArray(path) ? path.join('.') : undefined;
+    if (typeof message === 'string') out.push({ field: normalizedField || 'form', message });
   }
   return out;
 }

@@ -61,6 +61,22 @@ describe('apiFieldErrors', () => {
     ).toEqual([{ field: 'contact.email', message: 'Enter a valid email address' }]);
   });
 
+  it('reads field details preserved on the enriched HTTP error', () => {
+    expect(
+      apiFieldErrors({
+        errors: [{ field: 'email', message: 'An account with this email already exists.' }],
+      }),
+    ).toEqual([{ field: 'email', message: 'An account with this email already exists.' }]);
+  });
+
+  it('maps local schema issues to readable field details', () => {
+    expect(
+      apiFieldErrors({
+        issues: [{ path: ['confirmPassword'], message: 'Passwords do not match.' }],
+      }),
+    ).toEqual([{ field: 'confirmPassword', message: 'Passwords do not match.' }]);
+  });
+
   it('drops malformed entries rather than rendering them', () => {
     expect(apiFieldErrors({ data: { errors: [{ field: 'a' }, null, { field: 'b', message: 'ok' }] } })).toEqual([
       { field: 'b', message: 'ok' },

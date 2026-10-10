@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { requestPasswordReset, resetPassword } from '../services/api/auth';
-import { apiErrorMessage } from '../services/http/apiErrorMessage';
+import { apiErrorMessage, apiFieldErrors, type FieldError } from '../services/http/apiErrorMessage';
 
 type AuthMode = 'login' | 'register' | 'forgot' | 'reset';
 
@@ -25,12 +25,14 @@ export default function AuthPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [errorDetails, setErrorDetails] = useState<FieldError[]>([]);
   const [notice, setNotice] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   const switchMode = (nextMode: AuthMode) => {
     setMode(nextMode);
     setError('');
+    setErrorDetails([]);
     setNotice('');
     if (nextMode === 'register') navigate('/register');
     else if (nextMode === 'login') navigate('/login');
@@ -39,10 +41,12 @@ export default function AuthPage() {
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError('');
+    setErrorDetails([]);
     setNotice('');
 
     if (mode === 'register' && password !== confirmPassword) {
       setError('Passwords do not match.');
+      setErrorDetails([{ field: 'confirmPassword', message: 'Enter the same password in both fields.' }]);
       return;
     }
 
@@ -66,7 +70,13 @@ export default function AuthPage() {
         void result;
       }
     } catch (submitError) {
-      setError(apiErrorMessage(submitError));
+      const details = apiFieldErrors(submitError);
+      setErrorDetails(details);
+      setError(
+        details.length > 0 && mode === 'register'
+          ? 'We could not create your account. Check these details and try again.'
+          : apiErrorMessage(submitError),
+      );
     } finally {
       setSubmitting(false);
     }
@@ -187,7 +197,22 @@ export default function AuthPage() {
               )}
             </div>
 
-            {error && <p role="alert" className={`rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 ${mode === 'register' ? 'sm:col-span-2' : ''}`}>{error}</p>}
+            {error && (
+              <div role="alert" className={`rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 ${mode === 'register' ? 'sm:col-span-2' : ''}`}>
+                <p>{error}</p>
+                {errorDetails.length > 0 && (
+                  <ul className="mt-2 list-inside list-disc space-y-1">
+                    {errorDetails.map(({ field, message }, index) => (
+                      <li key={`${field}-${index}`}>
+                        {field === 'form'
+                          ? message
+                          : `${field.replace(/([A-Z])/g, ' $1').replace(/[._]/g, ' ').trim()}: ${message}`}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
             {notice && <p role="status" className={`rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-800 ${mode === 'register' ? 'sm:col-span-2' : ''}`}>{notice}</p>}
 
             <button
