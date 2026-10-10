@@ -9,6 +9,7 @@ import { ASSISTANT_PANEL_BOTTOM_OFFSET_PX } from '../../../config/floatingAction
 import { isAssistantExcludedPath } from '../../../config/assistantRoutes';
 import { Badge } from '../../../components/ui/badge';
 import { formatCurrency } from '../../../lib/currency';
+import useLenisScrollContainment from '../../../lib/useLenisScrollContainment';
 import { setAssistantLauncherOpen, useAssistantLauncherOpen } from '../../../components/shared/floating-actions/assistantLauncherState';
 import { useAssistantDialogHost } from '../capabilities/AssistantCapabilityProvider';
 
@@ -333,6 +334,7 @@ export default function AssistantWidget() {
   const isOpen = useAssistantLauncherOpen();
   const dialogHost = useAssistantDialogHost();
   const panelRef = useRef<HTMLDivElement | null>(null);
+  const { scrollRef: transcriptRef, handleWheelCapture: handleTranscriptWheelCapture } = useLenisScrollContainment();
   const returnFocusTo = useRef<Element | null>(null);
   const [input, setInput] = useState('');
   const openedEventFired = useRef(false);
@@ -462,7 +464,11 @@ export default function AssistantWidget() {
           </button>
         </div>
 
-        <div className="max-h-80 overflow-y-auto space-y-3 bg-gray-50 p-4">
+        <div
+          ref={transcriptRef}
+          onWheelCapture={handleTranscriptWheelCapture}
+          className="max-h-80 overflow-y-auto space-y-3 bg-gray-50 p-4"
+        >
           <div className="flex items-start gap-2">
             <Bot className="w-5 h-5 text-brand-600 mt-0.5 shrink-0" />
             <p className="text-sm bg-white rounded-xl px-3 py-2 shadow-sm">{GREETING}</p>

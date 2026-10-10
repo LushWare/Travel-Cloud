@@ -206,6 +206,14 @@ describe('AssistantWidget', () => {
     expect(wrapper).toHaveStyle({ bottom: '92px' });
   });
 
+  it('does not trap page scrolling when the transcript has no overflow', () => {
+    renderWidget('/');
+    openPanel();
+
+    const transcript = dialog()?.querySelector('.overflow-y-auto');
+    expect(transcript).not.toHaveAttribute('data-lenis-prevent');
+  });
+
   it('shows what the page did under the reply, and only once the page has done it', async () => {
     let resolveAction: (line: string) => void = () => {};
     mockPageRegistration.current = {

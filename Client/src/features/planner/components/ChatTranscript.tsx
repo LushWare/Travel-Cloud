@@ -1,4 +1,5 @@
 import { Bot, Loader2, User } from 'lucide-react';
+import useLenisScrollContainment from '../../../lib/useLenisScrollContainment';
 
 export interface ChatTranscriptMessage {
   role: 'user' | 'assistant';
@@ -18,8 +19,14 @@ interface ChatTranscriptProps {
  * once rather than being copy-pasted into each panel.
  */
 export default function ChatTranscript({ greeting, messages, isSending }: ChatTranscriptProps) {
+  const { scrollRef, handleWheelCapture } = useLenisScrollContainment();
+
   return (
-    <div className="max-h-80 overflow-y-auto p-4 space-y-3 bg-gray-50">
+    <div
+      ref={scrollRef}
+      onWheelCapture={handleWheelCapture}
+      className="max-h-80 overflow-y-auto p-4 space-y-3 bg-gray-50"
+    >
       <div className="flex items-start gap-2">
         <Bot className="w-5 h-5 text-brand-600 mt-0.5 shrink-0" />
         <p className="text-sm bg-white rounded-xl px-3 py-2 shadow-sm">{greeting}</p>

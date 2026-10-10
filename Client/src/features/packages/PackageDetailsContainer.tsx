@@ -671,17 +671,14 @@ export default function PackageDetailsContainer() {
                   }
                 `}
               >
-                <picture>
-                  <source srcSet={img?.replace(/\.(jpg|jpeg|png)$/i, '.webp')} type="image/webp" />
-                  <img
-                    src={img}
-                    alt={`${pkg.title} - ${idx + 1}`}
-                    className="w-full h-full object-cover"
-                    onError={(e) => {
-                      e.currentTarget.src = galleryFallback;
-                    }}
-                  />
-                </picture>
+                <img
+                  src={img}
+                  alt={`${pkg.title} - ${idx + 1}`}
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    e.currentTarget.src = galleryFallback;
+                  }}
+                />
                 <div className="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-transparent" />
                 <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-transparent to-black/40" />
               </div>
