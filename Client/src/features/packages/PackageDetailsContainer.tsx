@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft, Clock, Star, MapPin, Check, X, Calendar, Download, ChevronLeft, ChevronRight,
   Award, Sparkles, Phone, Mail, Image as ImageIcon, Hotel, Anchor, Sun, Utensils, Compass,
@@ -689,17 +689,16 @@ export default function PackageDetailsContainer() {
           })}
         </div>
 
-        <button
-          type="button"
-          onClick={() => navigate('/packages')}
+        <Link
+          to="/packages"
           className="absolute left-4 top-20 z-lifted inline-flex min-h-10 items-center gap-2 rounded-full bg-black/35 px-3 py-2 text-xs font-medium text-white/90 backdrop-blur-sm transition-colors hover:text-white sm:left-12 sm:top-32 sm:min-h-0 sm:rounded-none sm:bg-transparent sm:px-0 sm:py-0 sm:text-sm sm:text-white/85 sm:backdrop-blur-none lg:left-38"
         >
           <ArrowLeft className="h-4 w-4" />
           Back to Packages
-        </button>
+        </Link>
         
         {/* Hero Content */}
-        <div className={`relative z-lifted mx-auto flex w-full max-w-7xl flex-1 flex-col justify-end gap-7 px-6 pb-8 pt-20 transition-all duration-1000 lg:flex-row lg:items-end lg:justify-between lg:gap-12 lg:px-12 lg:pb-10 ${
+        <div className={`pointer-events-none relative z-lifted mx-auto flex w-full max-w-7xl flex-1 flex-col justify-end gap-7 px-6 pb-8 pt-20 transition-all duration-1000 lg:flex-row lg:items-end lg:justify-between lg:gap-12 lg:px-12 lg:pb-10 ${
           isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10'
         }`}>
           <div className="max-w-3xl">
@@ -724,7 +723,7 @@ export default function PackageDetailsContainer() {
             </div>
           </div>
 
-          <aside className="w-full max-w-[380px] shrink-0 rounded-xl border border-white/70 bg-white p-6 text-brand-dark-900 shadow-2xl sm:p-7 lg:mb-2">
+          <aside className="pointer-events-auto w-full max-w-[380px] shrink-0 rounded-xl border border-white/70 bg-white p-6 text-brand-dark-900 shadow-2xl sm:p-7 lg:mb-2">
             <p className="mb-1 text-sm font-medium text-gray-500">Starting from</p>
             <div className="mb-5 flex flex-wrap items-baseline gap-x-2">
               <span className="text-4xl font-bold text-brand-dark-900 sm:text-5xl">
@@ -742,7 +741,7 @@ export default function PackageDetailsContainer() {
                 {pkg.rating > 0 ? pkg.rating.toFixed(1) : 'New'}
               </span>
               <span className="text-gray-500">
-                ({pkg.reviews_count || reviews.length} {pluralize(pkg.reviews_count || reviews.length, 'review')})
+                Reviews({pkg.reviews_count || reviews.length})
               </span>
             </div>
             <div className="space-y-3">

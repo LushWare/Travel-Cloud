@@ -1,5 +1,6 @@
 import React from 'react';
 import { ArrowRight } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 const LuxuryBanner = () => {
   return (
@@ -21,9 +22,9 @@ const LuxuryBanner = () => {
           <p className="text-white/90 text-lg mb-8 max-w-[400px] font-light">
             From private tours to exclusive stays, we craft journeys that match your dreams.
           </p>
-          <button className="bg-[#16a34a] hover:bg-[#15803d] border border-white/10 shadow-lg text-white px-6 py-3 rounded-full font-medium flex items-center gap-2 transition-colors">
+          <Link to="/packages" className="bg-[#16a34a] hover:bg-[#15803d] border border-white/10 shadow-lg text-white px-6 py-3 rounded-full font-medium inline-flex items-center gap-2 transition-colors">
             Explore Packages <ArrowRight className="w-4 h-4" />
-          </button>
+          </Link>
         </div>
       </div>
     </section>

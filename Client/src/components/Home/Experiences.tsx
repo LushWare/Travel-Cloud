@@ -1,5 +1,6 @@
 import React from 'react';
 import { ArrowRight, Users, Compass, Bed, Headphones } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 const CuratedExperiences = () => {
   return (
@@ -36,9 +37,9 @@ const CuratedExperiences = () => {
             
           </div>
 
-          <button className="bg-[#16a34a] hover:bg-[#15803d] text-white px-7 py-3 rounded-full text-base font-medium flex items-center gap-2 transition-colors">
-            Explore Experiences <ArrowRight className="w-4 h-4" />
-          </button>
+          <Link to="/destinations" className="bg-[#16a34a] hover:bg-[#15803d] text-white px-7 py-3 rounded-full text-base font-medium inline-flex items-center gap-2 transition-colors">
+            Explore Destinations <ArrowRight className="w-4 h-4" />
+          </Link>
         </div>
 
         <div className="relative mx-auto mt-10 h-[480px] w-full max-w-[480px] overflow-visible sm:mx-0 sm:max-w-none lg:mt-0">
