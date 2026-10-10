@@ -26,22 +26,32 @@ import { useSearchParams } from 'react-router-dom';
 import PhoneInput from 'react-phone-number-input';
 import 'react-phone-number-input/style.css';
 import { submitManualItineraryRequest } from "../../services/api/manualItinerary";
-import { useAIItineraryGenerator } from "./hooks/useAIItineraryGenerator";
-import { useAIDayGenerator } from "./hooks/useAIDayGenerator";
-import { buildItineraryDayFromAIDay, computeDurationDays, computeMissingDayNumbers, localTodayISO, mergeDayByNumber, mergeDaysByNumber, toExistingDayContext, withAddedEntries, withoutMatchingEntries } from "./utils/formHelpers";
-import type { DayAccommodation, DayMeals, ItineraryDay } from "./utils/formHelpers";
+import {
+  buildItineraryDayFromAIDay,
+  computeDurationDays,
+  computeMissingDayNumbers,
+  DateRangeCalendar,
+  ItineraryChatPanel,
+  localTodayISO,
+  mergeDayByNumber,
+  mergeDaysByNumber,
+  RegenerationToast,
+  toExistingDayContext,
+  TripWizardPanel,
+  useAIDayGenerator,
+  useAIItineraryGenerator,
+  withoutMatchingEntries,
+  withAddedEntries,
+} from "./PlannerSupport";
+import type { DayAccommodation, DayMeals, ItineraryDay } from "./PlannerSupport";
 import { pluralize } from "../../lib/pluralize";
 import DestinationSelector from "../../components/shared/DestinationSelector";
-import Stepper from "../../components/shared/Stepper";
+import Stepper from "../../components/Stepper";
 import LocationSelector from "../../components/shared/LocationSelector";
 import ActivitySelector from "../../components/shared/ActivitySelector";
 import { useAuth } from "../../contexts/AuthContext";
-import { fetchUserBookings } from "../../services/api/booking";
+import { fetchUserBookings } from "../../services/api/booking.ts";
 import { ALL_DESTINATIONS } from "../../config/domainData/destinations";
-import DateRangeCalendar from "./components/DateRangeCalendar";
-import ItineraryChatPanel from "./components/ItineraryChatPanel";
-import TripWizardPanel from "./components/TripWizardPanel";
-import RegenerationToast from "./components/RegenerationToast";
 
 const transportOptions: Array<{ value: string; label: string; icon: LucideIcon }> = [
   { value: "flight", label: "Flight", icon: Plane },
@@ -730,7 +740,7 @@ export default function PlanYourTripContainer() {
   useAssistantPageRegistration(assistantRegistration);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-brand-50 font-body">
+    <div className="min-h-screen bg-white font-body">
       {regenToast && (
         <RegenerationToast
           message={regenToast.message}
@@ -741,9 +751,9 @@ export default function PlanYourTripContainer() {
           onDismiss={() => setRegenToast(null)}
         />
       )}
-      <div className="w-full mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-6 sm:py-8 md:py-12 max-w-5xl">
+      <div className="w-full mx-auto px-3 sm:px-4 md:px-6 lg:px-8 pt-24 pb-6 sm:pt-28 sm:pb-8 md:pt-32 md:pb-12 max-w-5xl">
         <form onSubmit={(e) => { e.preventDefault(); next(); }}>
-          <div className="bg-white rounded-2xl sm:rounded-3xl border border-gray-200 p-4 sm:p-5 md:p-6 mb-4 sm:mb-5 md:mb-6">
+          <div className="bg-white rounded-2xl sm:rounded-3xl border-2 border-gray-300 p-4 sm:p-5 md:p-6 mb-4 sm:mb-5 md:mb-6 shadow-sm">
             <div className="max-w-5xl mx-auto px-3 sm:px-4 md:px-8">
               <Stepper
                 steps={[
@@ -758,7 +768,7 @@ export default function PlanYourTripContainer() {
           </div>
           {/* ==== STEP 1 : Destination ==== */}
           {step === 1 && (
-            <div className="bg-white rounded-2xl sm:rounded-3xl border border-gray-200 p-4 sm:p-6 md:p-8">
+            <div className="bg-white rounded-2xl sm:rounded-3xl border-2 border-brand-200 p-4 sm:p-6 md:p-8 shadow-sm">
               <div className="flex items-center space-x-3 mb-4 sm:mb-6">
                 <div className="w-10 sm:w-12 h-10 sm:h-12 bg-gradient-to-br from-brand-500 to-brand-accent-500 rounded-xl flex items-center justify-center">
                   <MapPin className="w-5 sm:w-7 h-5 sm:h-7 text-white" />
@@ -768,7 +778,7 @@ export default function PlanYourTripContainer() {
                 </h2>
               </div>
 
-              <div className="flex gap-2 mb-4 sm:mb-6">
+              <div className="flex flex-wrap gap-2 mb-4 sm:mb-6">
                 <button type="button" onClick={() => setEntryMode('manual')} className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all ${entryMode === 'manual' ? 'bg-gradient-to-r from-brand-600 to-brand-accent-600 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
                   Enter manually
                 </button>
@@ -816,7 +826,7 @@ export default function PlanYourTripContainer() {
 
           {/* ==== STEP 2 : Dates & Travelers ==== */}
           {step === 2 && (
-            <div className="bg-white rounded-2xl sm:rounded-3xl border border-gray-200 p-4 sm:p-6 md:p-8">
+            <div className="bg-white rounded-2xl sm:rounded-3xl border-2 border-gray-300 p-4 sm:p-6 md:p-8 shadow-sm">
               <div className="flex items-center space-x-3 mb-4 sm:mb-6">
                 <div className="w-10 sm:w-12 h-10 sm:h-12 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-xl flex items-center justify-center">
                   <Calendar className="w-5 sm:w-7 h-5 sm:h-7 text-white" />
@@ -927,7 +937,7 @@ export default function PlanYourTripContainer() {
 
           {/* ==== STEP 3 : Day-by-Day Itinerary ==== */}
           {step === 3 && (
-            <div className="bg-white rounded-2xl sm:rounded-3xl border border-gray-200 p-4 sm:p-6 md:p-8 space-y-4 sm:space-y-6">
+            <div className="bg-white rounded-2xl sm:rounded-3xl border-2 border-gray-300 p-4 sm:p-6 md:p-8 shadow-sm space-y-4 sm:space-y-6">
               <div className="flex items-start sm:items-center justify-between mb-4 sm:mb-6 gap-2">
                 <div className="flex items-center space-x-2 sm:space-x-3">
                   <div className="w-10 sm:w-12 h-10 sm:h-12 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center">
@@ -951,7 +961,7 @@ export default function PlanYourTripContainer() {
                     <button
                       type="button"
                       onClick={handleAddDay}
-                      className="mt-3 inline-flex items-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-xs sm:text-sm rounded-xl font-semibold transition-colors"
+                      className="mt-3 inline-flex items-center gap-2 px-4 py-2 bg-[#16a34a] hover:bg-[#15803d] text-white text-xs sm:text-sm rounded-xl font-semibold transition-colors"
                     >
                       <Plus className="w-4 h-4" />
                       Continue with manual entry
@@ -984,7 +994,7 @@ export default function PlanYourTripContainer() {
                     <button
                       type="button"
                       onClick={handleAddDay}
-                      className="px-4 sm:px-6 py-2 sm:py-3 bg-gradient-to-r from-brand-500 to-brand-accent-500 text-white text-xs sm:text-sm rounded-xl hover:from-brand-600 hover:to-brand-accent-600 transition-all font-semibold shadow-md flex items-center gap-2"
+                      className="px-4 sm:px-6 py-2 sm:py-3 bg-[#16a34a] text-white text-xs sm:text-sm rounded-xl hover:bg-[#15803d] transition-colors font-semibold shadow-md flex items-center gap-2"
                     >
                       <Plus className="w-4 sm:w-5 h-4 sm:h-5" />
                       Add Day 1
@@ -1070,7 +1080,7 @@ export default function PlanYourTripContainer() {
 
                   {/* Current Day Form - Only show one day at a time */}
                   {itineraryDays[currentDayIndex] && (
-                    <div className="border-2 border-gray-200 rounded-xl bg-gray-50">
+                    <div className="border-2 border-gray-300 rounded-xl bg-gray-50">
                       {/* Day Header — rounds its own top corners (instead of
                           the card wrapper clipping via overflow-hidden) so
                           the Locations field's LocationSelector dropdown,
@@ -1277,7 +1287,7 @@ export default function PlanYourTripContainer() {
                         type="button"
                         onClick={handleAddDay}
                         disabled={aiGenerator.isGenerating || aiDayGenerator.isGenerating}
-                        className="px-6 py-3 bg-gradient-to-r from-brand-500 to-brand-accent-500 text-white rounded-xl hover:from-brand-600 hover:to-brand-accent-600 transition-all font-semibold shadow-md flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="px-6 py-3 bg-[#16a34a] text-white rounded-xl hover:bg-[#15803d] transition-colors font-semibold shadow-md flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <Plus className="w-5 h-5" />
                         Add Day {itineraryDays.length + 1}
@@ -1325,7 +1335,7 @@ export default function PlanYourTripContainer() {
 
           {/* ==== STEP 4 : Contact ==== */}
           {step === 4 && (
-            <div className="bg-white rounded-3xl border border-gray-200 p-8">
+            <div className="bg-white rounded-3xl border-2 border-gray-300 p-8 shadow-sm">
               <div className="flex items-center space-x-3 mb-6">
                 <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-emerald-500 rounded-xl flex items-center justify-center">
                   <Users className="w-7 h-7 text-white" />
@@ -1444,7 +1454,7 @@ export default function PlanYourTripContainer() {
               className={`flex-1 px-6 py-3 rounded-xl font-semibold flex items-center justify-center space-x-2 transition-colors ${
                 nextDisabled
                   ? 'bg-gray-300 text-gray-600 cursor-not-allowed'
-                  : 'bg-brand-600 hover:bg-brand-700 text-white'
+                  : 'bg-[#16a34a] hover:bg-[#15803d] text-white'
               }`}
             >
               {isSubmitting ? (
@@ -1491,7 +1501,7 @@ export default function PlanYourTripContainer() {
                   setItineraryDays([]);
                   setValidationMsg('');
                 }}
-                className="w-full px-4 py-2 bg-brand-600 text-white rounded-md hover:bg-brand-700"
+                className="w-full px-4 py-2 bg-[#16a34a] text-white rounded-md hover:bg-[#15803d]"
               >
                 OK
               </button>

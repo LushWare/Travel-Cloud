@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Filter, X } from 'lucide-react';
+import { Filter, LoaderCircle, X } from 'lucide-react';
 import { fetchPackages } from '../../services/api/packages';
 import { apiErrorMessage } from '@/services/http/apiErrorMessage';
 import type { AggregatedDestination } from '../../services/api/packages.transform';
@@ -144,7 +144,13 @@ export default function DestinationsContainer() {
 
   const totalPages = Math.ceil(filteredDestinations.length / itemsPerPage);
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center bg-gray-50" role="status" aria-label="Loading destinations"><div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-brand-500" /></div>;
+  if (loading && destinations.length === 0) {
+    return (
+      <main aria-busy="true" className="flex min-h-screen items-center justify-center bg-white">
+        <LoaderCircle aria-label="Loading destinations" role="status" className="h-6 w-6 animate-spin text-brand-600" />
+      </main>
+    );
+  }
   if (error) return <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4" role="alert"><div className="max-w-md text-center"><h2 className="text-2xl font-bold text-gray-900 mb-4">Unable to load destinations</h2><p className="text-gray-600 mb-6">{error}</p><button onClick={() => window.location.reload()} className="px-6 py-3 bg-brand-600 text-white rounded-xl font-semibold hover:bg-brand-700">Try again</button></div></div>;
 
   return (

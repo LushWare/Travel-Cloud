@@ -1,112 +1,57 @@
-import { useState, useEffect, Suspense, lazy } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
-import MainLayout from './layouts/MainLayout';
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import HomePage from './pages/HomePage';
+import DestinationsPage from './pages/DestinationsPage';
+import PackagesPage from './pages/PackagesPage';
+import PackageDetailsPage from './pages/PackageDetailsPage';
+import CustomizePackagePage from './pages/CustomizePackagePage';
+import AboutPage from './pages/AboutPage';
+import ContactPage from './pages/ContactPage';
+import PlanYourTripPage from './pages/PlanYourTripPage';
+import NavBar from './components/NavBar';
+import ScrollToTop from './components/shared/ScrollToTop';
+import CtaFooter from './components/Home/CTA';
+import Footer from './components/Footer';
+import AuthPage from './pages/AuthPage';
+import MyAccountPage from './pages/MyAccountPage';
+import CareerPage from './pages/CareerPage';
 import { AuthProvider } from './contexts/AuthContext';
-import { PAGE_CONFIG } from './config/pages';
-import AssistantWidget from './features/assistant/components/AssistantWidget';
 import { AssistantCapabilityProvider } from './features/assistant/capabilities/AssistantCapabilityProvider';
-
-const DestinationsInternational = lazy(() => import('./pages/DestinationsPage'));
-const PackageDetails = lazy(() => import('./pages/PackageDetailsPage'));
-const CustomizePackage = lazy(() => import('./pages/CustomizePackagePage'));
-const Packages = lazy(() => import('./pages/PackagesPage'));
-const AboutUs = lazy(() => import('./pages/AboutPage'));
-const Contact = lazy(() => import('./pages/ContactPage'));
-const Career = lazy(() => import('./pages/CareerPage'));
-const Login = lazy(() => import('./pages/LoginPage'));
-const ResetPassword = lazy(() => import('./pages/ResetPasswordPage'));
-const MyAccount = lazy(() => import('./pages/MyAccountPage'));
-const PlanYourTrip = lazy(() => import('./pages/PlanYourTripPage'));
-// Dev-only verification page (Phase 0 design-system style guide). Vite
-// statically replaces `import.meta.env.DEV`, so in production builds this
-// ternary folds to `null` and the lazy import (and the whole page chunk)
-// is tree-shaken away — the route below never exists outside `npm run dev`.
-const DevStyleGuide = import.meta.env.DEV
-  ? lazy(() => import('./pages/DevStyleGuidePage'))
-  : null;
-
-function AppContent() {
-  const navigate = useNavigate();
-  const [currentPage, setCurrentPage] = useState('home');
-
-  const handleNavigate = (page: string, filter: string | null = null, force: unknown = false) => {
-    setCurrentPage(page);
-    let path = '/';
-    if (page === 'home' || page === '/') path = '/';
-    else if (page === 'destinations') path = '/destinations-international';
-    else path = `/${page}`;
-
-    if (filter) {
-      if (typeof filter === 'string' && filter.includes('=')) {
-        const url = `${path}?${filter}`;
-        if (force) navigate(url, { state: { __force: Date.now() } });
-        else navigate(url);
-      } else {
-        const qKey = path.includes('destinations') ? 'region' : /^\d+$/.test(String(filter)) ? 'id' : 'country';
-        const url = `${path}?${qKey}=${filter}`;
-        if (force) navigate(url, { state: { __force: Date.now() } });
-        else navigate(url);
-      }
-    } else {
-      if (force) navigate(path, { state: { __force: Date.now() } });
-      else navigate(path);
-    }
-  };
-
-  return (
-    // The provider wraps both the routes and the widget: a page registers what
-    // it can execute, and the widget is the only reader of that registration, so
-    // they have to share one instance.
-    <AssistantCapabilityProvider>
-      <Suspense fallback={<div className="min-h-screen" />}>
-        <Routes>
-          {/* Dev-only style guide (Phase 0): mounted OUTSIDE MainLayout so it
-              renders without header/footer, and gated by `import.meta.env.DEV`
-              so production builds drop the route and page chunk entirely. */}
-          {DevStyleGuide && <Route path="/dev/style-guide" element={<DevStyleGuide />} />}
-          <Route element={<MainLayout currentPage={currentPage} onNavigate={handleNavigate} />}>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/packages" element={<Packages />} />
-            <Route path="/package/:id" element={<PackageDetails />} />
-            <Route path="/contact" element={<Contact />} />
-            {PAGE_CONFIG.destinations.enabled && <Route path="/destinations-international" element={<DestinationsInternational />} />}
-            {PAGE_CONFIG.planner.enabled && <Route path="/planner" element={<PlanYourTrip />} />}
-            {PAGE_CONFIG.planner.enabled && <Route path="/package/:id/customize" element={<CustomizePackage />} />}
-            {PAGE_CONFIG.about.enabled && <Route path="/about" element={<AboutUs />} />}
-            {PAGE_CONFIG.career.enabled && <Route path="/career" element={<Career />} />}
-            {PAGE_CONFIG.account.enabled && <Route path="/my-account" element={<MyAccount />} />}
-            {PAGE_CONFIG.account.enabled && <Route path="/login" element={<Login />} />}
-            {PAGE_CONFIG.account.enabled && <Route path="/reset-password/:token" element={<ResetPassword />} />}
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Route>
-        </Routes>
-      </Suspense>
-      {/* Site-wide floating assistant: mounted unconditionally (it self-excludes
-          by route internally — see isAssistantExcludedPath), and deliberately
-          OUTSIDE the Suspense boundary so lazy route loads never unmount/remount
-          it and re-fire impression telemetry. */}
-      <AssistantWidget />
-    </AssistantCapabilityProvider>
-  );
-}
-
-function ScrollToTop() {
-  const { pathname, search } = useLocation();
-  useEffect(() => {
-    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
-  }, [pathname, search]);
-  return null;
-}
+import AssistantWidget from './features/assistant/components/AssistantWidget';
+import FloatingActionStack from './components/shared/floating-actions/FloatingActionStack';
 
 function App() {
   return (
-    <BrowserRouter>
+    <Router>
       <ScrollToTop />
       <AuthProvider>
-        <AppContent />
+        <AssistantCapabilityProvider>
+          <NavBar />
+          <Routes>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/destinations" element={<DestinationsPage />} />
+            <Route path="/packages" element={<PackagesPage />} />
+            <Route path="/packages/:id" element={<PackageDetailsPage />} />
+            <Route path="/package/:id/customize" element={<CustomizePackagePage />} />
+            {/* <Route path="/package/:id" element={<PackageDetailsPage />} /> */}
+            <Route path="/about" element={<AboutPage />} />
+            <Route path="/contact" element={<ContactPage />} />
+            <Route path="/planner" element={<PlanYourTripPage />} />
+            <Route path="/career" element={<CareerPage />} />
+            <Route path="/login" element={<AuthPage />} />
+            <Route path="/register" element={<AuthPage />} />
+            <Route path="/my-account" element={<MyAccountPage />} />
+            <Route path="/reset-password/:token" element={<AuthPage />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+          <CtaFooter />
+          <Footer />
+          <FloatingActionStack />
+          <AssistantWidget />
+        </AssistantCapabilityProvider>
       </AuthProvider>
-    </BrowserRouter>
+    </Router>
   );
 }
+
 export default App;

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Clock, Filter } from 'lucide-react';
+import { Clock, Filter, LoaderCircle } from 'lucide-react';
 import { fetchPackages } from '../../services/api/packages';
 import { apiErrorMessage } from '@/services/http/apiErrorMessage';
 import type { NormalizedPackage } from '../../services/api/packages.transform';
@@ -92,7 +92,6 @@ export default function PackagesContainer() {
   const [packages, setPackages] = useState<NormalizedPackage[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(
     typeof window !== 'undefined' ? window.innerWidth > 1400 : false,
@@ -144,12 +143,9 @@ export default function PackagesContainer() {
     [searchParams, setSearchParams],
   );
 
-  const hasLoadedRef = useRef(false);
-
   useEffect(() => {
     let isMounted = true;
-    if (hasLoadedRef.current) setRefreshing(true);
-    else setLoading(true);
+    setLoading(true);
     setError(null);
 
     fetchPackages({
@@ -177,9 +173,7 @@ export default function PackagesContainer() {
       })
       .finally(() => {
         if (!isMounted) return;
-        hasLoadedRef.current = true;
         setLoading(false);
-        setRefreshing(false);
       });
 
     return () => {
@@ -253,7 +247,13 @@ export default function PackagesContainer() {
   const clearAllFilters = () =>
     updateParams({ priceMin: null, priceMax: null, durationMin: null, durationMax: null, rating: null });
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center bg-gray-50" role="status" aria-label="Loading packages"><div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-brand-500" /></div>;
+  if (loading && packages.length === 0) {
+    return (
+      <main aria-busy="true" className="flex min-h-screen items-center justify-center bg-white">
+        <LoaderCircle aria-label="Loading packages" role="status" className="h-6 w-6 animate-spin text-brand-600" />
+      </main>
+    );
+  }
   if (error) return <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4" role="alert"><div className="max-w-md text-center"><h2 className="text-2xl font-bold text-gray-900 mb-4">We ran into an issue</h2><p className="text-gray-600 mb-6">{error}</p><button onClick={() => window.location.reload()} className="px-6 py-3 bg-brand-600 text-white rounded-lg font-semibold hover:bg-brand-700">Try again</button></div></div>;
 
   // The destination's own name comes from the returned packages, which all
@@ -325,7 +325,7 @@ export default function PackagesContainer() {
           )}
 
           {/* Packages */}
-          <div className="flex-1" aria-busy={refreshing}>
+          <div className="flex-1">
             {enrichedPackages.length === 0 ? (
               <div className="text-center py-24 bg-gray-50 rounded-2xl">
                 <Filter className="w-16 h-16 mx-auto text-gray-400 mb-4" />
@@ -343,7 +343,7 @@ export default function PackagesContainer() {
               </div>
             ) : viewMode === 'grid' ? (
               <>
-                <div className={`grid gap-4 md:gap-6 lg:gap-8 transition-opacity duration-200 ${refreshing ? 'opacity-60' : 'opacity-100'} ${showFilters ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3' : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'}`}>
+                <div className={`grid gap-4 md:gap-6 lg:gap-8 ${showFilters ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3' : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'}`}>
                   {enrichedPackages.map(pkg => (
                     <PackageCard
                       key={pkg.id}

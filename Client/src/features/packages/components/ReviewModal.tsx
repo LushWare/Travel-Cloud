@@ -62,15 +62,21 @@ export default function ReviewModal({
   );
 
   return open ? (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-modal flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full review-modal-mobile p-6 lg:p-8">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl lg:text-2xl font-bold text-gray-900">Write a Review</h3>
+        <div className="fixed inset-0 z-modal flex items-center justify-center bg-white/65 p-4 backdrop-blur-[2px]">
+          <div role="dialog" aria-modal="true" aria-labelledby="review-modal-title" className="review-modal-mobile max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto rounded-xl border border-brand-100 bg-white p-6 shadow-2xl sm:max-h-none sm:overflow-visible lg:p-8">
+            <div className="mb-6 flex items-start justify-between gap-4">
+              <div>
+                <p className="mb-2 text-xs font-bold uppercase tracking-[0.16em] text-brand-600">Traveler notes</p>
+                <h3 id="review-modal-title" className="font-display text-2xl font-semibold text-brand-dark-900">Write a Review</h3>
+                <p className="mt-2 text-sm leading-relaxed text-gray-600">Share a detail that could help someone plan this trip.</p>
+              </div>
               <button
+                type="button"
                 onClick={onClose}
-                className="text-gray-500 hover:text-gray-700 transition-colors"
+                aria-label="Close review form"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-brand-50 hover:text-brand-800"
               >
-                <X className="w-6 h-6" />
+                <X className="h-5 w-5" />
               </button>
             </div>
             <form onSubmit={onSubmit} className="space-y-4">
@@ -101,17 +107,19 @@ export default function ReviewModal({
                   <span className="text-sm text-gray-600">{reviewData.rating} out of 5</span>
                 </div>
                 <div className="flex gap-2 justify-center sm:justify-start">
-                  {[1, 2, 3, 4, 5].map((star) => (
+                    {[1, 2, 3, 4, 5].map((star) => (
                     <button
                       key={star}
                       type="button"
                       onClick={() => setReviewData({ ...reviewData, rating: star })}
-                      className="transition-colors p-1"
+                        aria-label={`Rate ${star} out of 5`}
+                        aria-pressed={reviewData.rating === star}
+                        className="rounded-md p-1 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
                     >
                       <Star
                         className={`w-7 h-7 lg:w-8 lg:h-8 ${
                           star <= reviewData.rating
-                            ? 'text-brand-accent-400 fill-current'
+                            ? 'text-yellow-400 fill-current'
                             : 'text-gray-300'
                         }`}
                       />
@@ -151,7 +159,7 @@ export default function ReviewModal({
                 <button
                   type="submit"
                   disabled={isSubmittingReview}
-                  className="flex-1 px-4 py-3 bg-black text-white rounded-lg font-semibold hover:shadow-lg transform hover:scale-[1.02] transition-all disabled:opacity-50 disabled:cursor-not-allowed button-padding-sm"
+                  className="flex-1 rounded-lg bg-brand-600 px-4 py-3 font-semibold text-white transition-colors hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50 button-padding-sm"
                 >
                   {isSubmittingReview ? 'Submitting...' : 'Submit Review'}
                 </button>

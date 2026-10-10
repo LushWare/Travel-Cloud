@@ -1,0 +1,274 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/fraunces/wght.css";
+@import "@fontsource-variable/inter/wght.css";
+
+@font-face {
+  font-family: 'Inter Fallback';
+  src: local('Arial');
+  ascent-override: 90.44%;
+  descent-override: 22.52%;
+  line-gap-override: 0%;
+  size-adjust: 107.12%;
+}
+
+@theme {
+  --color-brand-50: #f0f7f5;
+  --color-brand-100: #dcece8;
+  --color-brand-200: #bce1d5;
+  --color-brand-300: #93cebc;
+  --color-brand-400: #62b39e;
+  --color-brand-500: #429782;
+  --color-brand-600: #16a34a;
+  --color-brand-700: #266255;
+  --color-brand-800: #214f45;
+  --color-brand-900: #1f423b;
+  --color-brand-950: #0f2723;
+
+  --color-brand-accent-50: #f4f6f5;
+  --color-brand-accent-100: #e3eae7;
+  --color-brand-accent-200: #c9d8d3;
+  --color-brand-accent-300: #a1bfb6;
+  --color-brand-accent-400: #719f93;
+  --color-brand-accent-500: #528276;
+  --color-brand-accent-600: #3f685e;
+  --color-brand-accent-700: #36534d;
+  --color-brand-accent-800: #2f4440;
+  --color-brand-accent-900: #2a3a37;
+  --color-brand-accent-950: #15201e;
+
+  --color-brand-dark-800: #16261e;
+  --color-brand-dark-900: #0d1712;
+  --color-brand-dark-950: #060b08;
+
+  --font-display: 'Fraunces Variable', Georgia, 'Times New Roman', serif;
+  --font-body: 'Inter Variable', 'Inter Fallback', system-ui, -apple-system, sans-serif;
+
+  --text-hero: 4.75rem;
+  --text-hero--line-height: 1.02;
+  --text-hero--letter-spacing: -0.02em;
+  --text-hero--font-weight: 600;
+  --text-display-lg: 3rem;
+  --text-display-lg--line-height: 1.1;
+  --text-display-md: 2.25rem;
+  --text-display-md--line-height: 1.18;
+
+  --spacing-section-sm: 2.5rem;
+  --spacing-section-md: 4rem;
+  --spacing-section-lg: 5rem;
+
+  --shadow-floating: 0 8px 24px rgb(10 31 20 / 0.10), 0 2px 6px rgb(10 31 20 / 0.06);
+  --shadow-modal: 0 24px 64px rgb(6 11 8 / 0.24), 0 4px 16px rgb(6 11 8 / 0.10);
+  --animate-kenburns: kenburns 20s ease-out forwards;
+}
+
+@keyframes kenburns {
+  0% { transform: scale(1); }
+  100% { transform: scale(1.12); }
+}
+
+@utility z-base { z-index: 0; }
+@utility z-raised { z-index: 10; }
+@utility z-elevated { z-index: 20; }
+@utility z-lifted { z-index: 30; }
+@utility z-prominent { z-index: 40; }
+@utility z-header { z-index: 50; }
+@utility z-dropdown { z-index: 60; }
+@utility z-floating-action { z-index: 70; }
+@utility z-overlay { z-index: 90; }
+@utility z-modal { z-index: 100; }
+@utility z-floating-assistant { z-index: 110; }
+
+body {
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.package-details-page {
+  font-family: var(--font-body), sans-serif;
+}
+
+.package-details-page h1,
+.package-details-page h2,
+.package-details-page h3,
+.package-details-page h4,
+.package-details-page h5,
+.package-details-page h6 {
+  font-family: var(--font-display), var(--font-body), sans-serif;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
+}
+
+.destination-carousel-track {
+  width: 100%;
+}
+
+.destination-carousel-card {
+  flex-basis: 100%;
+}
+
+@media (min-width: 640px) {
+  .destination-carousel-card {
+    flex-basis: calc((100% - 2rem) / 3);
+  }
+}
+
+@media (min-width: 1024px) {
+  .destination-carousel-card {
+    flex-basis: calc((100% - 5rem) / 5);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+.booking-calendar.react-datepicker {
+  width: 100%;
+  max-width: 26rem;
+  border: 0;
+  border-radius: 1rem;
+  background: transparent;
+  font-family: var(--font-body), sans-serif;
+}
+
+.booking-calendar .react-datepicker__month-container {
+  float: none;
+  width: 100%;
+}
+
+.booking-calendar .react-datepicker__header {
+  padding: 0.75rem 0.75rem 0.65rem;
+  border: 0;
+  border-radius: 1rem 1rem 0 0;
+  background: #f0f7f5;
+}
+
+.booking-calendar .react-datepicker__current-month {
+  margin-bottom: 0.5rem;
+  color: #0f2723;
+  font-family: var(--font-body), sans-serif;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.booking-calendar .react-datepicker__navigation {
+  top: 0.75rem;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid #dcece8;
+  border-radius: 9999px;
+  background: #fff;
+}
+
+.booking-calendar .react-datepicker__navigation:hover {
+  background: #dcece8;
+}
+
+.booking-calendar .react-datepicker__navigation--previous {
+  left: 0.75rem;
+}
+
+.booking-calendar .react-datepicker__navigation--next {
+  right: 0.75rem;
+}
+
+.booking-calendar .react-datepicker__navigation-icon::before {
+  top: 0.625rem;
+  border-color: #266255;
+  border-width: 2px 2px 0 0;
+}
+
+.booking-calendar .react-datepicker__day-names,
+.booking-calendar .react-datepicker__week {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.booking-calendar .react-datepicker__day-names {
+  margin: 0;
+}
+
+.booking-calendar .react-datepicker__day-name {
+  width: auto;
+  margin: 0;
+  color: #64748b;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 2.5rem;
+  text-transform: uppercase;
+}
+
+.booking-calendar .react-datepicker__month {
+  width: 100%;
+  margin: 0.25rem 0 0;
+}
+
+.booking-calendar .react-datepicker__week {
+  gap: 2px 0;
+}
+
+.booking-calendar .react-datepicker__day {
+  display: inline-flex;
+  width: min(100%, 2.5rem);
+  height: 2.5rem;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto;
+  border-radius: 9999px;
+  color: #1f2937;
+  line-height: 1;
+}
+
+.booking-calendar .react-datepicker__day:hover,
+.booking-calendar .react-datepicker__day--keyboard-selected {
+  border-radius: 9999px;
+  background: #dcece8;
+  color: #214f45;
+}
+
+.booking-calendar .react-datepicker__day--today {
+  box-shadow: inset 0 0 0 1px #429782;
+  font-weight: 700;
+}
+
+.booking-calendar .react-datepicker__day--in-range,
+.booking-calendar .react-datepicker__day--in-selecting-range {
+  border-radius: 0;
+  background: #dcece8;
+  color: #214f45;
+}
+
+.booking-calendar .react-datepicker__day--range-start,
+.booking-calendar .react-datepicker__day--range-end,
+.booking-calendar .react-datepicker__day--selected {
+  border-radius: 9999px;
+  background: #16a34a;
+  color: #fff;
+}
+
+.booking-calendar .react-datepicker__day--range-start.react-datepicker__day--in-range,
+.booking-calendar .react-datepicker__day--range-end.react-datepicker__day--in-range {
+  border-radius: 9999px;
+  background: #16a34a;
+  color: #fff;
+}
+
+.booking-calendar .react-datepicker__day--disabled,
+.booking-calendar .react-datepicker__day--outside-month {
+  color: #cbd5e1;
+}
+
+.booking-calendar .react-datepicker__day--disabled:hover {
+  background: transparent;
+}

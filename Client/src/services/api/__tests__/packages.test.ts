@@ -12,10 +12,12 @@ vi.mock('../packages.transform', () => ({
 }));
 
 import {
-  fetchPackages, fetchPackageById, fetchFeaturedPackages, submitReview, fetchReviewStats,
+  clearPackageReadCache, fetchPackages, fetchPackageById, getCachedPackages, getCachedPackageById,
+  fetchFeaturedPackages, submitReview, fetchReviewStats,
 } from '../packages';
 
 beforeEach(() => {
+  clearPackageReadCache();
   mockGet.mockReset();
   mockPost.mockReset();
   mockNormalizePackage.mockClear();
@@ -35,6 +37,43 @@ describe('fetchPackages', () => {
     mockGet.mockResolvedValue({ data: { success: true, data: [{ id: 'pkg-1', basePrice: 'free' }] } });
     await expect(fetchPackages()).rejects.toThrow();
   });
+
+  it('reuses successful package results briefly to make return navigation immediate', async () => {
+    mockGet.mockResolvedValue({ data: { success: true, data: [{ id: 'pkg-cached', title: 'Bali' }] } });
+
+    const firstResult = await fetchPackages();
+    const secondResult = await fetchPackages();
+
+    expect(secondResult).toBe(firstResult);
+    expect(mockGet).toHaveBeenCalledTimes(1);
+  });
+
+  it('makes a fresh catalogue available synchronously for return navigation', async () => {
+    mockGet.mockResolvedValue({ data: { success: true, data: [{ id: 'pkg-cached' }] } });
+    await fetchPackages({ limit: 100 });
+
+    expect(getCachedPackages({ limit: 100 })?.packages).toEqual([
+      { normalized: true, raw: { id: 'pkg-cached' } },
+    ]);
+  });
+
+  it('fetches complete package details after a catalog response', async () => {
+    const catalogPackage = { id: 'pkg-full', title: 'Bali' };
+    const detailPackage = {
+      id: 'pkg-full',
+      title: 'Bali',
+      images: [{ url: 'https://example.com/one.jpg' }, { url: 'https://example.com/two.jpg' }],
+    };
+    mockGet
+      .mockResolvedValueOnce({ data: { success: true, data: [catalogPackage] } })
+      .mockResolvedValueOnce({ data: { success: true, data: detailPackage } });
+
+    await fetchPackages();
+    const detail = await fetchPackageById('pkg-full');
+
+    expect(mockGet).toHaveBeenCalledTimes(2);
+    expect(detail.raw).toEqual(detailPackage);
+  });
 });
 
 describe('fetchFeaturedPackages', () => {
@@ -50,6 +89,26 @@ describe('fetchPackageById', () => {
     mockGet.mockResolvedValue({ data: { success: true, data: { id: 'pkg-3', title: 'Kyoto' } } });
     const result = await fetchPackageById('pkg-3');
     expect(result).toEqual({ normalized: true, raw: { id: 'pkg-3', title: 'Kyoto' } });
+  });
+
+  it('reuses successful package details after the first request', async () => {
+    mockGet.mockResolvedValue({ data: { success: true, data: { id: 'pkg-cached', title: 'Kyoto' } } });
+
+    const firstResult = await fetchPackageById('pkg-cached');
+    const secondResult = await fetchPackageById('pkg-cached');
+
+    expect(secondResult).toBe(firstResult);
+    expect(mockGet).toHaveBeenCalledTimes(1);
+  });
+
+  it('makes fresh package details available synchronously for prefetch navigation', async () => {
+    mockGet.mockResolvedValue({ data: { success: true, data: { id: 'pkg-cached', title: 'Kyoto' } } });
+    await fetchPackageById('pkg-cached');
+
+    expect(getCachedPackageById('pkg-cached')).toEqual({
+      normalized: true,
+      raw: { id: 'pkg-cached', title: 'Kyoto' },
+    });
   });
 
   it('rejects on a malformed envelope', async () => {

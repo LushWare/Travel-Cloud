@@ -13,18 +13,8 @@
     "noEmit": true,
     "jsx": "react-jsx",
     "types": ["vite/client"],
-
-    /* Incremental migration: existing .jsx/.js keep compiling untyped
-       until explicitly renamed to .tsx/.ts. Do not flip checkJs on
-       until the whole app has been migrated (see Phase 6 strictness ramp
-       in UI_REWRITE_PROGRESS.md) — turning it on early would flood every
-       untouched file with errors unrelated to whatever is being worked on. */
     "allowJs": true,
     "checkJs": false,
-
-    /* Full strict mode, per UI_REWRITE_PROGRESS.md Phase 0.5's strictness
-       ramp — every feature folder is migrated (Phase 5 done) so this is
-       now Phase 6.1. */
     "strict": true,
     "noUnusedLocals": false,
     "noUnusedParameters": false,

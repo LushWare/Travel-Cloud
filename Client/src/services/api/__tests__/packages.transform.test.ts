@@ -91,6 +91,23 @@ describe('normalizePackage', () => {
     expect(result.isActive).toBe(true);
   });
 
+  it('includes a separate cover image and every unique gallery image', () => {
+    const result = normalizePackage({
+      coverImage: 'https://example.com/cover.jpg',
+      images: [
+        { url: 'https://example.com/one.jpg' },
+        { url: 'https://example.com/two.jpg' },
+        { url: 'https://example.com/cover.jpg' },
+      ],
+    });
+
+    expect(result.images).toEqual([
+      'https://example.com/cover.jpg',
+      'https://example.com/one.jpg',
+      'https://example.com/two.jpg',
+    ]);
+  });
+
   it('treats an explicit isActive: false as inactive', () => {
     expect(normalizePackage({ isActive: false }).isActive).toBe(false);
   });
@@ -108,6 +125,17 @@ describe('aggregateDestinations', () => {
     expect(destination.price).toBe(800);
     expect(destination.minDuration).toBe(4);
     expect(destination.maxDuration).toBe(6);
+    expect(destination.durationLabel).toBe('4-6D');
+  });
+
+  it('shows a single shared package duration in days only', () => {
+    const packages = [
+      normalizePackage({ _id: '1', title: 'A', destination: 'Male, Maldives', durationDays: 6 }),
+      normalizePackage({ _id: '2', title: 'B', destination: 'Male, Maldives', durationDays: 6 }),
+    ];
+
+    const [destination] = aggregateDestinations(packages);
+    expect(destination.durationLabel).toBe('6D');
   });
 
   it('skips packages with no resolvable destination key', () => {

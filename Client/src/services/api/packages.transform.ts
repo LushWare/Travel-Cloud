@@ -162,10 +162,12 @@ const extractImages = (
     : [];
 
   const cover = coverImage || normalizedImages[0] || '';
+  const allImages = [cover, ...normalizedImages]
+    .filter((url, index, list): url is string => Boolean(url) && list.indexOf(url) === index);
 
   return {
     coverImage: cover,
-    images: normalizedImages,
+    images: allImages,
   };
 };
 
@@ -355,8 +357,7 @@ export const aggregateDestinations = (normalizedPackages: NormalizedPackage[] = 
       if (maxDuration && maxDuration !== minDuration) {
         return `${minDuration}-${maxDuration}D`;
       }
-      const nights = Math.max(minDuration - 1, 1);
-      return `${minDuration}D/${nights}N`;
+      return `${minDuration}D`;
     })();
 
     return {

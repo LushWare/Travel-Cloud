@@ -1,5 +1,9 @@
 import PackageDetailsContainer from '../features/packages/PackageDetailsContainer';
 
 export default function PackageDetailsPage() {
-  return <PackageDetailsContainer />;
+  return (
+    <div className="package-details-page">
+      <PackageDetailsContainer />
+    </div>
+  );
 }

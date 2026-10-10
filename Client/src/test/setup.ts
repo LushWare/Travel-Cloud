@@ -1,5 +1,18 @@
 import '@testing-library/jest-dom/vitest';
 
+if (typeof window.matchMedia !== 'function') {
+  window.matchMedia = (query) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  }) as MediaQueryList;
+}
+
 // jsdom has no IntersectionObserver; LazyImage (rendered on nearly every
 // page) requires one to mount without throwing.
 if (typeof globalThis.IntersectionObserver === 'undefined') {

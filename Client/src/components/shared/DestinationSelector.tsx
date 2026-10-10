@@ -115,7 +115,7 @@ const DestinationSelector = ({ value, onChange, placeholder = 'Select Destinatio
             type="button"
             onClick={() => handleSelect(dest)}
             className={`px-3 py-2 text-sm text-left rounded-xl transition-all ${selectedOptionValue === dest.value || selectedOptionLabel === dest.label
-                ? 'bg-gradient-to-r from-brand-500 to-brand-accent-500 text-white font-semibold shadow-md'
+                ? 'bg-brand-600 text-white font-semibold shadow-md'
                 : 'bg-gray-50 hover:bg-brand-50 text-gray-700 hover:text-brand-700 border border-gray-200 hover:border-brand-300'
               }`}
           >
@@ -236,7 +236,7 @@ const DestinationSelector = ({ value, onChange, placeholder = 'Select Destinatio
                 type="button"
                 onClick={handleCustomDestinationSubmit}
                 disabled={!customDestination.trim()}
-                className="px-4 py-2.5 bg-gradient-to-r from-brand-500 to-brand-accent-500 text-white rounded-xl hover:from-brand-600 hover:to-brand-accent-600 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-4 py-2.5 bg-brand-600 text-white rounded-xl hover:bg-brand-700 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Add
               </button>

@@ -5,6 +5,8 @@ interface FilterPanelShellProps {
   children: ReactNode;
   /** Fired when the mobile drawer is dismissed (backdrop click, Escape, close button). */
   onClose: () => void;
+  /** Render the drawer even when the viewport reports desktop layout. */
+  forceMobile?: boolean;
   /** Accessible name for the mobile drawer; not rendered visually. */
   title?: string;
 }
@@ -56,11 +58,12 @@ function useIsDesktopLayout(): boolean {
 export default function FilterPanelShell({
   children,
   onClose,
+  forceMobile = false,
   title = 'Filters',
 }: FilterPanelShellProps) {
   const isDesktop = useIsDesktopLayout();
 
-  if (isDesktop) {
+  if (isDesktop && !forceMobile) {
     // In-flow card per Client/DESIGN.md elevation: hairline border + the card
     // radius (rounded-2xl / --radius-card), no resting shadow.
     return (
@@ -75,7 +78,7 @@ export default function FilterPanelShell({
       <SheetContent
         side="left"
         showCloseButton={false}
-        className="gap-0 overflow-y-auto bg-white p-4 sm:p-6"
+        className="inset-y-0 top-0 bottom-0 left-0 right-auto w-[88vw] data-[side=left]:!w-[88vw] max-w-sm gap-0 overflow-y-auto bg-white p-4 sm:p-6"
       >
         <SheetTitle className="sr-only">{title}</SheetTitle>
         {children}

@@ -21,7 +21,7 @@ interface StepperProps {
  */
 export default function Stepper({ steps, currentStep, className = '' }: StepperProps) {
   return (
-    <ol className={`flex items-start ${className}`} aria-label="Progress">
+    <ol className={`flex w-full min-w-0 items-start ${className}`} aria-label="Progress">
       {steps.map((step, index) => {
         const stepNumber = index + 1;
         const isComplete = currentStep > stepNumber;
@@ -29,7 +29,7 @@ export default function Stepper({ steps, currentStep, className = '' }: StepperP
         return (
           <li
             key={step.label}
-            className="flex items-start"
+            className="flex min-w-0 items-start"
             style={{ flex: stepNumber < steps.length ? '1 1 0%' : '0 0 auto' }}
             aria-current={isActive ? 'step' : undefined}
           >
@@ -44,7 +44,7 @@ export default function Stepper({ steps, currentStep, className = '' }: StepperP
                 {isComplete ? <Check className="w-4 h-4 sm:w-5 sm:h-5" aria-hidden="true" /> : stepNumber}
               </div>
               <span
-                className={`text-xs mt-1.5 font-medium text-center ${
+                className={`mt-1.5 w-full min-w-0 break-words text-center text-[10px] font-medium leading-tight sm:whitespace-nowrap sm:text-xs ${
                   isComplete || isActive ? 'text-gray-900' : 'text-gray-400'
                 }`}
               >

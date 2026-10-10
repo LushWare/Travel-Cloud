@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react';
-import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
 
 export interface RangeOption {
@@ -64,13 +63,25 @@ export default function RangeFilterGroup({
           return (
             <label
               key={option.label}
-              className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-brand-50/50 cursor-pointer transition-all duration-200"
+              className={`group flex cursor-pointer items-center gap-3 rounded-lg px-2.5 py-2 transition-colors ${
+                isSelected ? 'bg-emerald-50' : 'hover:bg-slate-50'
+              }`}
             >
-              <Checkbox
+              <input
+                type="checkbox"
                 checked={isSelected}
-                onCheckedChange={() => onChange(isSelected ? null : option)}
+                onChange={() => onChange(isSelected ? null : option)}
+                className="h-4 w-4 cursor-pointer rounded border-slate-300 accent-emerald-700 focus:ring-emerald-500"
               />
-              <span className="text-gray-700 font-medium">{option.label}</span>
+              <span
+                className={`text-base transition-colors ${
+                  isSelected
+                    ? 'font-medium text-emerald-900'
+                    : 'text-slate-600 group-hover:text-slate-900'
+                }`}
+              >
+                {option.label}
+              </span>
             </label>
           );
         })}
