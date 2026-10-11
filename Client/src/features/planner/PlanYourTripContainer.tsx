@@ -783,11 +783,11 @@ export default function PlanYourTripContainer() {
                   Enter manually
                 </button>
                 <button type="button" onClick={() => setEntryMode('chat')} className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all flex items-center gap-1.5 ${entryMode === 'chat' ? 'bg-gradient-to-r from-brand-600 to-brand-accent-600 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-                  <Zap className="w-3.5 h-3.5" /> Chat with AI
+                  <Zap className="w-3.5 h-3.5" /> Find a Package with AI
                 </button>
-                <button type="button" onClick={() => setEntryMode('wizard')} className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all flex items-center gap-1.5 ${entryMode === 'wizard' ? 'bg-gradient-to-r from-brand-600 to-brand-accent-600 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                {/* <button type="button" onClick={() => setEntryMode('wizard')} className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all flex items-center gap-1.5 ${entryMode === 'wizard' ? 'bg-gradient-to-r from-brand-600 to-brand-accent-600 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
                   <Sparkles className="w-3.5 h-3.5" /> Find a Package with AI
-                </button>
+                </button> */}
               </div>
               {entryMode === 'chat' ? (
                 <ItineraryChatPanel onReady={handleChatReady} />

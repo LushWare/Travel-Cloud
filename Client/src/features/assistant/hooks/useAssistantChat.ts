@@ -11,6 +11,7 @@ import type { AssistantCurrentViewValue } from '../capabilities/AssistantCapabil
 import type { AssistantPageRegistration } from '../capabilities/AssistantCapabilityProvider';
 import { resolveHeldPrefill, runAssistantAction } from '../actions/runAssistantAction';
 import type { PendingPrefill } from '../actions/runAssistantAction';
+import { apiErrorMessage } from '../../../services/http/apiErrorMessage';
 
 // Sliding window resent to the stateless assistant-service each turn — same
 // reasoning as useTripWizard's MAX_SENT_MESSAGES. Older turns still show in
@@ -26,8 +27,6 @@ const ASSISTANT_SESSION_KEY = 'travel-crm.assistantSessionId';
 
 // Distinct from the trip-planning assistant's fallback — this widget talks to
 // the phase-1 site-wide assistant-service, not the planner wizard.
-const ASSISTANT_ERROR_MESSAGE = 'Failed to reach the assistant. Please try again.';
-
 export interface AssistantSnippet {
   docId: string;
   title: string;
@@ -377,7 +376,7 @@ function deriveTurnData(result: AssistantTurnResultT): AssistantTurnData {
 }
 
 export function useAssistantChat() {
-  const [sessionId] = useState(loadOrCreateSessionId);
+  const [sessionId, setSessionId] = useState(loadOrCreateSessionId);
   // The mounted page's registration, READ AT SEND TIME: the store holds a ref,
   // not state, so capturing it here during render would miss a page that mounted
   // after this component last rendered.
@@ -390,6 +389,22 @@ export function useAssistantChat() {
   const [turns, setTurns] = useState<AssistantTurnView[]>([]);
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState('');
+
+  const clearChat = () => {
+    setMessages([]);
+    setTurns([]);
+    setError('');
+  };
+
+  const startNewChat = () => {
+    clearChat();
+    const nextSessionId = crypto.randomUUID();
+    setSessionId(nextSessionId);
+    try {
+      localStorage.setItem(ASSISTANT_SESSION_KEY, nextSessionId);
+    } catch {
+    }
+  };
 
   const sendMessage = async (text: string) => {
     const trimmed = text.trim().slice(0, MAX_MESSAGE_LENGTH);
@@ -473,8 +488,8 @@ export function useAssistantChat() {
           );
         }
       }
-    } catch {
-      setError(ASSISTANT_ERROR_MESSAGE);
+    } catch (err) {
+      setError(apiErrorMessage(err));
       fireEvent(sessionId, userMessage.id, 'error', null, null);
     } finally {
       setIsSending(false);
@@ -498,5 +513,5 @@ export function useAssistantChat() {
     );
   };
 
-  return { messages, turns, sessionId, isSending, error, sendMessage, resolvePrefill };
+  return { messages, turns, sessionId, isSending, error, sendMessage, resolvePrefill, clearChat, startNewChat };
 }

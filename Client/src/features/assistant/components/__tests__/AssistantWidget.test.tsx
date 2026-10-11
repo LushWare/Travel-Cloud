@@ -185,6 +185,7 @@ describe('AssistantWidget', () => {
     openPanel();
     expect(eventsOf('opened')).toHaveLength(1);
     expect(dialog()).toBeInTheDocument();
+    expect(input()).toHaveFocus();
 
     await user.click(screen.getByRole('button', { name: 'Close assistant panel' }));
     expect(dialog()).not.toBeInTheDocument();
@@ -267,6 +268,7 @@ describe('AssistantWidget', () => {
     expect(
       await screen.findByText('I can only change the trip on the trip planner and the customize pages — open one and ask me there.'),
     ).toBeInTheDocument();
+    expect(input()).toHaveFocus();
   });
 
   it('renders the page\u2019s own count and its filters under a view answer', async () => {

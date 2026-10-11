@@ -198,13 +198,16 @@ export default function CareerPage() {
                     {vacancy.experienceMin !== undefined && <span>{vacancy.experienceMin}+ years experience</span>}
                   </div>
                   {vacancy.description && <p className="mt-4 text-sm leading-6 text-slate-600">{vacancy.description}</p>}
-                  <button
-                    type="button"
-                    onClick={() => selectPosition(vacancy.position)}
+                  <a
+                    href="#career-application"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      selectPosition(vacancy.position);
+                    }}
                     className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-emerald-700 hover:text-emerald-800"
                   >
                     Apply for this role <ArrowRight className="h-4 w-4" />
-                  </button>
+                  </a>
                 </article>
               ))}
             </div>
