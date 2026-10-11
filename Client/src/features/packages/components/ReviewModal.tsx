@@ -62,8 +62,17 @@ export default function ReviewModal({
   );
 
   return open ? (
-        <div className="fixed inset-0 z-modal flex items-center justify-center bg-white/65 p-4 backdrop-blur-[2px]">
-          <div role="dialog" aria-modal="true" aria-labelledby="review-modal-title" className="review-modal-mobile max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto rounded-xl border border-brand-100 bg-white p-6 shadow-2xl sm:max-h-none sm:overflow-visible lg:p-8">
+        <div
+          className="fixed inset-0 z-modal flex items-center justify-center bg-white/65 p-4 backdrop-blur-[2px]"
+          onClick={onClose}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="review-modal-title"
+            className="review-modal-mobile max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto rounded-xl border border-brand-100 bg-white p-6 shadow-2xl sm:max-h-none sm:overflow-visible lg:p-8"
+            onClick={(event) => event.stopPropagation()}
+          >
             <div className="mb-6 flex items-start justify-between gap-4">
               <div>
                 <p className="mb-2 text-xs font-bold uppercase tracking-[0.16em] text-brand-600">Traveler notes</p>

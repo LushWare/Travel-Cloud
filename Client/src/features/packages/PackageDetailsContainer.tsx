@@ -61,6 +61,7 @@ export default function PackageDetailsContainer() {
   const [error, setError] = useState<string | null>(null);
   const [isVisible, setIsVisible] = useState(false);
   const [showReviewModal, setShowReviewModal] = useState(false);
+  const [showLoginPrompt, setShowLoginPrompt] = useState(false);
   const [formData, setFormData] = useState<BookingFormData>({
     name: '', email: '', phone: '', travelers: 1, travelDate: null, endDate: null, message: '',
   });
@@ -313,6 +314,11 @@ export default function PackageDetailsContainer() {
   };
   const handleReviewSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!user) {
+      setShowReviewModal(false);
+      setShowLoginPrompt(true);
+      return;
+    }
     if (!id) return;
     if (!reviewData.name || !reviewData.rating || !reviewData.comment) {
       alert('Please fill in all fields');
@@ -343,6 +349,14 @@ export default function PackageDetailsContainer() {
     } finally {
       setIsSubmittingReview(false);
     }
+  };
+
+  const handleWriteReview = () => {
+    if (!user) {
+      setShowLoginPrompt(true);
+      return;
+    }
+    setShowReviewModal(true);
   };
 
   const sections = [
@@ -1027,12 +1041,12 @@ export default function PackageDetailsContainer() {
                                   <Star key={index} className={`h-4 w-4 ${index < Math.round(pkg.rating) ? 'fill-current' : ''}`} />
                                 ))}
                               </div>
-                              <p className="mt-1 text-xs text-gray-500">{pkg.reviews_count || reviews.length} {pluralize(pkg.reviews_count || reviews.length, 'review')}</p>
+                              <p className="mt-1 text-xs text-gray-500">{pluralize(pkg.reviews_count || reviews.length, 'review')}</p>
                             </div>
                           </div>
                           <button
                             type="button"
-                            onClick={() => setShowReviewModal(true)}
+                            onClick={handleWriteReview}
                             className="mt-7 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-brand-600 px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-brand-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700 sm:w-auto"
                           >
                             <Star className="h-4 w-4" /> Write a Review
@@ -1118,6 +1132,42 @@ export default function PackageDetailsContainer() {
         onSubmit={handleReviewSubmit}
         onClose={() => setShowReviewModal(false)}
       />
+
+      {showLoginPrompt && (
+        <div
+          className="fixed inset-0 z-modal flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px]"
+          onClick={() => setShowLoginPrompt(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="review-login-title"
+            className="w-full max-w-sm rounded-xl bg-white p-6 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2 id="review-login-title" className="font-display text-xl font-semibold text-brand-dark-900">
+              Login required
+            </h2>
+            <p className="mt-2 text-sm leading-relaxed text-gray-600">Please log in to add a review.</p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setShowLoginPrompt(false)}
+                className="cursor-pointer rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-500"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate('/login')}
+                className="cursor-pointer rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
+              >
+                Log in
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Success Modal - Mobile Responsive */}
       {showSuccessModal && (

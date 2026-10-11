@@ -6,7 +6,7 @@ const level = process.env.LOG_LEVEL || (isProduction ? 'info' : 'debug');
 const logger = pino({
   level,
   redact: {
-    paths: ['password', 'token', 'authorization', 'email', 'req.headers.cookie', 'req.headers.authorization'],
+    paths: ['password', 'token', 'authorization', 'email', 'req.headers.cookie', 'req.headers.authorization', 'req.headers.x-internal-token'],
     censor: '[REDACTED]',
   },
   mixin() {
