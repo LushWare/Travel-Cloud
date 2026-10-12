@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Plane, Search, ListChecks, SlidersHorizontal } from 'lucide-react';
 import { toast } from '@/lib/toast';
 import { flightAPI } from '../../services/flight.service';
@@ -10,7 +11,7 @@ import OfferCard, { OfferSkeleton } from './OfferCard';
 import SearchForm from './SearchForm';
 import { TravelerDetailsStep, ReviewStep, ConfirmationStep } from './BookingWizard';
 import BookingsPanel from './BookingsPanel';
-import PageCopilot from '@/features/copilot/PageCopilot';
+import RecommendationStrip from '@/features/recommendations/RecommendationStrip';
 import PageHeader from '@/components/PageHeader';
 import { SORT_OPTIONS, STATUS_BUCKETS, OFFERS_PAGE_SIZE, emptyTraveler, statusBucket, todayStr } from './helpers';
 import type { StatusBucket } from './helpers';
@@ -32,7 +33,17 @@ import { apiErrorMessage } from '@/lib/apiErrorMessage';
 const SORT_LABEL: Record<string, string> = Object.fromEntries(SORT_OPTIONS.map((s) => [s.id, s.label]));
 
 export default function FlightSearch() {
-  const [activeTab, setActiveTab] = useState<FlightTab>('search');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const recommendationFocus = searchParams.get('focus') === 'recommendation';
+  const linkedBookingIds = useMemo(
+    () => new Set((searchParams.get('ids') || '').split(',').filter(Boolean)),
+    [searchParams],
+  );
+  const [activeTab, setActiveTab] = useState<FlightTab>(() => searchParams.get('tab') === 'bookings' ? 'bookings' : 'search');
+
+  useEffect(() => {
+    if (searchParams.get('tab') === 'bookings') setActiveTab('bookings');
+  }, [searchParams]);
 
   const [tripType, setTripType] = useState<TripType>('oneWay');
   const [form, setForm] = useState<SearchFormState>({
@@ -129,8 +140,13 @@ export default function FlightSearch() {
 
   const visibleOffers = sortedAndFilteredOffers.slice(0, visibleCount);
 
+  const scopedBookings = useMemo(
+    () => linkedBookingIds.size > 0 ? bookings.filter((booking) => linkedBookingIds.has(booking.id)) : bookings,
+    [bookings, linkedBookingIds],
+  );
+
   const filteredBookings = useMemo(() => {
-    let list = bookings;
+    let list = scopedBookings;
     const bucket = statusBucket(bookingStatusFilter);
     if (bucket) {
       list = list.filter((b) => statusBucket(b.status) === bucket);
@@ -144,19 +160,19 @@ export default function FlightSearch() {
       );
     }
     return list;
-  }, [bookings, bookingStatusFilter, bookingSearch]);
+  }, [scopedBookings, bookingStatusFilter, bookingSearch]);
 
   const statusCounts = useMemo(() => {
-    const c: Record<string, number> = { all: bookings.length };
+    const c: Record<string, number> = { all: scopedBookings.length };
     (Object.keys(STATUS_BUCKETS) as StatusBucket[]).forEach((b) => {
       c[b] = 0;
     });
-    bookings.forEach((b) => {
+    scopedBookings.forEach((b) => {
       const bucket = statusBucket(b.status);
       if (bucket) c[bucket]++;
     });
     return c;
-  }, [bookings]);
+  }, [scopedBookings]);
 
   const handleSearch = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -319,6 +335,14 @@ export default function FlightSearch() {
     if (activeTab === 'bookings') fetchBookings();
   }, [activeTab, fetchBookings]);
 
+  useEffect(() => {
+    if (activeTab !== 'bookings' || linkedBookingIds.size === 0 || !recommendationFocus || loadingBookings) return;
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById('recommendation-target')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeTab, linkedBookingIds, recommendationFocus, loadingBookings, filteredBookings.length]);
+
   // A new result set (or a changed filter/sort) starts a fresh page.
   useEffect(() => {
     setVisibleCount(OFFERS_PAGE_SIZE);
@@ -337,9 +361,9 @@ export default function FlightSearch() {
   };
 
   return (
-    <PageCopilot pageKey="flights" scopeLabel="Flights">
       <FlightErrorBoundary>
       <PageHeader title="Flights" subtitle="Search, book and manage flight reservations" />
+      <div className="mx-auto max-w-7xl px-4 pt-4 md:px-6"><RecommendationStrip module="flights" /></div>
       <div className="min-h-screen bg-background mx-auto max-w-7xl p-4 md:p-6">
         <div className="mb-6">
           <Tabs
@@ -347,6 +371,7 @@ export default function FlightSearch() {
             onValueChange={(value) => {
               if (!value) return;
               setActiveTab(value as FlightTab);
+              setSearchParams({ tab: value });
               if (value === 'search') resetSearch();
             }}
           >
@@ -584,22 +609,31 @@ export default function FlightSearch() {
         )}
 
         {activeTab === 'bookings' && (
-          <BookingsPanel
-            bookings={bookings}
-            filteredBookings={filteredBookings}
-            loading={loadingBookings}
-            statusFilter={bookingStatusFilter}
-            setStatusFilter={setBookingStatusFilter}
-            statusCounts={statusCounts}
-            search={bookingSearch}
-            setSearch={setBookingSearch}
-            cancelDialog={cancelDialog}
-            setCancelDialog={setCancelDialog}
-            onCancel={cancelBooking}
-          />
+          <>
+            {linkedBookingIds.size > 0 && (
+              <div className="mb-3 flex items-center justify-between gap-3 rounded-md border border-primary/30 bg-primary/5 px-3 py-2">
+                <p className="text-sm text-foreground">Active filter: linked flight bookings <span className="font-mono tabular-nums">({filteredBookings.length})</span></p>
+                <Button variant="ghost" size="sm" onClick={() => setSearchParams({ tab: 'bookings' })}>Clear filter</Button>
+              </div>
+            )}
+            <div id="recommendation-target" className="scroll-mt-20">
+              <BookingsPanel
+                bookings={bookings}
+                filteredBookings={filteredBookings}
+                loading={loadingBookings}
+                statusFilter={bookingStatusFilter}
+                setStatusFilter={setBookingStatusFilter}
+                statusCounts={statusCounts}
+                search={bookingSearch}
+                setSearch={setBookingSearch}
+                cancelDialog={cancelDialog}
+                setCancelDialog={setCancelDialog}
+                onCancel={cancelBooking}
+              />
+            </div>
+          </>
         )}
       </div>
       </FlightErrorBoundary>
-    </PageCopilot>
   );
 }

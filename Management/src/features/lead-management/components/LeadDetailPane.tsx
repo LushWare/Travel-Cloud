@@ -1,5 +1,5 @@
 import { X } from 'lucide-react';
-import { LEAD_COPILOT_FIELDS, leadEvidenceId } from '@travel-crm/contracts';
+import { LEAD_RECORD_FIELDS } from '@travel-crm/contracts';
 import { Button } from '@/components/ui/button';
 import { LIFECYCLE_STATUS_LABELS } from './LeadStatusBadge';
 import { repLabelFor, type SalesRepOption } from '../utils/salesRepLabel';
@@ -23,8 +23,6 @@ const FIELD_LABELS: Record<string, string> = {
   updatedAt: 'Updated',
 };
 
-// The adapter's allowlist is the pane's contract: every allowlisted field
-// renders, each publishing the same evidence id the server cites.
 function formatField(
   field: string,
   lead: Record<string, unknown>,
@@ -50,11 +48,6 @@ function formatField(
   return String(raw);
 }
 
-/**
- * The persistent lead-detail surface. It renders the adapter's allowlisted
- * fields and publishes `data-copilot-evidence-id` for each, which is what the
- * panel's Evidence Lens resolves against — the record is the source view.
- */
 export default function LeadDetailPane({ lead, salesReps, onClose }: LeadDetailPaneProps) {
   const leadId = lead ? String(lead.id ?? lead._id ?? '') : '';
 
@@ -81,16 +74,12 @@ export default function LeadDetailPane({ lead, salesReps, onClose }: LeadDetailP
       </header>
 
       <dl className="divide-y divide-border">
-        {LEAD_COPILOT_FIELDS.map((field) => (
+        {LEAD_RECORD_FIELDS.map((field) => (
           <div key={field} className="grid grid-cols-[8.5rem_minmax(0,1fr)] items-baseline gap-2 px-4 py-2">
             <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               {FIELD_LABELS[field] ?? field}
             </dt>
-            <dd
-              data-copilot-evidence-id={leadEvidenceId(leadId, field)}
-              tabIndex={-1}
-              className="min-w-0 break-words font-mono text-xs tabular-nums text-foreground outline-none"
-            >
+            <dd className="min-w-0 break-words font-mono text-xs tabular-nums text-foreground">
               {formatField(field, lead, salesReps)}
             </dd>
           </div>

@@ -2,15 +2,13 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-const { mockNavigate, mockUseNotifications, mockUseCopilotControl } = vi.hoisted(() => ({
+const { mockNavigate, mockUseNotifications } = vi.hoisted(() => ({
   mockNavigate: vi.fn(),
   mockUseNotifications: vi.fn(),
-  mockUseCopilotControl: vi.fn(),
 }));
 
 vi.mock('react-router-dom', () => ({ useNavigate: () => mockNavigate }));
 vi.mock('../NotificationProvider', () => ({ useNotifications: mockUseNotifications }));
-vi.mock('@/contexts/CopilotControlContext', () => ({ useCopilotControl: mockUseCopilotControl }));
 
 import { Popover } from '@/components/ui/popover';
 import NotificationPanel from '../NotificationPanel';
@@ -58,7 +56,6 @@ const session = (notifications: BusinessNotification[]) => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockUseCopilotControl.mockReturnValue(null);
 });
 
 describe('NotificationPanel', () => {
@@ -108,28 +105,12 @@ describe('NotificationPanel', () => {
     await waitFor(() => expect(active.markRead).toHaveBeenCalledWith(['quotes.unconverted_value']));
   });
 
-  it('hides the copilot affordance when no control is registered', () => {
+  it('renders business facts without chat controls', () => {
     mockUseNotifications.mockReturnValue(session([notification()]));
     renderPanel();
 
+    expect(screen.getByText('count:')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /chat about this/i })).not.toBeInTheDocument();
-  });
-
-  it('hands the notification to the page copilot when a control is present', async () => {
-    const askAbout = vi.fn();
-    mockUseCopilotControl.mockReturnValue({ askAbout });
-    const active = session([notification()]);
-    mockUseNotifications.mockReturnValue(active);
-    const onClose = vi.fn();
-
-    renderPanel(onClose);
-    await userEvent.click(screen.getByRole('button', { name: /chat about this/i }));
-
-    expect(askAbout).toHaveBeenCalledWith(expect.objectContaining({
-      id: 'quotes.unconverted_value',
-      text: expect.stringContaining('8 quotes'),
-    }));
-    expect(onClose).toHaveBeenCalled();
   });
 
   it('states an honest quiet state when nothing is flagged', () => {

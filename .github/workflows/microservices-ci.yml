@@ -15,6 +15,7 @@ on:
       - 'Services/lead-service/**'
       - 'Services/notification-service/**'
       - 'Services/package-service/**'
+      - 'Services/recommendation-service/**'
       - 'Services/user-service/**'
       - 'Services/voice-service/**'
       - 'Management/**'
@@ -75,6 +76,7 @@ jobs:
           - { service: booking-service,      contracts: false, lint: false }
           - { service: career-service,       contracts: false, lint: false }
           - { service: notification-service, contracts: false, lint: false }
+          - { service: recommendation-service, contracts: false, lint: true }
     steps:
       - uses: actions/checkout@v4
 

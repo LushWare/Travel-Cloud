@@ -6,7 +6,7 @@ import {
   mayUseTool,
   toolsForActor,
 } from '../catalogue.js';
-import { ManagementToolAccess } from '@travel-crm/contracts';
+import { ASSISTANT_TOOL_ACCESS } from '@travel-crm/contracts';
 import { PUBLIC_TOOL_NAMES, toolNames } from '../../tools/toolRegistry.js';
 
 describe('the catalogue covers the registry', () => {
@@ -104,7 +104,7 @@ describe('capabilitySummary', () => {
     // A tool with no label contributes nothing, and the summary would quietly
     // under-describe what the scope can answer — the exact failure this line
     // exists to prevent.
-    for (const [tool, roles] of Object.entries(ManagementToolAccess)) {
+    for (const [tool, roles] of Object.entries(ASSISTANT_TOOL_ACCESS)) {
       expect(capabilitySummary({ role: roles[0] }), `${tool} has no label`).not.toBeNull();
     }
   });

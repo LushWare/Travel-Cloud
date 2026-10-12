@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
 
 const { mockSearch, mockBook, mockListBookings, mockCancelBooking } = vi.hoisted(() => ({
   mockSearch: vi.fn(),
@@ -18,10 +19,7 @@ vi.mock('../../services/flight.service', () => ({
   },
 }));
 
-// Mounting the page mounts PageCopilot, whose session hooks reach
-// services/api.js → @travel-crm/contracts → zod, which is not resolvable from
-// the shared Services/ tree under vitest. The copilot is off by default and
-// nothing here goes through it, so the module is stubbed.
+// Stub the shared API client so this page test only exercises the flight service.
 vi.mock('../../services/api', () => ({
   API_BASE_URL: 'http://localhost:3000/api/v1',
   default: {},
@@ -33,6 +31,14 @@ vi.mock('@/lib/toast', () => ({
 }));
 
 import FlightSearch from '../FlightSearch';
+
+function renderFlightSearch(initialEntry = '/flights') {
+  return render(
+    <MemoryRouter initialEntries={[initialEntry]}>
+      <FlightSearch />
+    </MemoryRouter>,
+  );
+}
 
 // Every case here mounts the whole page and drives it through Base UI controls,
 // which is slow enough on a loaded runner to trip vitest's 5s default.
@@ -125,6 +131,13 @@ async function searchLhrToDxb(user) {
   await waitFor(() => expect(mockSearch).toHaveBeenCalled());
 }
 
+function dateInFuture(days) {
+  const date = new Date();
+  date.setHours(12, 0, 0, 0);
+  date.setDate(date.getDate() + days);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
 async function setDates(user, departureDate, returnDate) {
   await user.click(screen.getByRole('tab', { name: 'Round Trip' }));
   const dateInputs = document.querySelectorAll('input[type="date"]');
@@ -142,7 +155,7 @@ describe('FlightSearch results', () => {
   it('renders one page of offers and grows the list on request', async () => {
     const user = userEvent.setup();
     mockSearch.mockResolvedValue({ data: Array.from({ length: 45 }, (_, i) => oneWayOffer(i + 1)) });
-    render(<FlightSearch />);
+    renderFlightSearch();
 
     await searchLhrToDxb(user);
 
@@ -160,7 +173,7 @@ describe('FlightSearch results', () => {
   it('treats the 2+ Stops pill as at least two stops', async () => {
     const user = userEvent.setup();
     mockSearch.mockResolvedValue({ data: [oneWayOffer(1), oneWayOffer(2, 3)] });
-    render(<FlightSearch />);
+    renderFlightSearch();
 
     await searchLhrToDxb(user);
     expect(screen.getByText('2 flights found')).toBeInTheDocument();
@@ -174,12 +187,14 @@ describe('FlightSearch results', () => {
 
   it('labels each leg of a round trip and filters on the journey total', async () => {
     const user = userEvent.setup();
+    const departureDate = dateInFuture(30);
+    const returnDate = dateInFuture(37);
     mockSearch.mockResolvedValue({ data: [NONSTOP_ROUND_TRIP, CONNECTING_ROUND_TRIP] });
-    render(<FlightSearch />);
+    renderFlightSearch();
 
-    await setDates(user, '2026-09-20', '2026-09-27');
+    await setDates(user, departureDate, returnDate);
     await searchLhrToDxb(user);
-    expect(mockSearch).toHaveBeenCalledWith(expect.objectContaining({ tripType: 'roundTrip', returnDate: '2026-09-27' }));
+    expect(mockSearch).toHaveBeenCalledWith(expect.objectContaining({ tripType: 'roundTrip', returnDate }));
 
     // 1 + 1 slices: both legs nonstop; 2 + 2 slices: one connection each way.
     expect(screen.getAllByText('Nonstop')).toHaveLength(2);
@@ -198,9 +213,9 @@ describe('FlightSearch booking', () => {
   it('books with the searched context and the offer’s passenger ids', async () => {
     const user = userEvent.setup();
     mockSearch.mockResolvedValue({ data: [NONSTOP_ROUND_TRIP] });
-    render(<FlightSearch />);
+    renderFlightSearch();
 
-    await setDates(user, '2026-09-20', '2026-09-27');
+    await setDates(user, dateInFuture(30), dateInFuture(37));
     await searchLhrToDxb(user);
 
     // The trip type is switched back to one-way after the search. It may not
@@ -233,12 +248,31 @@ describe('FlightSearch booking', () => {
 });
 
 describe('FlightSearch bookings list', () => {
+  it('opens only recommendation-linked bookings and can clear the filter', async () => {
+    const user = userEvent.setup();
+    mockListBookings.mockResolvedValue({ data: [booking(1, 'confirmed'), booking(2, 'pending')] });
+    renderFlightSearch('/flights?tab=bookings&ids=booking-2&focus=recommendation');
+
+    expect(await screen.findByText('PNR-2')).toBeInTheDocument();
+    expect(screen.queryByText('PNR-1')).not.toBeInTheDocument();
+    expect(screen.getByText('Active filter: linked flight bookings')).toHaveTextContent('(1)');
+    expect(screen.getByRole('tab', { name: /All/ })).toHaveTextContent('1');
+    expect(screen.getByRole('tab', { name: /Confirmed/ })).toHaveTextContent('0');
+
+    await user.click(screen.getByRole('button', { name: 'Clear filter' }));
+    expect(await screen.findByText('PNR-1')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('tab', { name: /Search & Book/ }));
+    expect(screen.queryByText(/Active filter: linked flight bookings/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /Manage Bookings/ })).not.toHaveAttribute('aria-selected', 'true');
+  });
+
   it('counts bookings by status bucket', async () => {
     const user = userEvent.setup();
     mockListBookings.mockResolvedValue({
       data: [booking(1, 'confirmed'), booking(2, 'ticketed'), booking(3, 'failed'), booking(4, 'pending')],
     });
-    render(<FlightSearch />);
+    renderFlightSearch();
 
     await user.click(screen.getByRole('tab', { name: /Manage Bookings/ }));
 

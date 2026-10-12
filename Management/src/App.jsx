@@ -10,6 +10,7 @@ import BillingInvoicing from "./pages/BillingInvoicing";
 import UserManagement from "./pages/UserManagement";
 import CareerManagement from "./pages/CareerManagement";
 import OrganizationSettings from "./pages/OrganizationSettings";
+import AIInsights from "./pages/AIInsights";
 import Login from "./pages/Login";
 import SalesRepLogin from "./pages/SalesRepLogin";
 import SalesRepLoginOTP from "./pages/SalesRepLoginOTP";
@@ -77,6 +78,7 @@ function AppContent() {
                   <Route path="/flights" element={<FlightSearch />} />
                   <Route path="/hotels" element={<HotelSearch />} />
                   <Route path="/billing" element={<BillingInvoicing />} />
+                  <Route path="/ai-insights" element={<AIInsights />} />
                   <Route
                     path="/users"
                     element={

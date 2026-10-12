@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
 
 // Regression coverage for root cause #2 (see plan): handleSaveEditPackage used
 // to filter `images` by `!img.isTemp && img.url && img.public_id` before
@@ -86,7 +87,11 @@ describe('ItineraryGenerationContainer — edit-save image payload', () => {
   });
 
   it('includes every DB-loaded image (no public_id) in the update payload, not just newly uploaded ones', async () => {
-    render(<ItineraryGenerationContainer />);
+    render(
+      <MemoryRouter>
+        <ItineraryGenerationContainer />
+      </MemoryRouter>,
+    );
 
     const editButton = await screen.findByRole('button', { name: /^Edit$/i });
     await userEvent.click(editButton);
@@ -102,5 +107,30 @@ describe('ItineraryGenerationContainer — edit-save image payload', () => {
       { url: 'https://cdn/a.jpg', publicId: 'p-a', altText: null },
       { url: 'https://cdn/b.jpg', publicId: 'p-b', altText: null },
     ]);
+  });
+});
+
+describe('ItineraryGenerationContainer — recommendation deep links', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockApiService.getPackageStats.mockResolvedValue({ success: true, data: { total: 1, active: 1, featured: 0, avgRating: 0 } });
+    mockApiService.getPackages.mockResolvedValue({ success: true, data: [persistedPackage] });
+    mockApiService.getPackagesProtected.mockResolvedValue({ success: true, data: [persistedPackage] });
+  });
+
+  it('requests only linked package IDs and replaces unrelated status tabs with the active filter', async () => {
+    render(
+      <MemoryRouter initialEntries={['/packages?ids=pkg-1&focus=recommendation']}>
+        <ItineraryGenerationContainer />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(mockApiService.getPackages).toHaveBeenCalledWith(expect.objectContaining({
+      ids: 'pkg-1',
+      page: 1,
+    })));
+    expect(await screen.findByText(/Active filter: linked packages/)).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /All Packages/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Clear filter' })).toBeInTheDocument();
   });
 });

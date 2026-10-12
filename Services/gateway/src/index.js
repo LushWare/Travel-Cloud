@@ -50,6 +50,7 @@ const aiItineraryPreviewLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 5 }
 // calls, not one — 30/15min gives roughly 3x a typical conversation's
 // turn count while still bounding cost per IP.
 const itineraryChatLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 30 });
+const recommendationsLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 60 });
 app.use(globalLimiter);
 
 // ─── Health check ──────────────────────────────────────────────────────────────
@@ -70,6 +71,7 @@ const SERVICES = {
   notification: process.env.NOTIFICATION_SERVICE_URL  || 'http://localhost:3008',
   analytics:    process.env.ANALYTICS_SERVICE_URL     || 'http://localhost:3009',
   assistant:    process.env.ASSISTANT_SERVICE_URL     || 'http://localhost:3011',
+  recommendations: process.env.RECOMMENDATION_SERVICE_URL || 'http://localhost:3013',
   voice:        process.env.VOICE_SERVICE_URL         || 'http://localhost:3012',
 };
 
@@ -293,6 +295,7 @@ app.use(`${V1}/notifications`, proxy(SERVICES.notification));
 // Analytics & dashboard → analytics-service
 app.use(`${V1}/analytics`, proxy(SERVICES.analytics));
 app.use(`${V1}/dashboard`, proxy(SERVICES.analytics));
+app.use(`${V1}/recommendations`, recommendationsLimiter, proxy(SERVICES.recommendations));
 
 // Site-wide floating assistant → assistant-service. Reuses itineraryChatLimiter
 // (not a separate ceiling): a turn here is the same order of magnitude billed

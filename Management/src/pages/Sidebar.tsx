@@ -155,6 +155,7 @@ const Sidebar = () => {
     { icon: Hotel, label: "Hotels", path: "/hotels", requiredPermission: null, allowedRoles: ["salesRep", "admin", "superAdmin"] },
     { icon: DollarSign, label: "Billing", path: "/billing", requiredPermission: "manage_billing" },
     { icon: BarChart3, label: "Analytics", path: "/analytics", requiredPermission: "view_reports" },
+    { icon: Sparkles, label: "AI Insights", path: "/ai-insights", requiredPermission: null, allowedRoles: ["salesRep", "admin", "superAdmin"] },
     { icon: User, label: "Users", path: "/users", requiredPermission: null, requiresAnyPermission: ["manage_users", "manage_sales_reps", "manage_vendors", "manage_admins"] },
     {
       icon: Briefcase,

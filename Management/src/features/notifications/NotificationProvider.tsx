@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 import { useOptionalAuth } from '@/contexts/AuthContext';
-import { actorIdOf } from '@/features/copilot/ManagementContextCopilot';
+import { actorIdOf } from './actorId';
 import {
   isNotificationsAbort,
   notificationsFetch,

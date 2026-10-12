@@ -9,14 +9,9 @@
  */
 
 import { DashboardContainer } from '../features/dashboard';
-import PageCopilot from '../features/copilot/PageCopilot';
 
 const Dashboard = () => {
-  return (
-    <PageCopilot pageKey="overview" scopeLabel="Overview">
-      <DashboardContainer />
-    </PageCopilot>
-  );
+  return <DashboardContainer />;
 };
 
 export default Dashboard;

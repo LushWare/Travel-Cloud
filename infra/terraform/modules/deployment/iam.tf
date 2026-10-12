@@ -106,6 +106,14 @@ resource "google_cloud_run_v2_service_iam_member" "gateway_invoker_analytics" {
   member   = "serviceAccount:${google_service_account.services["gateway"].email}"
 }
 
+resource "google_cloud_run_v2_service_iam_member" "gateway_invoker_recommendations" {
+  project  = var.project_id
+  location = var.region
+  name     = module.recommendation_service.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.services["gateway"].email}"
+}
+
 resource "google_cloud_run_v2_service_iam_member" "gateway_invoker_assistant" {
   project  = var.project_id
   location = var.region
@@ -148,6 +156,14 @@ resource "google_cloud_run_v2_service_iam_member" "assistant_invoker_lead" {
   name     = module.lead_service.name
   role     = "roles/run.invoker"
   member   = "serviceAccount:${google_service_account.services["assistant-service"].email}"
+}
+
+resource "google_cloud_run_v2_service_iam_member" "recommendation_invoker_analytics" {
+  project  = var.project_id
+  location = var.region
+  name     = module.analytics_service.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.services["recommendation-service"].email}"
 }
 
 # The billing page's adapter reads invoice and quotation aggregates straight

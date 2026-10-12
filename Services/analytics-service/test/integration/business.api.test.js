@@ -32,6 +32,8 @@ describe('GET /api/v1/analytics/business/signals', () => {
     expect(response.status).toBe(200);
     expect(response.body.success).toBe(true);
     expect(response.body.data.scope).toBe('org');
-    expect(Object.keys(response.body.data.signals)).toHaveLength(19);
+    expect(Object.keys(response.body.data.signals)).toHaveLength(21);
+    expect(response.body.data.signals).toHaveProperty('flightsNeedingReview');
+    expect(response.body.data.signals).toHaveProperty('hotelsNeedingReview');
   });
 });

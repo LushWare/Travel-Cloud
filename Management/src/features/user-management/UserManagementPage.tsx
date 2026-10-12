@@ -7,6 +7,7 @@ import { VendorManagement } from './components/VendorManagement';
 import { WebsiteUsersManagement } from './components/WebsiteUsersManagement';
 import { usePermission } from '../../contexts/PermissionContext';
 import PageHeader from '@/components/PageHeader';
+import RecommendationStrip from '@/features/recommendations/RecommendationStrip';
 
 interface ManagementTab {
   id: string;
@@ -112,6 +113,7 @@ const UserManagementPage = () => {
     <div className="min-h-screen bg-background">
       {/* Mobile Header + Horizontal Tabs */}
       <PageHeader title="User Management" subtitle={currentTab?.description} />
+      <div className="px-4 pt-4 md:px-6"><RecommendationStrip module="users" /></div>
 
       {/* Mobile sections. The title row moved into PageHeader, so this block is
           no longer sticky — there is one sticky bar. */}

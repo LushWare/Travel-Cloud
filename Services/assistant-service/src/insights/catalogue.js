@@ -1,4 +1,4 @@
-import { ManagementToolAccess } from '@travel-crm/contracts';
+import { ASSISTANT_TOOL_ACCESS } from '@travel-crm/contracts';
 
 // ─── Who may reach which tool ─────────────────────────────────────────────
 // Capability follows the QUESTION and the ACTOR, not the page the operator
@@ -58,7 +58,7 @@ export function capabilitySummary(actor = {}) {
 
 /** Every tool name the registry knows about, in a stable order. */
 export function allToolNames() {
-  return Object.keys(ManagementToolAccess);
+  return Object.keys(ASSISTANT_TOOL_ACCESS);
 }
 
 /**
@@ -72,7 +72,7 @@ export function allToolNames() {
 export function toolsForActor({ role, isSuperAdmin } = {}) {
   if (isSuperAdmin) return allToolNames();
   if (!role) return [];
-  return Object.entries(ManagementToolAccess)
+  return Object.entries(ASSISTANT_TOOL_ACCESS)
     .filter(([, roles]) => roles.includes(role))
     .map(([name]) => name);
 }

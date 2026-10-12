@@ -4,7 +4,7 @@ import asyncHandler from '../utils/asyncHandler.js';
 // Quotations and invoices carry a currency. Bookings do not, so booking-sourced
 // amounts are reported in this currency without conversion.
 export const REPORTING_CURRENCY = process.env.BUSINESS_REPORTING_CURRENCY || 'USD';
-export const ID_SET_CAP = 50;
+export const ID_SET_CAP = 100;
 
 const LEAD_OWNER_PREDICATE = `(
   $2::text IS NULL OR "leadId" IN (
@@ -56,6 +56,8 @@ export const getBusinessSignals = asyncHandler(async (req, res) => {
     silentPackagesResult,
     quotedSilenceResult,
     partialAgingResult,
+    flightsNeedingReviewResult,
+    hotelsNeedingReviewResult,
   ] = await Promise.all([
     pool.query(
       `SELECT
@@ -336,7 +338,8 @@ export const getBusinessSignals = asyncHandler(async (req, res) => {
       : Promise.resolve(zeroSignal()),
     orgOnly
       ? pool.query(
-          `SELECT COUNT(*) AS count
+          `SELECT COUNT(*) AS count,
+             COALESCE((ARRAY_AGG(package.id ORDER BY package."createdAt" DESC))[1:${ID_SET_CAP}], ARRAY[]::text[]) AS ids
            FROM crm_packages."Package" package
            WHERE package.is_active = true
              AND NOT EXISTS (
@@ -379,6 +382,36 @@ export const getBusinessSignals = asyncHandler(async (req, res) => {
          AND ${LEAD_OWNER_PREDICATE}`,
       params,
     ),
+    pool.query(
+      `WITH candidates AS (
+         SELECT flight.id, MIN(segment."departureAt") AS "nearestDeparture"
+         FROM crm_flights."FlightBooking" flight
+         JOIN crm_flights."FlightSegment" segment ON segment."flightBookingId" = flight.id
+         WHERE flight.status IN ('quoted', 'pending', 'confirmed')
+           AND segment."departureAt" BETWEEN $1 AND $1::timestamptz + interval '7 days'
+           AND ($2::text IS NULL OR flight."createdById" = $2)
+         GROUP BY flight.id
+       )
+       SELECT COUNT(*) AS count,
+         MIN("nearestDeparture") AS "nearestDeparture",
+         COALESCE((ARRAY_AGG(id ORDER BY "nearestDeparture"))[1:${ID_SET_CAP}], ARRAY[]::text[]) AS ids
+       FROM candidates`,
+      [at, owner],
+    ),
+    pool.query(
+      `WITH candidates AS (
+         SELECT hotel.id, hotel.checkin
+         FROM crm_packages."HotelBooking" hotel
+         WHERE hotel.status IN ('pending', 'failed')
+           AND hotel.checkin BETWEEN $1 AND $1::timestamptz + interval '7 days'
+           AND ($2::text IS NULL OR hotel."createdById" = $2)
+       )
+       SELECT COUNT(*) AS count,
+         MIN(checkin) AS "nearestCheckin",
+         COALESCE((ARRAY_AGG(id ORDER BY checkin))[1:${ID_SET_CAP}], ARRAY[]::text[]) AS ids
+       FROM candidates`,
+      [at, owner],
+    ),
   ]);
 
   const unconverted = firstRow(unconvertedResult);
@@ -400,6 +433,8 @@ export const getBusinessSignals = asyncHandler(async (req, res) => {
   const silentPackages = firstRow(silentPackagesResult);
   const quotedSilence = firstRow(quotedSilenceResult);
   const partialAging = firstRow(partialAgingResult);
+  const flightsNeedingReview = firstRow(flightsNeedingReviewResult);
+  const hotelsNeedingReview = firstRow(hotelsNeedingReviewResult);
 
   res.json({
     success: true,
@@ -499,6 +534,7 @@ export const getBusinessSignals = asyncHandler(async (req, res) => {
         },
         silentPackages: {
           count: numberOf(silentPackages.count),
+          ids: idsOf(silentPackages.ids),
         },
         quotedSilence: {
           count: numberOf(quotedSilence.count),
@@ -510,6 +546,16 @@ export const getBusinessSignals = asyncHandler(async (req, res) => {
           value: numberOf(partialAging.value),
           oldestDays: numberOf(partialAging.oldestDays),
           ids: idsOf(partialAging.ids),
+        },
+        flightsNeedingReview: {
+          count: numberOf(flightsNeedingReview.count),
+          nearestDeparture: dateOf(flightsNeedingReview.nearestDeparture),
+          ids: idsOf(flightsNeedingReview.ids),
+        },
+        hotelsNeedingReview: {
+          count: numberOf(hotelsNeedingReview.count),
+          nearestCheckin: dateOf(hotelsNeedingReview.nearestCheckin),
+          ids: idsOf(hotelsNeedingReview.ids),
         },
       },
     },

@@ -15,8 +15,8 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { useSearchParams } from 'react-router-dom';
 
-import PageCopilot from '../features/copilot/PageCopilot';
 import PageHeader from '../components/PageHeader';
+import RecommendationStrip from '@/features/recommendations/RecommendationStrip';
 
 // Package, Website, and User analytics are admin-only on the backend
 // (company-wide data with no per-rep ownership) — hide them from salesRep
@@ -75,8 +75,9 @@ const Analytics = () => {
   };
 
   return (
-    <PageCopilot pageKey="analytics" scopeLabel="Analytics" scope={{ tab: activeTabData?.id || 'leads' }}>
+    <>
       <PageHeader title="Analytics" subtitle={activeTabData?.label} />
+      <div className="px-4 pt-4 md:px-6"><RecommendationStrip module="analytics" /></div>
 
       <div className="h-full flex flex-col md:flex-row bg-background">
         {/* Mobile: horizontal tabs. The title row moved into PageHeader, so this
@@ -168,7 +169,7 @@ const Analytics = () => {
           </div>
         </div>
       </div>
-    </PageCopilot>
+    </>
   );
 };
 

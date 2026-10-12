@@ -1,4 +1,5 @@
 import { useState, useEffect, type FormEvent } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Hotel, Search, ChevronRight, ChevronLeft,
   Loader2, CheckCircle2, Ban, ListChecks, Star,
@@ -11,7 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import PageCopilot from '../features/copilot/PageCopilot';
+import RecommendationStrip from '@/features/recommendations/RecommendationStrip';
 import PageHeader from '../components/PageHeader';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -152,7 +153,14 @@ type Tab = 'search' | 'bookings';
 type Step = 'results' | 'guests' | 'review' | 'confirmation';
 
 export default function HotelSearch() {
-  const [activeTab, setActiveTab] = useState<Tab>('search');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const recommendationFocus = searchParams.get('focus') === 'recommendation';
+  const linkedBookingIds = new Set((searchParams.get('ids') || '').split(',').filter(Boolean));
+  const [activeTab, setActiveTab] = useState<Tab>(() => searchParams.get('tab') === 'bookings' ? 'bookings' : 'search');
+
+  useEffect(() => {
+    if (searchParams.get('tab') === 'bookings') setActiveTab('bookings');
+  }, [searchParams]);
 
   const [form, setForm] = useState({
     city: '',
@@ -281,6 +289,18 @@ export default function HotelSearch() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
+  useEffect(() => {
+    if (activeTab !== 'bookings' || linkedBookingIds.size === 0 || !recommendationFocus || loadingBookings) return;
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById('recommendation-target')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeTab, searchParams, recommendationFocus, loadingBookings]);
+
+  const visibleBookings = linkedBookingIds.size > 0
+    ? bookings.filter((booking) => linkedBookingIds.has(booking.id))
+    : bookings;
+
   const cancelBooking = async (id: string, reason: string) => {
     try {
       await HotelService.cancelBooking(id, reason);
@@ -293,8 +313,9 @@ export default function HotelSearch() {
   };
 
   return (
-    <PageCopilot pageKey="hotels" scopeLabel="Hotels">
+    <>
       <PageHeader title="Hotels" subtitle="Search and book hotels worldwide" />
+      <div className="mx-auto max-w-7xl px-4 pt-4 md:px-6"><RecommendationStrip module="hotels" /></div>
       <div className="min-h-screen bg-background p-4 md:p-6 max-w-7xl mx-auto">
       <div className="mb-6">
         <Tabs
@@ -302,6 +323,7 @@ export default function HotelSearch() {
           onValueChange={(value) => {
             if (!value) return;
             setActiveTab(value as Tab);
+            setSearchParams({ tab: value });
             if (value === 'search') resetSearch();
           }}
         >
@@ -559,15 +581,22 @@ export default function HotelSearch() {
       )}
 
       {activeTab === 'bookings' && (
-        <div className="bg-card rounded-xl shadow-[var(--shadow-card)] border border-border overflow-hidden">
+        <>
+        {linkedBookingIds.size > 0 && (
+          <div className="mb-3 flex items-center justify-between gap-3 rounded-md border border-primary/30 bg-primary/5 px-3 py-2">
+            <p className="text-sm text-foreground">Active filter: linked hotel bookings <span className="font-mono tabular-nums">({visibleBookings.length})</span></p>
+            <Button variant="ghost" size="sm" onClick={() => setSearchParams({ tab: 'bookings' })}>Clear filter</Button>
+          </div>
+        )}
+        <div id="recommendation-target" className="scroll-mt-20 bg-card rounded-xl shadow-[var(--shadow-card)] border border-border overflow-hidden">
           {loadingBookings ? (
             <div className="p-12 text-center">
               <Loader2 className="w-6 h-6 animate-spin mx-auto text-muted-foreground" />
             </div>
-          ) : bookings.length === 0 ? (
+          ) : visibleBookings.length === 0 ? (
             <div className="p-16 text-center">
               <ListChecks className="w-12 h-12 text-muted mx-auto mb-3" />
-              <p className="text-muted-foreground">No hotel bookings yet.</p>
+              <p className="text-muted-foreground">{bookings.length === 0 ? 'No hotel bookings yet.' : 'No matching hotel bookings.'}</p>
             </div>
           ) : (
             <table className="w-full text-sm">
@@ -582,7 +611,7 @@ export default function HotelSearch() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {bookings.map((b) => (
+                {visibleBookings.map((b) => (
                   <tr key={b.id} className="hover:bg-muted/30">
                     <td className="px-4 py-3 font-medium text-foreground">{b.hotelName || 'Unknown'}</td>
                     <td className="px-4 py-3 text-muted-foreground">{fmtDate(b.checkin)}</td>
@@ -619,6 +648,7 @@ export default function HotelSearch() {
             </table>
           )}
         </div>
+        </>
       )}
 
       <Dialog open={!!cancelDialog} onOpenChange={(open) => !open && setCancelDialog(null)}>
@@ -647,6 +677,6 @@ export default function HotelSearch() {
         </DialogContent>
       </Dialog>
       </div>
-    </PageCopilot>
+    </>
   );
 }

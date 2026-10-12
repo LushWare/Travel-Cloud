@@ -20,6 +20,7 @@ import { Tabs, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import { Button } from '../../components/ui/button';
 import { StatCard, type StatCardColor } from '../../components/shared/StatCard';
 import PageHeader from '../../components/PageHeader';
+import RecommendationStrip from '@/features/recommendations/RecommendationStrip';
 
 // Shared theming for recharts, which takes literal CSS color strings rather
 // than Tailwind classes — referencing the same CSS custom properties that
@@ -472,6 +473,8 @@ const DashboardContainer = () => {
             />
           ))}
         </div>
+
+        <RecommendationStrip module="dashboard" />
 
         {/* Charts Row 1 - Lead Funnel (wide) + Package Distribution */}
         <div className="grid grid-cols-1 xl:grid-cols-5 gap-4 sm:gap-6">

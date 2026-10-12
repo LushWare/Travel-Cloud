@@ -31,16 +31,12 @@ import LeadDetailPane from "../features/lead-management/components/LeadDetailPan
 import ActiveSalesRepsDialog from "../features/lead-management/components/ActiveSalesRepsDialog";
 import { LIFECYCLE_STATUS_COLORS, LIFECYCLE_STATUS_LABELS } from "../features/lead-management/components/LeadStatusBadge";
 import type { LifecycleStatus } from "../features/lead-management/components/LeadStatusBadge";
-import type { CopilotScope } from "../features/copilot/types";
-
 type FilterKey = 'all' | LifecycleStatus;
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import PageCopilot from "../features/copilot/PageCopilot";
-import LeadInsights from "../features/copilot/LeadInsights";
-import CollectionInsights from "../features/copilot/CollectionInsights";
 import { apiErrorMessage } from '@/lib/apiErrorMessage';
 import PageHeader from '@/components/PageHeader';
+import RecommendationStrip from '@/features/recommendations/RecommendationStrip';
 
 // Lifecycle status maps (10 states) plus old-status fallbacks
 const statusColors: Record<string, string> = {
@@ -135,6 +131,7 @@ const LeadManagement = () => {
   const navigate = useNavigate();
   const highlightedLeadId = searchParams.get("leadId");
   const idsParam = searchParams.get("ids");
+  const recommendationFocus = searchParams.get('focus') === 'recommendation';
   const shouldOpenLead = searchParams.get("open") === "1";
 
   const currentUser = authAPI.getStoredUser();
@@ -188,6 +185,14 @@ const LeadManagement = () => {
     fetchLeads();
     fetchLeadStats();
   }, [debouncedSearch, filterStatus, filterTravelDateStart, filterTravelDateEnd, filterPlatforms, filterSources, filterAi, currentPage, idsParam]);
+
+  useEffect(() => {
+    if (!idsParam || !recommendationFocus || loading) return;
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById('recommendation-target')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [idsParam, recommendationFocus, loading, leads]);
 
   useEffect(() => {
     if (!shouldOpenLead || !highlightedLeadId) return;
@@ -418,43 +423,8 @@ const LeadManagement = () => {
     }
   };
 
-  // The copilot scope is the record selected in the persistent pane; nothing is
-  // sent when no lead is selected.
-  // With no lead selected this is the COLLECTION scope (`{}`), which serves the
-  // analyst insights for the general leads page — the collection engine's
-  // `leads` descriptor. The record insights and the collection insights are
-  // different sections, so the mount below branches on which one applies.
-  const detailLeadId = detailLead ? String(detailLead.id ?? detailLead._id ?? "").trim() : "";
-  const copilotScope = detailLeadId ? { leadId: detailLeadId } : {};
-  const copilotLabel = detailLead
-    ? String(detailLead.name ?? "") || `Lead ${detailLeadId}`
-    : "Leads";
-
   return (
     <div className="bg-background">
-      <PageCopilot
-        pageKey="leads"
-        scope={copilotScope}
-        scopeLabel={copilotLabel}
-        renderInsights={({ session, collapse, showConversation }) =>
-          detailLeadId ? (
-            <LeadInsights
-              session={session}
-              scopeLabel={copilotLabel}
-              leadId={detailLeadId}
-              onCollapse={collapse}
-              onShowConversation={showConversation}
-            />
-          ) : (
-            <CollectionInsights
-              session={session}
-              scopeLabel={copilotLabel}
-              onCollapse={collapse}
-              onShowConversation={showConversation}
-            />
-          )
-        }
-      >
         {/* The header sits inside the content column, and the column is exactly
             one viewport tall (h-dvh, not min-h-dvh) with the body below scrolling
             inside it. Two reasons: CopilotDock beside it is a full-viewport-tall
@@ -509,38 +479,39 @@ const LeadManagement = () => {
               salesReps={salesReps}
               onAssignSuccess={() => { fetchLeads(); fetchLeadStats(); }}
             />
+            <RecommendationStrip module="leads" />
 
-        {/* Filters */}
-        <LeadFilters
-          searchTerm={searchTerm}
-          setSearchTerm={setSearchTerm}
-          filterStatus={filterStatus}
-          setFilterStatus={setFilterStatus}
-          statusCounts={statusCounts}
-          filterSources={filterSources}
-          setFilterSources={setFilterSources}
-          filterPlatforms={filterPlatforms}
-          setFilterPlatforms={setFilterPlatforms}
-          filterAi={filterAi}
-          setFilterAi={setFilterAi}
-          onAdvancedFilterClick={() => setShowFilterDialog(true)}
-        />
-
-            {idsParam && (
-              <div className="flex min-h-11 items-center justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2">
+            {idsParam ? (
+              <div className="flex min-h-11 items-center justify-between gap-3 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">
                 <p className="text-sm text-foreground">
-                  Showing <span className="font-mono tabular-nums">{totalLeads}</span> selected leads
+                  Active filter: linked leads <span className="font-mono tabular-nums">({totalLeads})</span>
                 </p>
                 <Button variant="ghost" size="xs" onClick={() => setSearchParams({})}>
-                  Show all
+                  Clear filter
                 </Button>
               </div>
+            ) : (
+              <LeadFilters
+                searchTerm={searchTerm}
+                setSearchTerm={setSearchTerm}
+                filterStatus={filterStatus}
+                setFilterStatus={setFilterStatus}
+                statusCounts={statusCounts}
+                filterSources={filterSources}
+                setFilterSources={setFilterSources}
+                filterPlatforms={filterPlatforms}
+                setFilterPlatforms={setFilterPlatforms}
+                filterAi={filterAi}
+                setFilterAi={setFilterAi}
+                onAdvancedFilterClick={() => setShowFilterDialog(true)}
+              />
             )}
 
             {/* Persistent record surface: the Evidence Lens reveals into these anchors. */}
             <LeadDetailPane lead={detailLead} salesReps={salesReps} onClose={() => setDetailLead(null)} />
 
             {/* Lead Cards Grid */}
+            <div id="recommendation-target" className="scroll-mt-20">
             {!loading && !error && leads.length > 0 && (
               <LeadTable
                 viewMode={viewMode}
@@ -588,6 +559,7 @@ const LeadManagement = () => {
                 canChangeAssignment={canChangeAssignment}
               />
             )}
+            </div>
 
             {/* flex-1 so each state fills what is left of the column: with few or no
                 leads that centres it rather than leaving a large gap beneath. */}
@@ -627,8 +599,6 @@ const LeadManagement = () => {
             )}
           </div>
         </div>
-      </PageCopilot>
-
       {/* Dialogs */}
       <NewLeadDialog
         isOpen={showNewDialog}
