@@ -361,7 +361,7 @@ export default function BillingInvoicing() {
           </Button>
         ) : undefined}
       />
-      <div className="bg-white px-4 pt-4 md:px-6"><RecommendationStrip module="billing" /></div>
+      <RecommendationStrip module="billing" />
       {/* Mobile figures + horizontal tabs. The title row moved into PageHeader,
           so this block is no longer sticky — there is one sticky bar. */}
       <div className="border-b border-border bg-card md:hidden">

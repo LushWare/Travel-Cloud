@@ -49,6 +49,57 @@ describe('buildRecommendations', () => {
     });
   });
 
+  it('covers actionable quotation, payment, customer, and revenue-concentration signals', () => {
+    const recommendations = buildRecommendations({
+      unconvertedQuotes: { count: 3, value: 1200, oldestAgeDays: 8, ids: ['quote-1'] },
+      departuresOutstanding: { count: 1, value: 1500, nearestDeparture: '2026-10-14T06:30:00.000Z', ids: ['invoice-1'] },
+      lostQuotes: { count: 3, value: 2400, rejectedWithReason: 1, ids: ['quote-2'] },
+      lapsedCustomers: { count: 3, lastTripDate: '2025-10-14T00:00:00.000Z', ids: ['lead-1'] },
+      destinationConcentration: { destination: 'Morocco', share: 50, baseline: 30, ids: [] },
+    });
+
+    expect(recommendations.map(({ key }) => key)).toEqual([
+      'quotes.unconverted',
+      'bookings.departures-outstanding',
+      'quotes.lost-value',
+      'customers.lapsed-repeat',
+      'revenue.destination-concentration',
+    ]);
+    expect(recommendations[1]).toMatchObject({
+      summary: '1 confirmed booking departing within 14 days has outstanding payments.',
+      relatedRecordIds: ['invoice-1'],
+    });
+  });
+
+  it('builds a grounded recommendation for each currently actionable analytics signal', () => {
+    const recommendations = buildRecommendations({
+      unconvertedQuotes: { count: 3, value: 1000, oldestAgeDays: 8, ids: [] },
+      coldLeads: { count: 1, value: 2500, oldestAgeDays: 9, ids: [] },
+      departuresOutstanding: { count: 1, value: 1000, nearestDeparture: '2026-10-14T06:30:00.000Z', ids: [] },
+      conversionTrend: { curTotal: 10, curWon: 1, prevTotal: 10, prevWon: 4 },
+      lostQuotes: { count: 3, value: 2000, rejectedWithReason: 1, ids: [] },
+      lapsedCustomers: { count: 3, ids: [] },
+      lowMarginBookings: { count: 1, value: 1000, avgMargin: 3, ids: [] },
+      responseTimeTrend: { curHours: 8, prevHours: 4, curN: 5, prevN: 10 },
+      destinationConcentration: { destination: 'Morocco', share: 35, baseline: 20, value: 1000 },
+      agingOverdue: { count: 1, value: 1000, oldestDays: 2, ids: [] },
+      unassignedLeads: { count: 1, ids: [] },
+      stalledDrafting: { count: 1, oldestAgeDays: 8, ids: [] },
+      expiringQuotes: { count: 1, value: 1000, ids: [] },
+      noDeposit: { count: 1, value: 1000, ids: [] },
+      voucherMissing: { count: 1, ids: [] },
+      cancellationSpike: { cur: 2, baseline: 1 },
+      silentPackages: { count: 1, ids: [] },
+      quotedSilence: { count: 1, oldestAgeDays: 8, ids: [] },
+      partialAging: { count: 1, value: 1000, oldestDays: 15, ids: [] },
+      flightsNeedingReview: { count: 1, nearestDeparture: '2026-10-14T06:30:00.000Z', ids: [] },
+      hotelsNeedingReview: { count: 1, nearestCheckin: '2026-10-14T06:30:00.000Z', ids: [] },
+    });
+
+    expect(recommendations).toHaveLength(21);
+    expect(new Set(recommendations.map(({ key }) => key)).size).toBe(21);
+  });
+
   it('surfaces upcoming flight and hotel booking issues from their actual records', () => {
     const recommendations = buildRecommendations({
       flightsNeedingReview: { count: 1, nearestDeparture: '2026-10-15T08:00:00.000Z', ids: ['flight-1'] },
@@ -58,6 +109,8 @@ describe('buildRecommendations', () => {
     expect(recommendations).toHaveLength(2);
     expect(recommendations[0]).toMatchObject({
       module: 'flights',
+      title: 'Review upcoming flights awaiting ticketing',
+      summary: '1 upcoming flight booking is not ticketed.',
       relatedRecordIds: ['flight-1'],
       evidence: expect.arrayContaining([{ label: 'Flight bookings', value: 1 }]),
     });
@@ -66,6 +119,56 @@ describe('buildRecommendations', () => {
       relatedRecordIds: ['hotel-1', 'hotel-2'],
       evidence: expect.arrayContaining([{ label: 'Hotel reservations', value: 2 }]),
     });
+  });
+
+  it('creates a hotel recommendation from pending and failed booking totals', () => {
+    const [recommendation] = buildRecommendations({
+      hotelOverview: { totalHotelBookings: 12, pendingHotels: 2, failedHotels: 1, ids: ['hotel-1', 'hotel-2'] },
+      hotelsNeedingReview: { count: 1, nearestCheckin: '2026-10-14T15:00:00.000Z', ids: ['hotel-1'] },
+    });
+
+    expect(recommendation).toMatchObject({
+      key: 'hotels.unresolved-statuses',
+      module: 'hotels',
+      title: 'Resolve upcoming hotel booking issues',
+      relatedRecordIds: ['hotel-1', 'hotel-2'],
+      evidence: [
+        { label: 'Pending hotel bookings', value: 2 },
+        { label: 'Failed hotel bookings', value: 1 },
+        { label: 'Total hotel bookings', value: 12 },
+        { label: 'Check-ins within seven days', value: 1 },
+        { label: 'Nearest check-in', value: '2026-10-14T15:00:00.000Z' },
+      ],
+    });
+  });
+
+  it('links unverified customer recommendations to the affected customer accounts', () => {
+    const [recommendation] = buildRecommendations({
+      unverifiedCustomerAccounts: { count: 3, ratePct: 30, ids: ['customer-1', 'customer-2'] },
+    });
+
+    expect(recommendation).toMatchObject({
+      key: 'users.unverified-accounts',
+      module: 'users',
+      relatedRecordIds: ['customer-1', 'customer-2'],
+      action: { label: 'Review customers', module: 'users', tab: 'website-users' },
+      evidence: expect.arrayContaining([
+        { label: 'Unverified customers', value: 3 },
+        { label: 'Unverified rate', value: '30%' },
+      ]),
+    });
+  });
+
+  it('surfaces actionable booking lifecycle issues in analytics', () => {
+    const recommendations = buildRecommendations({
+      bookingOverview: { pastTravelStillConfirmed: 2, pendingBookingsOver7Days: 4 },
+    });
+
+    expect(recommendations.map(({ key }) => key)).toEqual([
+      'analytics.past-travel-still-confirmed',
+      'analytics.aging-pending-bookings',
+    ]);
+    expect(recommendations.every(({ module }) => module === 'analytics')).toBe(true);
   });
 
   it('links quiet-package recommendations to the measured package IDs', () => {

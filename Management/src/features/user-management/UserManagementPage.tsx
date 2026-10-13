@@ -1,4 +1,5 @@
-import { useState, useMemo, type ComponentType } from 'react';
+import { useEffect, useState, useMemo, type ComponentType } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Users, Shield, UserCheck, Building2, Lock } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AdminManagement } from './components/AdminManagement';
@@ -26,7 +27,8 @@ interface ManagementTab {
  */
 const UserManagementPage = () => {
   const permission = usePermission();
-  const [activeTab, setActiveTab] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState<string | null>(() => searchParams.get('tab'));
 
   const allTabs: ManagementTab[] = [
     {
@@ -72,6 +74,17 @@ const UserManagementPage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [permission]);
 
+  useEffect(() => {
+    const requestedTab = searchParams.get('tab');
+    if (requestedTab && accessibleTabs.some((tab) => tab.id === requestedTab)) {
+      if (requestedTab !== activeTab) setActiveTab(requestedTab);
+      return;
+    }
+    if (!accessibleTabs.some((tab) => tab.id === activeTab)) {
+      setActiveTab(accessibleTabs[0]?.id ?? null);
+    }
+  }, [activeTab, accessibleTabs, searchParams]);
+
   const currentActiveTab = useMemo(() => {
     if (!activeTab && accessibleTabs.length > 0) {
       return accessibleTabs[0].id;
@@ -83,6 +96,7 @@ const UserManagementPage = () => {
     const tab = accessibleTabs.find((t) => t.id === tabId);
     if (tab && permission.hasPermission(tab.requiredPermission)) {
       setActiveTab(tabId);
+      setSearchParams({ tab: tabId });
     }
   };
 
@@ -113,7 +127,7 @@ const UserManagementPage = () => {
     <div className="min-h-screen bg-background">
       {/* Mobile Header + Horizontal Tabs */}
       <PageHeader title="User Management" subtitle={currentTab?.description} />
-      <div className="px-4 pt-4 md:px-6"><RecommendationStrip module="users" /></div>
+      <RecommendationStrip module="users" />
 
       {/* Mobile sections. The title row moved into PageHeader, so this block is
           no longer sticky — there is one sticky bar. */}

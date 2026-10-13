@@ -72,6 +72,7 @@ describe('RecommendationStrip', () => {
     ];
     renderStrip(items);
 
+    expect(screen.getByRole('region', { name: 'AI recommendations' })).toHaveClass('bg-card');
     await screen.findByText(first.title);
     expect(screen.getByText('Recommendation 4')).toBeInTheDocument();
     expect(screen.queryByText('Recommendation 5')).not.toBeInTheDocument();
@@ -81,13 +82,30 @@ describe('RecommendationStrip', () => {
 
     await user.click(screen.getByText(first.title));
     const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByText('These quotes remain open and need staff review.')).toBeInTheDocument();
+    expect(within(dialog).getByText(first.summary)).toBeInTheDocument();
     expect(within(dialog).getByText('Open quotes')).toBeInTheDocument();
     expect(within(dialog).getByText('4')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Mark reviewed' }));
     await waitFor(() => expect(mockUpdateRecommendation).toHaveBeenCalledWith(first.id, 'reviewed'));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it('keeps the verified summary primary and formats timestamp evidence', async () => {
+    const user = userEvent.setup();
+    const departure = '2026-10-14T06:30:00.000Z';
+    const item = recommendation({
+      summary: '1 upcoming flight booking is not ticketed.',
+      evidence: [{ label: 'Nearest departure', value: departure }],
+    });
+    renderStrip([item]);
+
+    await user.click(await screen.findByText(item.title));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText(item.summary)).toBeInTheDocument();
+    expect(within(dialog).getByText('Nearest departure')).toBeInTheDocument();
+    expect(within(dialog).queryByText(departure)).not.toBeInTheDocument();
+    expect(within(dialog).getByText(new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(departure)))).toBeInTheDocument();
   });
 
   it('switches to rule-based recommendations and requests the selected mode', async () => {
@@ -167,6 +185,38 @@ describe('RecommendationStrip', () => {
     await user.click(screen.getByRole('button', { name: 'Review invoices' }));
 
     expect(screen.getByTestId('current-location')).toHaveTextContent('/billing?tab=invoice&ids=invoice-7&focus=recommendation');
+  });
+
+  it('opens Website Users filtered to the linked customer IDs', async () => {
+    const user = userEvent.setup();
+    const item = recommendation({
+      module: 'users',
+      relatedRecordIds: ['customer-7', 'customer-8'],
+      action: { label: 'Review customers', module: 'users', tab: 'website-users' },
+    });
+    renderStrip([item], '/users');
+
+    await user.click(await screen.findByText(item.title));
+    await user.click(screen.getByRole('button', { name: 'Review customers' }));
+
+    expect(screen.getByTestId('current-location')).toHaveTextContent(
+      '/users?tab=website-users&ids=customer-7%2Ccustomer-8&focus=recommendation',
+    );
+  });
+
+  it('opens the Career page for an AI-generated Career recommendation', async () => {
+    const user = userEvent.setup();
+    const item = recommendation({
+      module: 'career',
+      action: { label: 'Review Career applications', module: 'career' },
+      relatedRecordIds: [],
+    });
+    renderStrip([item], '/ai-insights');
+
+    await user.click(await screen.findByText(item.title));
+    await user.click(screen.getByRole('button', { name: 'Review Career applications' }));
+
+    expect(screen.getByTestId('current-location')).toHaveTextContent('/career');
   });
 
   it('opens Packages filtered to linked package IDs', async () => {

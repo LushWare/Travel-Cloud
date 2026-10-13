@@ -15,7 +15,7 @@ app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'recommendat
 app.use('/api/v1/recommendations', recommendationsRoutes);
 app.use((req, res) => res.status(404).json({ success: false, message: `Route not found: ${req.path}` }));
 app.use((error, req, res, _next) => {
-  req.log?.error({ err: error }, 'Recommendation request failed');
+  req.log?.error({ err: error, diagnostic: error.diagnostic }, 'Recommendation request failed');
   const status = error.statusCode === 503 ? 503 : 500;
   const message = status === 503
     ? error.message

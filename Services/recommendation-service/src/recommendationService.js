@@ -1,11 +1,11 @@
 import { fetchBusinessSignals } from './analyticsClient.js';
 import { generateRecommendations } from './ai/generateRecommendations.js';
-import { buildRecommendations } from './recommendationEngine.js';
+import { buildRecommendations, VERIFIED_RECOMMENDATION_KEYS } from './recommendationEngine.js';
 import prisma from './db/client.js';
 
 const priorityRank = { high: 0, medium: 1, low: 2 };
 const REFRESH_WINDOW_MS = 5 * 60_000;
-const CACHE_VERSION = 2;
+const CACHE_VERSION = 10;
 
 function baseScopeKey(actor) {
   return actor.role === 'salesRep' && !actor.isSuperAdmin ? `rep:${actor.id}` : 'agency';
@@ -31,7 +31,15 @@ export async function refreshRecommendations(actor, requestId, mode = 'ai') {
   const keys = candidates.map((item) => item.key);
 
   await prisma.$transaction(async (tx) => {
-    if (keys.length) {
+    if (mode === 'ai') {
+      const staleVerifiedKeys = VERIFIED_RECOMMENDATION_KEYS.filter((key) => !keys.includes(key));
+      if (staleVerifiedKeys.length) {
+        await tx.recommendation.updateMany({
+          where: { scopeKey, active: true, key: { in: staleVerifiedKeys } },
+          data: { active: false },
+        });
+      }
+    } else if (keys.length) {
       await tx.recommendation.updateMany({
         where: { scopeKey, active: true, key: { notIn: keys } },
         data: { active: false },

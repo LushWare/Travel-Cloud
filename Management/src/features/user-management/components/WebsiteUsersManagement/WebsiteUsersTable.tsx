@@ -26,6 +26,7 @@ const WebsiteUsersTable = ({ users, onEdit, onDelete, onToggleStatus, loading }:
             <th className="border-r border-border px-4 py-3 text-left text-xs font-bold tracking-wider text-muted-foreground uppercase">Total Spent</th>
             <th className="border-r border-border px-4 py-3 text-left text-xs font-bold tracking-wider text-muted-foreground uppercase">Joined</th>
             <th className="border-r border-border px-4 py-3 text-left text-xs font-bold tracking-wider text-muted-foreground uppercase">Last Login</th>
+            <th className="border-r border-border px-4 py-3 text-left text-xs font-bold tracking-wider text-muted-foreground uppercase">Email Verification</th>
             <th className="border-r border-border px-4 py-3 text-left text-xs font-bold tracking-wider text-muted-foreground uppercase">Status</th>
             <th className="px-4 py-3 text-left text-xs font-bold tracking-wider text-muted-foreground uppercase">Actions</th>
           </tr>
@@ -33,13 +34,13 @@ const WebsiteUsersTable = ({ users, onEdit, onDelete, onToggleStatus, loading }:
         <tbody className="divide-y divide-border">
           {loading ? (
             <tr>
-              <td colSpan={9} className="px-4 py-8 text-center text-muted-foreground">
+              <td colSpan={10} className="px-4 py-8 text-center text-muted-foreground">
                 <p>Loading users...</p>
               </td>
             </tr>
           ) : users.length === 0 ? (
             <tr>
-              <td colSpan={9} className="px-4 py-8 text-center text-muted-foreground">
+              <td colSpan={10} className="px-4 py-8 text-center text-muted-foreground">
                 <p className="text-lg">No users found</p>
               </td>
             </tr>
@@ -58,6 +59,14 @@ const WebsiteUsersTable = ({ users, onEdit, onDelete, onToggleStatus, loading }:
                 <td className="border-r border-border px-4 py-3 text-sm text-muted-foreground">{formatDate(user.createdAt as string)}</td>
                 <td className="border-r border-border px-4 py-3 text-sm text-muted-foreground">
                   {user.lastLogin ? formatDate(user.lastLogin as string) : 'Never'}
+                </td>
+                <td className="border-r border-border px-4 py-3 text-sm">
+                  <Badge
+                    variant="secondary"
+                    className={user.isEmailVerified === true ? 'bg-success/10 text-success' : 'bg-warning/10 text-warning'}
+                  >
+                    {user.isEmailVerified === true ? 'Verified' : 'Unverified'}
+                  </Badge>
                 </td>
                 <td className="border-r border-border px-4 py-3 text-sm">
                   <Badge variant="secondary" className={STATUS_COLORS[user.status] || STATUS_COLORS.active}>

@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { fetchRecommendations, updateRecommendation, type BusinessRecommendation } from '@/services/recommendationsAPI';
 import { RecommendationDetailDialog } from '@/features/recommendations/RecommendationStrip';
+import { formatEvidenceValue } from '@/features/recommendations/formatEvidenceValue';
 import RecommendationModeSwitch from '@/features/recommendations/RecommendationModeSwitch';
 import type { RecommendationMode } from '@/features/recommendations/recommendationMode';
 
@@ -97,10 +98,10 @@ export default function AIInsights() {
                     <Badge variant="outline" className="capitalize">{item.module}</Badge>
                   </div>
                   <span className="text-sm font-semibold text-foreground">{item.title}</span>
-                  <span className="mt-1 line-clamp-3 text-sm text-muted-foreground">{item.aiExplanation || item.summary}</span>
+                  <span className="mt-1 line-clamp-3 text-sm text-muted-foreground">{item.summary}</span>
                   {item.evidence.length > 0 && (
                     <span className="mt-2 line-clamp-2 text-xs text-muted-foreground">
-                      {item.evidence.slice(0, 2).map((fact) => `${fact.label}: ${fact.value ?? 'Not recorded'}`).join(' · ')}
+                      {item.evidence.slice(0, 2).map((fact) => `${fact.label}: ${formatEvidenceValue(fact.value)}`).join(' · ')}
                     </span>
                   )}
                   <span className="mt-auto flex items-center gap-1 pt-3 text-xs font-semibold text-primary">

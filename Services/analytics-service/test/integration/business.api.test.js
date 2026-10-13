@@ -32,8 +32,17 @@ describe('GET /api/v1/analytics/business/signals', () => {
     expect(response.status).toBe(200);
     expect(response.body.success).toBe(true);
     expect(response.body.data.scope).toBe('org');
-    expect(Object.keys(response.body.data.signals)).toHaveLength(21);
+    expect(Object.keys(response.body.data.signals)).toHaveLength(37);
+    expect(response.body.data.signals).toHaveProperty('unverifiedCustomerAccounts');
+    expect(response.body.data.signals).toHaveProperty('packagesLowBookings');
+    expect(response.body.data.signals).toHaveProperty('packagesLowViews');
+    expect(response.body.data.signals).toHaveProperty('packagesLowInquiries');
+    expect(response.body.data.signals).toHaveProperty('packagesLowConversions');
+    expect(response.body.data.signals).toHaveProperty('packagesNoConversions');
+    expect(response.body.data.signals).toHaveProperty('packagesLowRating');
+    expect(response.body.data.signals).toHaveProperty('packagesLowReviews');
     expect(response.body.data.signals).toHaveProperty('flightsNeedingReview');
     expect(response.body.data.signals).toHaveProperty('hotelsNeedingReview');
+    expect(response.body.data.signals).toHaveProperty('careerOverview');
   });
 });

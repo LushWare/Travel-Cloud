@@ -14,6 +14,7 @@ model Recommendation {
   id                String                     @id @default(uuid())
   scopeKey          String
   key               String
+  kind              String                     @default("recommendation")
   module            String
   category          String
   priority          String

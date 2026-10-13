@@ -77,7 +77,7 @@ const Analytics = () => {
   return (
     <>
       <PageHeader title="Analytics" subtitle={activeTabData?.label} />
-      <div className="px-4 pt-4 md:px-6"><RecommendationStrip module="analytics" /></div>
+      <RecommendationStrip module="analytics" />
 
       <div className="h-full flex flex-col md:flex-row bg-background">
         {/* Mobile: horizontal tabs. The title row moved into PageHeader, so this

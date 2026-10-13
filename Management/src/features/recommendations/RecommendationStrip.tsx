@@ -19,6 +19,7 @@ import {
 } from '@/services/recommendationsAPI';
 import RecommendationModeSwitch from './RecommendationModeSwitch';
 import type { RecommendationMode } from './recommendationMode';
+import { formatEvidenceValue } from './formatEvidenceValue';
 
 const MODULE_PATHS: Record<string, string> = {
   dashboard: '/',
@@ -29,6 +30,7 @@ const MODULE_PATHS: Record<string, string> = {
   billing: '/billing',
   analytics: '/analytics',
   users: '/users',
+  career: '/career',
 };
 
 const priorityVariant: Record<string, 'destructive' | 'outline' | 'secondary'> = {
@@ -43,8 +45,8 @@ function destinationFor(item: BusinessRecommendation) {
   const module = item.action?.module || item.module;
   const path = MODULE_PATHS[module] || '/ai-insights';
   const params = new URLSearchParams();
-  const tab = item.action?.tab || (['flights', 'hotels'].includes(module) ? 'bookings' : undefined);
-  const canFilterRecords = ['leads', 'packages'].includes(module) || Boolean(item.action?.tab) || ['flights', 'hotels'].includes(module);
+  const tab = item.action?.tab || (['flights', 'hotels'].includes(module) ? 'bookings' : module === 'users' ? 'website-users' : undefined);
+  const canFilterRecords = ['leads', 'packages', 'users'].includes(module) || Boolean(item.action?.tab) || ['flights', 'hotels'].includes(module);
 
   if (tab) params.set('tab', tab);
   if (canFilterRecords && item.relatedRecordIds.length > 0) {
@@ -103,7 +105,7 @@ export function RecommendationDetailDialog({
             <span className="text-xs capitalize text-muted-foreground">{item.module}</span>
           </div>
           <DialogTitle className="pr-7">{item.title}</DialogTitle>
-          <DialogDescription>{item.aiExplanation || item.summary}</DialogDescription>
+          <DialogDescription>{item.summary}</DialogDescription>
         </DialogHeader>
 
         {item.evidence.length > 0 && (
@@ -111,7 +113,7 @@ export function RecommendationDetailDialog({
             {item.evidence.map((fact) => (
               <div key={fact.label} className="min-w-0">
                 <dt className="text-xs text-muted-foreground">{fact.label}</dt>
-                <dd className="break-words text-sm font-medium text-foreground">{fact.value ?? 'Not recorded'}</dd>
+                <dd className="break-words text-sm font-medium text-foreground">{formatEvidenceValue(fact.value)}</dd>
               </div>
             ))}
           </dl>
@@ -181,7 +183,7 @@ export default function RecommendationStrip({ module }: { module: string }) {
   };
 
   return (
-    <section aria-label="AI recommendations" className="rounded-md border border-border bg-white px-3 py-3 sm:px-4">
+    <section aria-label="AI recommendations" className="rounded-md border border-border bg-card px-3 py-3 text-card-foreground sm:px-4">
       <div className="mb-2 flex min-w-0 items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
           <Lightbulb className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
@@ -213,13 +215,13 @@ export default function RecommendationStrip({ module }: { module: string }) {
               key={item.id}
               type="button"
               onClick={() => setSelected(item)}
-              className="min-w-0 cursor-pointer rounded-md border border-border bg-white px-3 py-2 text-left transition-[transform,border-color,box-shadow] duration-150 hover:-translate-y-0.5 hover:border-primary/60 hover:shadow-sm active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none"
+              className="min-w-0 cursor-pointer rounded-md border border-border bg-background px-3 py-2 text-left text-foreground transition-[transform,border-color,box-shadow] duration-150 hover:-translate-y-0.5 hover:border-primary/60 hover:shadow-sm active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none"
             >
               <span className="mb-1 flex items-center justify-between gap-2">
                 <span className="truncate text-sm font-medium text-foreground">{item.title}</span>
                 <Badge variant={priorityVariant[item.priority] || 'secondary'} className={`shrink-0 ${item.priority === 'medium' ? 'border-warning/50 text-warning' : ''}`}>{item.priority}</Badge>
               </span>
-              <span className="line-clamp-2 block text-xs text-muted-foreground">{item.aiExplanation || item.summary}</span>
+              <span className="line-clamp-2 block text-xs text-muted-foreground">{item.summary}</span>
             </button>
           ))}
         </div>

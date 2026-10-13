@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { listRecommendations, saveRecommendationFeedback } from '../recommendationService.js';
 
-const modules = ['dashboard', 'leads', 'packages', 'flights', 'hotels', 'billing', 'analytics', 'users'];
+const modules = ['dashboard', 'leads', 'packages', 'flights', 'hotels', 'billing', 'analytics', 'users', 'career'];
 const statusValues = ['active', 'reviewed', 'completed', 'dismissed', 'all'];
 const modes = ['ai', 'rules'];
 const feedbackSchema = z.object({
