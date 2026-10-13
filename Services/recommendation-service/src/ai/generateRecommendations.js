@@ -1,7 +1,6 @@
 import { createHash } from 'node:crypto';
 import { GoogleGenAI } from '@google/genai';
 import { z } from 'zod';
-import { buildRecommendations } from '../recommendationEngine.js';
 
 const modelId = () => process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
 const GENERATION_TIMEOUT_MS = 30_000;
@@ -100,46 +99,6 @@ export const SIGNAL_DEFINITIONS = Object.freeze({
   bookingOverview: 'Bookings: lifecycle counts and pending rate, confirmed payment-status counts and unpaid/part-paid rates, confirmed trips in the next 30 days, past travel still marked confirmed, and pending bookings older than 7 days. Scoped to the assigned sales representative where applicable.',
 });
 
-const SIGNAL_MODULES = Object.freeze({
-  unconvertedQuotes: ['billing', 'analytics'],
-  coldLeads: ['leads', 'analytics'],
-  departuresOutstanding: ['billing', 'flights', 'analytics'],
-  conversionTrend: ['leads', 'analytics', 'dashboard'],
-  lostQuotes: ['billing', 'analytics'],
-  lapsedCustomers: ['leads', 'users', 'analytics'],
-  lowMarginBookings: ['billing', 'analytics'],
-  responseTimeTrend: ['leads', 'analytics'],
-  destinationConcentration: ['analytics', 'packages'],
-  agingOverdue: ['billing', 'analytics'],
-  unassignedLeads: ['leads', 'dashboard'],
-  stalledDrafting: ['leads', 'packages'],
-  expiringQuotes: ['billing'],
-  noDeposit: ['billing'],
-  voucherMissing: ['billing', 'hotels'],
-  cancellationSpike: ['analytics', 'flights', 'hotels'],
-  silentPackages: ['packages'],
-  quotedSilence: ['leads'],
-  partialAging: ['billing'],
-  flightsNeedingReview: ['flights'],
-  hotelsNeedingReview: ['hotels'],
-  packagesLowBookings: ['packages'],
-  packagesLowViews: ['packages'],
-  packagesLowInquiries: ['packages'],
-  packagesLowConversions: ['packages'],
-  packagesNoConversions: ['packages'],
-  packagesLowRating: ['packages'],
-  packagesLowReviews: ['packages'],
-  leadOverview: ['leads', 'analytics', 'dashboard'],
-  packageOverview: ['packages', 'analytics', 'dashboard'],
-  flightOverview: ['flights', 'analytics', 'dashboard'],
-  hotelOverview: ['hotels', 'analytics', 'dashboard'],
-  websiteOverview: ['analytics', 'dashboard'],
-  userOverview: ['analytics', 'dashboard'],
-  unverifiedCustomerAccounts: ['users'],
-  careerOverview: ['career'],
-  bookingOverview: ['analytics', 'dashboard', 'billing'],
-});
-
 export class AIRecommendationsUnavailableError extends Error {
   constructor(diagnostic) {
     super('AI recommendations could not be generated. Retry or switch to rule-based recommendations.');
@@ -200,10 +159,6 @@ function resolveRecommendations(parsed, source) {
     if (claims.some((token) => !numericEvidence.has(token))) {
       return [];
     }
-    if (!item.evidence.some(({ signal }) => SIGNAL_MODULES[signal]?.includes(item.module))) {
-      return [];
-    }
-
     const allowedTabs = item.module === 'billing'
       ? ['quotation', 'invoice', 'receipt', 'voucher']
       : ['flights', 'hotels'].includes(item.module) ? ['bookings']
@@ -222,23 +177,16 @@ function resolveRecommendations(parsed, source) {
       title: item.title,
       summary: item.summary,
       evidence,
-      sourceSignals: citedSignals,
+      sourceEvidence: item.evidence.map(({ signal, field }) => ({ signal, field })),
       relatedRecordIds,
       action: { label: item.actionLabel, module: item.module, ...(actionTab ? { tab: actionTab } : {}) },
     }];
   });
 }
 
-function overlapsVerifiedFinding(item, verifiedRecommendations) {
-  const citedSignals = [...new Set(item.sourceSignals || [])];
-  return verifiedRecommendations.some((verified) => verified.module === item.module
-    && citedSignals.length > 0
-    && citedSignals.every((signal) => verified.sourceSignals.includes(signal)));
-}
-
 function stableAiKey(item) {
-  const signals = [...new Set(item.sourceSignals)].sort();
-  const identity = JSON.stringify({ module: item.module, category: item.category, signals });
+  const evidence = [...new Set(item.sourceEvidence.map(({ signal, field }) => `${signal}.${field}`))].sort();
+  const identity = JSON.stringify({ module: item.module, evidence });
   const fingerprint = createHash('sha256').update(identity).digest('hex').slice(0, 16);
   return `ai.${item.module}.${fingerprint}`;
 }
@@ -288,16 +236,12 @@ export async function generateRecommendations(source) {
     if (!parsed.success) throw new Error('Gemini returned malformed recommendations');
     stage = 'evidence-validation';
     const recommendations = resolveRecommendations(parsed.data, source);
-    const verifiedRecommendations = buildRecommendations(source?.signals);
-    const additionalAiRecommendations = recommendations
-      .filter((item) => !overlapsVerifiedFinding(item, verifiedRecommendations))
-      .slice(0, Math.max(0, 30 - verifiedRecommendations.length))
-      .map((item) => {
-        const { sourceSignals, ...recommendation } = item;
-        return { ...recommendation, key: stableAiKey({ ...recommendation, sourceSignals }) };
-      });
-    const stableRecommendations = verifiedRecommendations.map(({ sourceSignals, ...item }) => item);
-    return [...additionalAiRecommendations, ...stableRecommendations];
+    const stableRecommendations = new Map(recommendations.map((item) => {
+      const { sourceEvidence, ...recommendation } = item;
+      const key = stableAiKey({ module: item.module, sourceEvidence });
+      return [key, { ...recommendation, key }];
+    }));
+    return [...stableRecommendations.values()];
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown AI generation error';
     throw new AIRecommendationsUnavailableError({

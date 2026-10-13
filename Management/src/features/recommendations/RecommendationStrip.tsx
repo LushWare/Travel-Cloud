@@ -143,12 +143,14 @@ export function RecommendationDetailDialog({
 
 export default function RecommendationStrip({ module }: { module: string }) {
   const [items, setItems] = useState<BusinessRecommendation[]>([]);
+  const [counts, setCounts] = useState({ active: 0, reviewed: 0 });
   const [selected, setSelected] = useState<BusinessRecommendation | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
   const [mode, setMode] = useState<RecommendationMode>('ai');
+  const [statusFilter, setStatusFilter] = useState<'active' | 'reviewed'>('active');
   const visibleItems = useMemo(
     () => expanded ? items : items.slice(0, INITIAL_RECOMMENDATION_COUNT),
     [expanded, items],
@@ -158,14 +160,17 @@ export default function RecommendationStrip({ module }: { module: string }) {
     const controller = new AbortController();
     setLoading(true);
     setError('');
-    fetchRecommendations({ module, mode, signal: controller.signal })
-      .then((response) => setItems(response.recommendations))
+    fetchRecommendations({ module, mode, status: statusFilter, signal: controller.signal })
+      .then((response) => {
+        setItems(response.recommendations);
+        setCounts(response.counts);
+      })
       .catch((requestError) => {
         if (!controller.signal.aborted) setError(requestError instanceof Error ? requestError.message : 'Recommendations could not be loaded.');
       })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [module, mode, refreshKey]);
+  }, [module, mode, refreshKey, statusFilter]);
 
   const changeMode = (nextMode: RecommendationMode) => {
     setMode(nextMode);
@@ -178,8 +183,21 @@ export default function RecommendationStrip({ module }: { module: string }) {
 
   const handleUpdate = async (id: string, status: 'reviewed' | 'completed' | 'dismissed') => {
     await updateRecommendation(id, status);
-    if (status === 'dismissed' || status === 'completed') setItems((current) => current.filter((item) => item.id !== id));
-    else setItems((current) => current.map((item) => item.id === id ? { ...item, viewerStatus: status } : item));
+    const item = items.find((recommendation) => recommendation.id === id);
+    if (!item) return;
+
+    const from = item.viewerStatus === 'reviewed' ? 'reviewed' : 'active';
+    const movesToReviewed = status === 'reviewed' && from === 'active';
+    if (status !== 'reviewed' || statusFilter === 'active') setItems((current) => current.filter((recommendation) => recommendation.id !== id));
+    else setItems((current) => current.map((recommendation) => recommendation.id === id ? { ...recommendation, viewerStatus: status } : recommendation));
+
+    if (status !== 'reviewed' || movesToReviewed) {
+      setCounts((current) => ({
+        ...current,
+        [from]: Math.max(0, current[from] - 1),
+        ...(movesToReviewed ? { reviewed: current.reviewed + 1 } : {}),
+      }));
+    }
   };
 
   return (
@@ -188,18 +206,32 @@ export default function RecommendationStrip({ module }: { module: string }) {
         <div className="flex min-w-0 items-center gap-2">
           <Lightbulb className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
           <h2 className="truncate text-sm font-semibold text-foreground">{mode === 'ai' ? 'AI Recommendations' : 'Rule-based recommendations'}</h2>
-          {!loading && !error && <Badge variant="secondary">{items.length}</Badge>}
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          <RecommendationModeSwitch mode={mode} onChange={changeMode} />
-          {error && <Button variant="ghost" size="icon-sm" onClick={retryRecommendations} aria-label="Retry recommendations"><RefreshCw className="h-4 w-4" /></Button>}
           {items.length > INITIAL_RECOMMENDATION_COUNT && (
             <Button variant="ghost" size="sm" onClick={() => setExpanded((value) => !value)}>
               {expanded ? 'Show less' : 'More'}
               {expanded ? <ChevronUp className="ml-1 h-4 w-4" /> : <ChevronDown className="ml-1 h-4 w-4" />}
             </Button>
           )}
+          {error && <Button variant="ghost" size="icon-sm" onClick={retryRecommendations} aria-label="Retry recommendations"><RefreshCw className="h-4 w-4" /></Button>}
+          <RecommendationModeSwitch mode={mode} onChange={changeMode} />
         </div>
+      </div>
+
+      <div className="mb-2 flex items-center gap-1" role="group" aria-label="Filter recommendations">
+        {(['active', 'reviewed'] as const).map((status) => (
+          <Button
+            key={status}
+            type="button"
+            size="sm"
+            variant={statusFilter === status ? 'secondary' : 'ghost'}
+            aria-pressed={statusFilter === status}
+            onClick={() => setStatusFilter(status)}
+          >
+            {status === 'active' ? 'Active' : 'Reviewed'} ({counts[status]})
+          </Button>
+        ))}
       </div>
 
       {loading ? (
@@ -207,7 +239,9 @@ export default function RecommendationStrip({ module }: { module: string }) {
       ) : error ? (
         <p className="flex items-center gap-2 py-2 text-sm text-muted-foreground"><AlertCircle className="h-4 w-4" />{error}</p>
       ) : items.length === 0 ? (
-        <p className="py-2 text-sm text-muted-foreground">No evidence-backed recommendations right now.</p>
+        <p className="py-2 text-sm text-muted-foreground">
+          {statusFilter === 'reviewed' ? 'No reviewed recommendations yet.' : 'No evidence-backed recommendations right now.'}
+        </p>
       ) : (
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
           {visibleItems.map((item) => (
@@ -219,7 +253,10 @@ export default function RecommendationStrip({ module }: { module: string }) {
             >
               <span className="mb-1 flex items-center justify-between gap-2">
                 <span className="truncate text-sm font-medium text-foreground">{item.title}</span>
-                <Badge variant={priorityVariant[item.priority] || 'secondary'} className={`shrink-0 ${item.priority === 'medium' ? 'border-warning/50 text-warning' : ''}`}>{item.priority}</Badge>
+                <span className="flex shrink-0 items-center gap-1">
+                  {item.viewerStatus === 'reviewed' && <Badge variant="outline">Reviewed</Badge>}
+                  <Badge variant={priorityVariant[item.priority] || 'secondary'} className={item.priority === 'medium' ? 'border-warning/50 text-warning' : ''}>{item.priority}</Badge>
+                </span>
               </span>
               <span className="line-clamp-2 block text-xs text-muted-foreground">{item.summary}</span>
             </button>

@@ -114,6 +114,7 @@ export default function BillingInvoicing() {
     voucher: [],
     'payment-history': [],
   });
+  const [invoiceOutstanding, setInvoiceOutstanding] = useState<number | null>(null);
   const [loading, setLoading] = useState<Record<DocumentType, boolean>>({
     quotation: false,
     invoice: false,
@@ -143,6 +144,16 @@ export default function BillingInvoicing() {
         setDocuments((prev) => ({ ...prev, [type]: response.data || [] }));
       } else {
         toast.error(`Failed to fetch ${FETCH_ERROR_LABEL[type]}`);
+      }
+      if (type === 'invoice') {
+        try {
+          const statsResponse = await invoiceAPI.getStats();
+          if (statsResponse.success) {
+            setInvoiceOutstanding(Number(statsResponse.data?.totalOutstanding) || 0);
+          }
+        } catch (statsError) {
+          console.error('Error fetching invoice stats:', statsError);
+        }
       }
     } catch (error) {
       console.error(`Error fetching ${type}:`, error);
@@ -240,7 +251,7 @@ export default function BillingInvoicing() {
   const currentTab = TAB_META.find((t) => t.id === activeTab)!;
 
   const totalRevenue = (documents.invoice as Invoice[]).reduce((sum, inv) => sum + (inv.paidAmount || 0), 0);
-  const totalOutstanding = (documents.invoice as Invoice[]).reduce((sum, inv) => sum + (inv.outstandingAmount || 0), 0);
+  const totalOutstanding = invoiceOutstanding ?? (documents.invoice as Invoice[]).reduce((sum, inv) => sum + (inv.outstandingAmount || 0), 0);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps -- handleDownload/handleSend are stable per render, only activeTab actually varies column shape
   const columns = useMemo<DataTableColumn<BillingDocument>[]>(() => {

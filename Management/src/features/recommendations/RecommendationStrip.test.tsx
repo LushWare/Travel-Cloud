@@ -42,6 +42,10 @@ function renderStrip(items: BusinessRecommendation[], initialEntry = '/leads') {
   mockFetchRecommendations.mockResolvedValue({
     scope: 'agency',
     sourceAsOf: '2026-10-12T00:00:00.000Z',
+    counts: {
+      active: items.filter(({ viewerStatus }) => !['reviewed', 'completed', 'dismissed'].includes(viewerStatus)).length,
+      reviewed: items.filter(({ viewerStatus }) => viewerStatus === 'reviewed').length,
+    },
     recommendations: items,
   });
   return render(
@@ -89,6 +93,40 @@ describe('RecommendationStrip', () => {
     await user.click(screen.getByRole('button', { name: 'Mark reviewed' }));
     await waitFor(() => expect(mockUpdateRecommendation).toHaveBeenCalledWith(first.id, 'reviewed'));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.queryByText(first.title)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Active (5)' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Reviewed (1)' })).toBeInTheDocument();
+  });
+
+  it('filters to reviewed recommendations and shows their status badge', async () => {
+    const user = userEvent.setup();
+    const activeItem = recommendation();
+    const reviewedItem = recommendation({
+      id: 'dbd211de-2de1-46cd-b687-41836c896b30',
+      key: 'reviewed-recommendation',
+      title: 'Reviewed recommendation',
+      viewerStatus: 'reviewed',
+    });
+    mockFetchRecommendations
+      .mockResolvedValueOnce({ scope: 'agency', counts: { active: 1, reviewed: 0 }, recommendations: [activeItem] })
+      .mockResolvedValueOnce({ scope: 'agency', counts: { active: 0, reviewed: 1 }, recommendations: [reviewedItem] });
+
+    render(
+      <MemoryRouter initialEntries={['/leads']}>
+        <RecommendationStrip module="leads" />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText(activeItem.title)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Reviewed (0)' }));
+
+    await waitFor(() => expect(mockFetchRecommendations).toHaveBeenLastCalledWith(
+      expect.objectContaining({ module: 'leads', mode: 'ai', status: 'reviewed' }),
+    ));
+    expect(await screen.findByText(reviewedItem.title)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Reviewed (1)' })).toBeInTheDocument();
+    expect(screen.getByText('Reviewed', { exact: true })).toBeInTheDocument();
+    expect(screen.queryByText(activeItem.title)).not.toBeInTheDocument();
   });
 
   it('keeps the verified summary primary and formats timestamp evidence', async () => {
@@ -147,7 +185,12 @@ describe('RecommendationStrip', () => {
     const item = recommendation();
     mockFetchRecommendations
       .mockRejectedValueOnce(new Error('AI recommendations could not be generated. Retry or switch to rule-based recommendations.'))
-      .mockResolvedValueOnce({ scope: 'agency', sourceAsOf: item.sourceAsOf, recommendations: [item] });
+      .mockResolvedValueOnce({
+        scope: 'agency',
+        sourceAsOf: item.sourceAsOf,
+        counts: { active: 1, reviewed: 0 },
+        recommendations: [item],
+      });
 
     render(
       <MemoryRouter initialEntries={['/leads']}>

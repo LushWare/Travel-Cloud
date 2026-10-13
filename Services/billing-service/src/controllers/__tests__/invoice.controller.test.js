@@ -1,12 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const {
-  mockFindUnique, mockFindMany, mockCount, mockUpdate,
+  mockFindUnique, mockFindMany, mockCount, mockAggregate, mockQueryRaw, mockUpdate,
   mockGeneratePDF, mockSendEmail, mockSendWhatsapp, mockUpload, mockLogLeadCommunication,
 } = vi.hoisted(() => ({
   mockFindUnique: vi.fn(),
   mockFindMany: vi.fn(),
   mockCount: vi.fn(),
+  mockAggregate: vi.fn(),
+  mockQueryRaw: vi.fn(),
   mockUpdate: vi.fn(),
   mockGeneratePDF: vi.fn(),
   mockSendEmail: vi.fn(),
@@ -16,7 +18,10 @@ const {
 }));
 
 vi.mock('../../db/client.js', () => ({
-  default: { invoice: { findUnique: mockFindUnique, findMany: mockFindMany, count: mockCount, update: mockUpdate } },
+  default: {
+    invoice: { findUnique: mockFindUnique, findMany: mockFindMany, count: mockCount, aggregate: mockAggregate, update: mockUpdate },
+    $queryRaw: mockQueryRaw,
+  },
 }));
 vi.mock('../../utils/invoicePDFGenerator.js', () => ({ generateInvoicePDF: mockGeneratePDF }));
 vi.mock('../../utils/emailService.js', () => ({ sendInvoiceEmail: mockSendEmail }));
@@ -24,7 +29,7 @@ vi.mock('../../utils/whatsappService.js', () => ({ sendInvoiceWhatsapp: mockSend
 vi.mock('../../utils/cloudinary.js', () => ({ uploadPdfBuffer: mockUpload }));
 vi.mock('../../services/events.client.js', () => ({ logLeadCommunication: mockLogLeadCommunication }));
 
-import { downloadInvoicePDF, getAllInvoices, sendInvoice } from '../invoice.controller.js';
+import { downloadInvoicePDF, getAllInvoices, getInvoiceStats, sendInvoice } from '../invoice.controller.js';
 import AppError from '../../utils/appError.js';
 
 const invoice = {
@@ -73,6 +78,38 @@ describe('getAllInvoices', () => {
     expect(mockFindMany.mock.calls[0][0].where).toEqual({
       id: { in: ['invoice-1', 'invoice-2', 'invoice-3'] },
     });
+  });
+});
+
+describe('getInvoiceStats', () => {
+  it('returns the outstanding balance for all open invoices', async () => {
+    mockCount.mockResolvedValue(0);
+    mockAggregate
+      .mockResolvedValueOnce({ _sum: { totalAmount: 0 } })
+      .mockResolvedValueOnce({ _sum: { paidAmount: 0 } })
+      .mockResolvedValueOnce({ _sum: { outstandingAmount: 4800 } });
+
+    const { res, nextErr } = await run(getInvoiceStats, {
+      query: {},
+      user: { id: 'admin-1', role: 'admin', isSuperAdmin: false },
+    });
+
+    expect(nextErr).toBeUndefined();
+    expect(res.json.mock.calls[0][0].data.totalOutstanding).toBe(4800);
+    expect(mockAggregate.mock.calls[2][0].where.status.in).toEqual(['sent', 'viewed', 'partial', 'overdue']);
+  });
+
+  it('limits a sales rep outstanding total to invoices for their assigned leads', async () => {
+    mockQueryRaw.mockResolvedValue([{ id: 'lead-7' }]);
+    mockCount.mockResolvedValue(0);
+    mockAggregate.mockResolvedValue({ _sum: { totalAmount: 0, paidAmount: 0, outstandingAmount: 0 } });
+
+    await run(getInvoiceStats, {
+      query: {},
+      user: { id: 'rep-7', role: 'salesRep', isSuperAdmin: false },
+    });
+
+    expect(mockAggregate.mock.calls[2][0].where.leadId).toEqual({ in: ['lead-7'] });
   });
 });
 

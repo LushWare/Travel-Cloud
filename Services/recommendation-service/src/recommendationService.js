@@ -1,6 +1,6 @@
 import { fetchBusinessSignals } from './analyticsClient.js';
 import { generateRecommendations } from './ai/generateRecommendations.js';
-import { buildRecommendations, VERIFIED_RECOMMENDATION_KEYS } from './recommendationEngine.js';
+import { buildRecommendations } from './recommendationEngine.js';
 import prisma from './db/client.js';
 
 const priorityRank = { high: 0, medium: 1, low: 2 };
@@ -31,21 +31,15 @@ export async function refreshRecommendations(actor, requestId, mode = 'ai') {
   const keys = candidates.map((item) => item.key);
 
   await prisma.$transaction(async (tx) => {
-    if (mode === 'ai') {
-      const staleVerifiedKeys = VERIFIED_RECOMMENDATION_KEYS.filter((key) => !keys.includes(key));
-      if (staleVerifiedKeys.length) {
+    if (mode === 'rules') {
+      if (keys.length) {
         await tx.recommendation.updateMany({
-          where: { scopeKey, active: true, key: { in: staleVerifiedKeys } },
+          where: { scopeKey, active: true, key: { notIn: keys } },
           data: { active: false },
         });
+      } else {
+        await tx.recommendation.updateMany({ where: { scopeKey, active: true }, data: { active: false } });
       }
-    } else if (keys.length) {
-      await tx.recommendation.updateMany({
-        where: { scopeKey, active: true, key: { notIn: keys } },
-        data: { active: false },
-      });
-    } else {
-      await tx.recommendation.updateMany({ where: { scopeKey, active: true }, data: { active: false } });
     }
 
     for (const item of candidates) {
@@ -85,26 +79,35 @@ export async function listRecommendations({ actor, module, status = 'active', re
       scopeKey,
       active: true,
       ...(module && module !== 'dashboard' ? { module } : {}),
-      ...(status === 'active' ? { feedback: { none: { actorId: actor.id, status: { in: ['dismissed', 'completed'] } } } } : {}),
-      ...(status === 'reviewed' ? { feedback: { some: { actorId: actor.id, status: 'reviewed' } } } : {}),
-      ...(status === 'dismissed' ? { feedback: { some: { actorId: actor.id, status: 'dismissed' } } } : {}),
-      ...(status === 'completed' ? { feedback: { some: { actorId: actor.id, status: 'completed' } } } : {}),
     },
     include: { feedback: { where: { actorId: actor.id }, take: 1 } },
   });
 
   rows.sort((left, right) => (priorityRank[left.priority] ?? 3) - (priorityRank[right.priority] ?? 3));
+  const allRecommendations = rows.map(({ feedback, ...item }) => ({
+    ...item,
+    relatedRecordIds: Array.isArray(item.relatedRecordIds) ? item.relatedRecordIds : [],
+    evidence: Array.isArray(item.evidence) ? item.evidence : [],
+    action: item.action,
+    viewerStatus: feedback[0]?.status ?? 'new',
+  }));
+  const counts = {
+    active: allRecommendations.filter(({ viewerStatus }) => !['reviewed', 'completed', 'dismissed'].includes(viewerStatus)).length,
+    reviewed: allRecommendations.filter(({ viewerStatus }) => viewerStatus === 'reviewed').length,
+  };
+  const recommendations = allRecommendations.filter(({ viewerStatus }) => {
+    if (status === 'active') return !['reviewed', 'completed', 'dismissed'].includes(viewerStatus);
+    if (status === 'reviewed') return viewerStatus === 'reviewed';
+    if (status === 'dismissed' || status === 'completed') return viewerStatus === status;
+    return true;
+  });
+
   return {
     scope: baseScopeKey(actor) === 'agency' ? 'agency' : 'own',
     mode,
     sourceAsOf,
-    recommendations: rows.map(({ feedback, ...item }) => ({
-      ...item,
-      relatedRecordIds: Array.isArray(item.relatedRecordIds) ? item.relatedRecordIds : [],
-      evidence: Array.isArray(item.evidence) ? item.evidence : [],
-      action: item.action,
-      viewerStatus: feedback[0]?.status ?? 'new',
-    })),
+    counts,
+    recommendations,
   };
 }
 

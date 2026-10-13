@@ -5,41 +5,6 @@ const number = (value) => {
 
 const countOf = (signal) => number(signal?.count);
 const idsOf = (signal) => Array.isArray(signal?.ids) ? signal.ids.filter(Boolean) : [];
-const recommendationSignals = Object.freeze({
-  'quotes.unconverted': ['unconvertedQuotes'],
-  'bookings.departures-outstanding': ['departuresOutstanding'],
-  'leads.unassigned': ['unassignedLeads'],
-  'leads.quoted-silence': ['quotedSilence'],
-  'leads.cold': ['coldLeads'],
-  'leads.stalled-drafting': ['stalledDrafting'],
-  'billing.expiring-quotes': ['expiringQuotes'],
-  'billing.overdue-invoices': ['agingOverdue'],
-  'billing.partial-payments': ['partialAging'],
-  'billing.low-margin-bookings': ['lowMarginBookings'],
-  'bookings.voucher-missing': ['voucherMissing'],
-  'billing.no-deposit': ['noDeposit'],
-  'packages.no-recent-inquiries': ['silentPackages'],
-  'packages.low-recorded-bookings': ['packagesLowBookings'],
-  'packages.low-views': ['packagesLowViews'],
-  'packages.low-inquiries': ['packagesLowInquiries'],
-  'packages.low-conversion': ['packagesLowConversions'],
-  'packages.no-confirmed-conversions': ['packagesNoConversions'],
-  'packages.below-median-rating': ['packagesLowRating'],
-  'packages.below-median-reviews': ['packagesLowReviews'],
-  'quotes.lost-value': ['lostQuotes'],
-  'customers.lapsed-repeat': ['lapsedCustomers'],
-  'flights.upcoming-unticketed': ['flightsNeedingReview'],
-  'hotels.unresolved-statuses': ['hotelOverview', 'hotelsNeedingReview'],
-  'hotels.upcoming-unconfirmed': ['hotelsNeedingReview'],
-  'users.unverified-accounts': ['unverifiedCustomerAccounts'],
-  'analytics.past-travel-still-confirmed': ['bookingOverview'],
-  'analytics.aging-pending-bookings': ['bookingOverview'],
-  'revenue.destination-concentration': ['destinationConcentration'],
-  'analytics.conversion-decline': ['conversionTrend'],
-  'analytics.response-time-increasing': ['responseTimeTrend'],
-  'analytics.cancellation-increase': ['cancellationSpike'],
-});
-export const VERIFIED_RECOMMENDATION_KEYS = Object.freeze(Object.keys(recommendationSignals));
 
 function recommendation({
   key,
@@ -63,7 +28,6 @@ function recommendation({
     evidence,
     relatedRecordIds: idsOf(signal),
     action: { label: actionLabel, module, ...(actionTab ? { tab: actionTab } : {}) },
-    sourceSignals: recommendationSignals[key] || [],
   };
 }
 

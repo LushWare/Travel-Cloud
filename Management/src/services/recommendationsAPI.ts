@@ -49,6 +49,7 @@ export function fetchRecommendations(options: { module?: string; status?: string
     scope: 'agency' | 'own';
     mode: RecommendationMode;
     sourceAsOf: string;
+    counts: { active: number; reviewed: number };
     recommendations: BusinessRecommendation[];
   }>;
 }

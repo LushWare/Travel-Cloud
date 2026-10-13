@@ -117,7 +117,7 @@ const ItineraryGenerationContainer = () => {
   const statusTabs = [
     { id: null, label: 'All Packages', count: stats.total },
     { id: 'active', label: 'Active', count: stats.active },
-    { id: 'featured', label: 'Featured', count: stats.featured },
+    { id: 'drafts', label: 'Drafts', count: Math.max(0, stats.total - stats.active) },
   ];
 
   /**
@@ -148,19 +148,18 @@ const ItineraryGenerationContainer = () => {
         if (linkedPackageIds) {
           params.ids = linkedPackageIds;
         } else {
+          if (statusFilter === null) params.draftsLast = true;
           if (statusFilter === 'active') params.isActive = true;
-          if (statusFilter === 'featured') params.isFeatured = true;
+          if (statusFilter === 'drafts') params.isActive = false;
         }
 
-        const response = isSalesRep
-          ? await ApiService.getPackagesProtected(params)
-          : await ApiService.getPackages(params);
+        const response = await ApiService.getPackagesProtected(params);
 
         if (response.success && Array.isArray(response.data)) {
           setPackages(response.data);
-          if (response.pagination) {
-            setPagination(response.pagination);
-          }
+          const total = Number(response.pagination?.total ?? response.total ?? response.count ?? response.data.length);
+          const pages = Number(response.pagination?.totalPages ?? response.pagination?.pages) || Math.max(1, Math.ceil(total / itemsPerPage));
+          setPagination({ pages, total });
         }
       } catch (error) {
         console.error('Error loading packages:', error);
@@ -628,7 +627,7 @@ const ItineraryGenerationContainer = () => {
     <div className="min-h-screen bg-background">
       <PageHeader
         title={linkedPackageIds ? 'Linked Packages' : statusFilter ? `${statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)} Packages` : 'All Packages'}
-        subtitle={`${linkedPackageIds ? (pagination?.total ?? filteredPackages.length) : filteredPackages.length} packages found`}
+        subtitle={`${searchTerm ? filteredPackages.length : pagination?.total ?? filteredPackages.length} packages found`}
         actions={
           <>
             <Tabs value={viewMode} onValueChange={(value) => value && setViewMode(value as 'grid' | 'list')}>

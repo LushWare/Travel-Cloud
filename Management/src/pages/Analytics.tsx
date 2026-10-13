@@ -140,19 +140,6 @@ const Analytics = () => {
               );
             })}
           </nav>
-
-          {/* Footer Info */}
-          <div className="p-4 border-t border-border">
-            <div className="p-4 bg-muted/50 rounded-lg border border-border">
-              <div className="flex items-center gap-2 mb-2">
-                <Layers className="w-4 h-4 text-muted-foreground" />
-                <span className="text-xs font-semibold text-foreground">Quick Tip</span>
-              </div>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Use time filters in each report to analyze specific periods.
-              </p>
-            </div>
-          </div>
         </div>
 
         {/* Main Content Area */}

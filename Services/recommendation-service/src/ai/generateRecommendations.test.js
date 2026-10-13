@@ -49,22 +49,23 @@ beforeEach(() => {
 });
 
 describe('generateRecommendations', () => {
-  it('prefers a stable measured finding and analyzes the complete sanitized signal set', async () => {
+  it('returns Gemini recommendations after validating evidence from the complete sanitized signal set', async () => {
     const [result] = await generateRecommendations(source);
 
     expect(result).toMatchObject({
-      key: 'leads.cold',
       module: 'leads',
       category: 'sales',
-      priority: 'medium',
-      title: 'Review leads without recent activity',
+      priority: 'high',
+      title: 'Follow up on cold leads',
+      summary: 'High-value leads have had no recent update.',
       evidence: [
-        { label: 'Active leads', value: 2 },
-        { label: 'Oldest activity gap', value: '9 days' },
+        { label: 'Cold Leads: Count', value: 2 },
+        { label: 'Cold Leads: Oldest Age Days', value: 9 },
       ],
       relatedRecordIds: ['private-lead-1', 'private-lead-2'],
       action: { label: 'Review leads', module: 'leads' },
     });
+    expect(result.key).toMatch(/^ai\.leads\./);
 
     const prompt = mockGenerateContent.mock.calls[0][0].contents;
     expect(signalNames).toHaveLength(37);
@@ -75,18 +76,22 @@ describe('generateRecommendations', () => {
     expect(prompt).not.toContain('private note');
   });
 
-  it('allows AI to return no findings when it detects no actionable evidence', async () => {
+  it('does not add rule-based findings when Gemini returns no recommendations', async () => {
     mockGenerateContent.mockResolvedValueOnce({ text: JSON.stringify({ recommendations: [] }) });
 
-    const noFindingSource = {
-      ...source,
-      signals: { ...source.signals, coldLeads: { count: 0, oldestAgeDays: 0, ids: [] } },
-    };
-    await expect(generateRecommendations(noFindingSource)).resolves.toEqual([]);
+    await expect(generateRecommendations(source)).resolves.toEqual([]);
   });
 
   it('keeps the same actionable flight recommendation as its measured count changes', async () => {
-    mockGenerateContent.mockResolvedValue({ text: JSON.stringify({ recommendations: [] }) });
+    const flightFinding = aiRecommendation({
+      key: 'flights.upcoming-review',
+      module: 'flights',
+      title: 'Review upcoming flight bookings',
+      summary: 'Upcoming flights need a ticketing review.',
+      evidence: [{ signal: 'flightsNeedingReview', field: 'count' }],
+      actionTab: 'bookings',
+    });
+    mockGenerateContent.mockResolvedValue({ text: JSON.stringify({ recommendations: [flightFinding] }) });
     const signals = {
       ...source,
       signals: {
@@ -95,19 +100,19 @@ describe('generateRecommendations', () => {
       },
     };
 
-    const first = (await generateRecommendations(signals)).find(({ key }) => key === 'flights.upcoming-unticketed');
+    const first = (await generateRecommendations(signals)).find(({ module }) => module === 'flights');
     const updated = (await generateRecommendations({
       ...signals,
       signals: { ...signals.signals, flightsNeedingReview: { ...signals.signals.flightsNeedingReview, count: 15 } },
-    })).find(({ key }) => key === 'flights.upcoming-unticketed');
+    })).find(({ module }) => module === 'flights');
 
-    expect(first.key).toBe('flights.upcoming-unticketed');
-    expect(first.evidence).toContainEqual({ label: 'Flight bookings', value: 16 });
+    expect(first.key).toMatch(/^ai\.flights\./);
+    expect(first.evidence).toContainEqual({ label: 'Flights Needing Review: Count', value: 16 });
     expect(updated.key).toBe(first.key);
-    expect(updated.evidence).toContainEqual({ label: 'Flight bookings', value: 15 });
+    expect(updated.evidence).toContainEqual({ label: 'Flights Needing Review: Count', value: 15 });
   });
 
-  it('keeps actionable hotel recommendations when Gemini returns no findings', async () => {
+  it('does not inject hotel recommendations when Gemini returns no findings', async () => {
     mockGenerateContent.mockResolvedValueOnce({ text: JSON.stringify({ recommendations: [] }) });
     const hotelSignals = {
       ...source,
@@ -120,14 +125,10 @@ describe('generateRecommendations', () => {
 
     const recommendations = await generateRecommendations(hotelSignals);
 
-    expect(recommendations).toContainEqual(expect.objectContaining({
-      key: 'hotels.unresolved-statuses',
-      module: 'hotels',
-      evidence: expect.arrayContaining([{ label: 'Pending hotel bookings', value: 2 }]),
-    }));
+    expect(recommendations).toEqual([]);
   });
 
-  it('keeps verified findings across business modules when Gemini returns no findings', async () => {
+  it('does not inject rule findings from any module into AI mode', async () => {
     mockGenerateContent.mockResolvedValueOnce({ text: JSON.stringify({ recommendations: [] }) });
     const multiModuleSignals = {
       ...source,
@@ -144,18 +145,7 @@ describe('generateRecommendations', () => {
       },
     };
 
-    const recommendations = await generateRecommendations(multiModuleSignals);
-    const keys = recommendations.map(({ key }) => key);
-
-    expect(keys).toEqual(expect.arrayContaining([
-      'leads.unassigned',
-      'billing.overdue-invoices',
-      'packages.low-views',
-      'flights.upcoming-unticketed',
-      'hotels.upcoming-unconfirmed',
-      'users.unverified-accounts',
-      'analytics.past-travel-still-confirmed',
-    ]));
+    await expect(generateRecommendations(multiModuleSignals)).resolves.toEqual([]);
   });
 
   it('keeps an AI-only recommendation key stable when Gemini changes its proposed key', async () => {
@@ -276,25 +266,25 @@ describe('generateRecommendations', () => {
       },
     };
 
-    const result = (await generateRecommendations(packageSignals)).find(({ key }) => key === 'packages.low-conversion');
+    const result = (await generateRecommendations(packageSignals)).find(({ module }) => module === 'packages');
 
     expect(result).toMatchObject({
-      key: 'packages.low-conversion',
       module: 'packages',
       relatedRecordIds: ['private-package-1', 'private-package-2'],
       evidence: [
-        { label: 'Below-median packages', value: 2 },
-        { label: 'Average confirmed conversion, 90 days', value: 10 },
-        { label: 'Package median conversion', value: 40 },
-        { label: 'Qualified packages', value: 8 },
+        { label: 'Packages Low Conversions: Count', value: 2 },
+        { label: 'Packages Low Conversions: Average Conversion Rate 90 Days', value: 10 },
+        { label: 'Packages Low Conversions: Benchmark Conversion Rate 90 Days', value: 40 },
+        { label: 'Packages Low Conversions: Qualified Packages', value: 8 },
       ],
     });
+    expect(result.key).toMatch(/^ai\.packages\./);
     const prompt = mockGenerateContent.mock.calls[0][0].contents;
     expect(prompt).toContain('packagesLowConversions');
     expect(prompt).not.toContain('private-package-1');
   });
 
-  it('adds evidence-backed package findings when Gemini returns only lead recommendations', async () => {
+  it('does not append hardcoded package findings to Gemini output', async () => {
     const packageSignals = {
       ...source,
       signals: {
@@ -312,23 +302,12 @@ describe('generateRecommendations', () => {
 
     const recommendations = await generateRecommendations(packageSignals);
 
-    expect(recommendations.filter(({ module }) => module === 'packages').map(({ key }) => key)).toEqual([
-      'packages.no-recent-inquiries',
-      'packages.low-recorded-bookings',
-      'packages.low-views',
-      'packages.low-inquiries',
-      'packages.low-conversion',
-      'packages.no-confirmed-conversions',
-      'packages.below-median-rating',
-      'packages.below-median-reviews',
-    ]);
-    expect(recommendations.find(({ key }) => key === 'packages.low-recorded-bookings')?.relatedRecordIds)
-      .toEqual(['pkg-booking-1']);
-    expect(recommendations.find(({ key }) => key === 'packages.no-confirmed-conversions')?.relatedRecordIds)
-      .toEqual(['pkg-no-conversion-1']);
+    expect(recommendations).toHaveLength(1);
+    expect(recommendations[0].module).toBe('leads');
+    expect(recommendations.some(({ module }) => module === 'packages')).toBe(false);
   });
 
-  it('reserves recommendation capacity for package findings when Gemini fills its response limit', async () => {
+  it('deduplicates repeated AI findings without adding package rules', async () => {
     mockGenerateContent.mockResolvedValueOnce({
       text: JSON.stringify({ recommendations: Array.from({ length: 30 }, (_, index) => aiRecommendation({
         key: `leads.finding-${index}`,
@@ -355,12 +334,9 @@ describe('generateRecommendations', () => {
 
     const recommendations = await generateRecommendations(packageSignals);
 
-    expect(recommendations).toHaveLength(30);
-    expect(recommendations.filter(({ module }) => module === 'dashboard')).toHaveLength(29);
-    expect(recommendations.at(-1)).toMatchObject({
-      key: 'packages.below-median-rating',
-      relatedRecordIds: ['pkg-low-rating'],
-    });
+    expect(recommendations).toHaveLength(1);
+    expect(recommendations[0]).toMatchObject({ module: 'dashboard', key: expect.stringMatching(/^ai\.dashboard\./) });
+    expect(recommendations.some(({ module }) => module === 'packages')).toBe(false);
   });
 
   it('generates a booking insight from lifecycle, payment, and upcoming-travel aggregates', async () => {
@@ -460,17 +436,18 @@ describe('generateRecommendations', () => {
       },
     };
 
-    const result = (await generateRecommendations(userSignals)).find(({ key }) => key === 'users.unverified-accounts');
+    const result = (await generateRecommendations(userSignals)).find(({ module }) => module === 'users');
 
     expect(result).toMatchObject({
       module: 'users',
       relatedRecordIds: ['customer-a', 'customer-b'],
       evidence: [
-        { label: 'Unverified customers', value: 5 },
-        { label: 'Unverified rate', value: '16.7%' },
+        { label: 'Unverified Customer Accounts: Count', value: 5 },
+        { label: 'Unverified Customer Accounts: Rate Pct', value: 16.7 },
       ],
-      action: { label: 'Review customers', module: 'users', tab: 'website-users' },
+      action: { label: 'Review users', module: 'users', tab: 'website-users' },
     });
+    expect(result.key).toMatch(/^ai\.users\./);
   });
 
   it('drops recommendations that cite fields analytics did not supply', async () => {
@@ -504,7 +481,8 @@ describe('generateRecommendations', () => {
 
     const recommendations = await generateRecommendations(source);
 
-    expect(recommendations.map(({ key }) => key)).toEqual(['leads.cold']);
+    expect(recommendations).toHaveLength(1);
+    expect(recommendations[0].key).toMatch(/^ai\.leads\./);
   });
 
   it('keeps a recommendation whose cited signal supports its time-window threshold', async () => {
@@ -514,16 +492,19 @@ describe('generateRecommendations', () => {
       })] }),
     });
 
-    await expect(generateRecommendations(source)).resolves.toContainEqual(expect.objectContaining({ key: 'leads.cold' }));
+    const [recommendation] = await generateRecommendations(source);
+    expect(recommendation.key).toMatch(/^ai\.leads\./);
   });
 
-  it('drops recommendations whose module does not match the cited evidence', async () => {
+  it('allows Gemini to route grounded evidence to another supported module', async () => {
     mockGenerateContent.mockResolvedValueOnce({
       text: JSON.stringify({ recommendations: [aiRecommendation({ module: 'billing' })] }),
     });
 
-    const noLeadFindings = { ...source, signals: { ...source.signals, coldLeads: { count: 0, oldestAgeDays: 0, ids: [] } } };
-    await expect(generateRecommendations(noLeadFindings)).resolves.toEqual([]);
+    const [recommendation] = await generateRecommendations(source);
+
+    expect(recommendation).toMatchObject({ module: 'billing', action: { module: 'billing' } });
+    expect(recommendation.key).toMatch(/^ai\.billing\./);
   });
 
   it('fails explicitly when the AI provider is not configured', async () => {

@@ -73,7 +73,6 @@ const LeadManagement = () => {
   const [filterStatus, setFilterStatus] = useState<FilterKey>("all");
   const [filterTravelDateStart, setFilterTravelDateStart] = useState("");
   const [filterTravelDateEnd, setFilterTravelDateEnd] = useState("");
-  const [filterPlatforms, setFilterPlatforms] = useState<string[]>([]);
   const [filterSources, setFilterSources] = useState<string[]>([]);
   const [filterAi, setFilterAi] = useState<string[]>([]);
 
@@ -184,7 +183,7 @@ const LeadManagement = () => {
   useEffect(() => {
     fetchLeads();
     fetchLeadStats();
-  }, [debouncedSearch, filterStatus, filterTravelDateStart, filterTravelDateEnd, filterPlatforms, filterSources, filterAi, currentPage, idsParam]);
+  }, [debouncedSearch, filterStatus, filterTravelDateStart, filterTravelDateEnd, filterSources, filterAi, currentPage, idsParam]);
 
   useEffect(() => {
     if (!idsParam || !recommendationFocus || loading) return;
@@ -245,7 +244,6 @@ const LeadManagement = () => {
         if (filterTravelDateStart) params['travelDate[gte]'] = filterTravelDateStart;
         if (filterTravelDateEnd) params['travelDate[lte]'] = filterTravelDateEnd;
         if (filterSources.length > 0) params.source = filterSources.join(',');
-        if (filterPlatforms.length > 0) params.platform = filterPlatforms.join(',');
         if (filterAi.includes('aiHandled')) params.aiHandled = 'true';
         if (filterAi.includes('needsRepFollowup')) params.needsRepFollowup = 'true';
         if (filterAi.includes('aiVerified')) params.aiVerified = 'true';
@@ -497,13 +495,18 @@ const LeadManagement = () => {
                 filterStatus={filterStatus}
                 setFilterStatus={setFilterStatus}
                 statusCounts={statusCounts}
-                filterSources={filterSources}
-                setFilterSources={setFilterSources}
-                filterPlatforms={filterPlatforms}
-                setFilterPlatforms={setFilterPlatforms}
-                filterAi={filterAi}
-                setFilterAi={setFilterAi}
                 onAdvancedFilterClick={() => setShowFilterDialog(true)}
+                onClearFilters={() => {
+                  setSearchTerm('');
+                  setDebouncedSearch('');
+                  setFilterStatus('all');
+                  setFilterTravelDateStart('');
+                  setFilterTravelDateEnd('');
+                  setFilterSources([]);
+                  setFilterAi([]);
+                  setCurrentPage(1);
+                }}
+                activeFilterCount={filterSources.length + filterAi.length + Number(Boolean(filterTravelDateStart || filterTravelDateEnd))}
               />
             )}
 
@@ -643,8 +646,10 @@ const LeadManagement = () => {
         setFilterTravelDateStart={setFilterTravelDateStart}
         filterTravelDateEnd={filterTravelDateEnd}
         setFilterTravelDateEnd={setFilterTravelDateEnd}
-        filterPlatforms={filterPlatforms}
-        setFilterPlatforms={setFilterPlatforms}
+        filterSources={filterSources}
+        setFilterSources={setFilterSources}
+        filterAi={filterAi}
+        setFilterAi={setFilterAi}
       />
 
       <SettingsDialog

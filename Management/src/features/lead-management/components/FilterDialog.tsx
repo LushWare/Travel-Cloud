@@ -1,15 +1,24 @@
-import { Calendar, Globe, Check } from 'lucide-react';
+import { AlertTriangle, Calendar, Check, CheckCircle2, Globe, Sparkles } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 
-const platformOptions = [
-  { id: 'Website Form', label: 'Website' },
-  { id: 'Social Media', label: 'Social' },
-  { id: 'Phone Call', label: 'Phone' },
-  { id: 'Referral', label: 'Referral' },
-  { id: 'Email', label: 'Email' },
-  { id: 'Walk-in', label: 'Walk-in' },
+const SOURCE_OPTIONS = [
+  { id: 'website', label: 'Website' },
+  { id: 'social_media', label: 'Social Media' },
+  { id: 'phone_call', label: 'Phone Call' },
+  { id: 'email', label: 'Email' },
+  { id: 'referral', label: 'Referral' },
+  { id: 'walk_in', label: 'Walk-in' },
+  { id: 'booking', label: 'Booking' },
+  { id: 'chatbot', label: 'Chatbot' },
+  { id: 'other', label: 'Other' },
+];
+
+const AI_OPTIONS = [
+  { id: 'needsRepFollowup', label: 'Needs check', icon: AlertTriangle },
+  { id: 'aiHandled', label: 'AI handled', icon: Sparkles },
+  { id: 'aiVerified', label: 'AI verified', icon: CheckCircle2 },
 ];
 
 interface FilterDialogProps {
@@ -19,8 +28,10 @@ interface FilterDialogProps {
   setFilterTravelDateStart: (value: string) => void;
   filterTravelDateEnd: string;
   setFilterTravelDateEnd: (value: string) => void;
-  filterPlatforms: string[];
-  setFilterPlatforms: (value: string[]) => void;
+  filterSources: string[];
+  setFilterSources: (value: string[]) => void;
+  filterAi: string[];
+  setFilterAi: (value: string[]) => void;
 }
 
 const FilterDialog = ({
@@ -30,33 +41,30 @@ const FilterDialog = ({
   setFilterTravelDateStart,
   filterTravelDateEnd,
   setFilterTravelDateEnd,
-  filterPlatforms,
-  setFilterPlatforms,
+  filterSources,
+  setFilterSources,
+  filterAi,
+  setFilterAi,
 }: FilterDialogProps) => {
-  const handlePlatformToggle = (platform: string) => {
-    if (filterPlatforms.includes(platform)) {
-      setFilterPlatforms(filterPlatforms.filter((p) => p !== platform));
-    } else {
-      setFilterPlatforms([...filterPlatforms, platform]);
-    }
-  };
-
   const clearFilters = () => {
     setFilterTravelDateStart('');
     setFilterTravelDateEnd('');
-    setFilterPlatforms([]);
+    setFilterSources([]);
+    setFilterAi([]);
   };
 
-  const hasActiveFilters = filterTravelDateStart || filterTravelDateEnd || filterPlatforms.length > 0;
+  const hasActiveFilters = Boolean(
+    filterTravelDateStart || filterTravelDateEnd || filterSources.length || filterAi.length
+  );
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Advanced Filters</DialogTitle>
+          <DialogTitle>Lead Filters</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-6">
+        <div className="space-y-5">
           {/* Travel Date Range */}
           <div>
             <label className="flex items-center gap-2 text-sm font-medium text-foreground mb-3">
@@ -84,25 +92,48 @@ const FilterDialog = ({
             </div>
           </div>
 
-          {/* Platform Filter */}
+          <div className="grid gap-5 sm:grid-cols-2">
+            <div>
+              <label className="mb-2 flex items-center gap-2 text-sm font-medium text-foreground">
+                <Globe className="h-4 w-4 text-muted-foreground" />
+                Lead Source
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                {SOURCE_OPTIONS.map(({ id, label }) => {
+                  const selected = filterSources.includes(id);
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      aria-pressed={selected}
+                      onClick={() => setFilterSources(selected ? filterSources.filter((value) => value !== id) : [...filterSources, id])}
+                      className={`inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors ${selected ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-muted/70'}`}
+                    >
+                      {selected && <Check className="h-3.5 w-3.5" />}
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+          </div>
+
           <div>
-            <label className="flex items-center gap-2 text-sm font-medium text-foreground mb-3">
-              <Globe className="w-4 h-4 text-muted-foreground" />
-              Lead Source
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {platformOptions.map((platform) => {
-                const isSelected = filterPlatforms.includes(platform.id);
+            <p className="mb-2 text-sm font-medium text-foreground">Voice Agent</p>
+            <div className="flex flex-wrap gap-1.5">
+              {AI_OPTIONS.map(({ id, label, icon: Icon }) => {
+                const selected = filterAi.includes(id);
                 return (
                   <button
-                    key={platform.id}
-                    onClick={() => handlePlatformToggle(platform.id)}
-                    className={`flex h-8 items-center gap-1.5 px-3 rounded-lg text-sm font-medium transition-colors ${
-                      isSelected ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-muted/70'
-                    }`}
+                    key={id}
+                    type="button"
+                    aria-pressed={selected}
+                    onClick={() => setFilterAi(selected ? filterAi.filter((value) => value !== id) : [...filterAi, id])}
+                    className={`inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors ${selected ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-muted/70'}`}
                   >
-                    {isSelected && <Check className="w-3.5 h-3.5" />}
-                    {platform.label}
+                    <Icon className="h-3.5 w-3.5" />
+                    {label}
                   </button>
                 );
               })}
@@ -116,7 +147,8 @@ const FilterDialog = ({
                 Active filters:
                 {filterTravelDateStart && ` From ${filterTravelDateStart}`}
                 {filterTravelDateEnd && ` To ${filterTravelDateEnd}`}
-                {filterPlatforms.length > 0 && ` • ${filterPlatforms.length} source(s)`}
+                {filterSources.length > 0 && ` • ${filterSources.length} source(s)`}
+                {filterAi.length > 0 && ` • ${filterAi.length} Voice Agent filter(s)`}
               </p>
             </div>
           )}

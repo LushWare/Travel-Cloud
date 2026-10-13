@@ -250,14 +250,12 @@ export default function SalesRepLogin() {
     <div className="min-h-screen flex items-center justify-center bg-background px-4 sm:px-6 lg:px-8">
       <div className="w-full max-w-md">
         <div className="text-center mb-6 sm:mb-8">
-          <img
-            src="/logo-full.png"
-            alt={getLoginBranding().title}
-            className="h-14 w-auto max-w-[240px] mx-auto mb-5 object-contain"
-          />
-          <h1 className="font-heading text-2xl sm:text-3xl font-bold text-foreground mb-1">
-            {getLoginBranding().title}
-          </h1>
+          <div className="mb-2 flex items-center justify-center gap-3">
+            <img src="/logo.jpeg" alt="" className="h-10 w-10 shrink-0 object-contain" />
+            <h1 className="font-heading text-xl font-bold text-foreground">
+              {getLoginBranding().title}
+            </h1>
+          </div>
           <p className="text-muted-foreground text-sm">Sales Representative Portal</p>
         </div>
 

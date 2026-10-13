@@ -36,13 +36,13 @@ vi.mock('@/lib/toast', () => ({ default: { loading: vi.fn(), dismiss: vi.fn(), s
 
 import DashboardContainer from '../DashboardContainer.tsx';
 
-const leadOverview = { stats: { totalLeads: 55 }, trend: [{ label: 'Jul', new: 10 }, { label: 'Aug', new: 20 }], destinationPerformance: [] };
+const leadOverview = { stats: { totalLeads: 55, allTimeTotalLeads: 80 }, trend: [{ label: 'Jul', new: 10 }, { label: 'Aug', new: 20 }], destinationPerformance: [] };
 const packageOverview = { stats: { totalItineraries: 14 }, destinationPerformance: [{ destination: 'Bali', inquiries: 5 }] };
 const billingOverview = {
-  stats: { totalOutstanding: 3000, pendingInvoices: 2, totalPotentialRevenue: 1000, totalRevenue: 9000 },
+  stats: { totalOutstanding: 1200, currentOutstanding: 4800, pendingInvoices: 2, currentPendingInvoices: 5, totalPotentialRevenue: 1000, totalRevenue: 9000 },
   revenueTrend: [{ label: 'Jul', revenue: 4000, target: 4000 }, { label: 'Aug', revenue: 9000, target: 4000 }],
 };
-const userOverview = { stats: { totalUsers: 12, activeUsers: 9, inactiveUsers: 3 }, roleDistribution: [] };
+const userOverview = { stats: { totalUsers: 12, allTimeTotalUsers: 90, activeUsers: 9, inactiveUsers: 3 }, roleDistribution: [] };
 
 function setRole(role, permissions = []) {
   mockUseAuth.mockReturnValue({ user: { name: 'Test User', role } });
@@ -63,16 +63,20 @@ describe('DashboardContainer', () => {
     setRole('admin', ['manage_billing', 'view_reports']);
     render(<DashboardContainer />);
 
-    await waitFor(() => expect(screen.getByText('55')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('80')).toBeInTheDocument());
     expect(screen.getByText('14')).toBeInTheDocument();
     expect(screen.getAllByText('12').length).toBeGreaterThan(0);
+    expect(screen.getByText('Total Leads')).toBeInTheDocument();
+    expect(screen.getByText('90')).toBeInTheDocument();
+    expect(screen.getAllByText('New Users').length).toBeGreaterThan(0);
+    expect(screen.getByText('Collected Revenue')).toBeInTheDocument();
   });
 
   it('never renders a fabricated trend percentage', async () => {
     setRole('admin', ['manage_billing', 'view_reports']);
     render(<DashboardContainer />);
 
-    await waitFor(() => expect(screen.getByText('55')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('80')).toBeInTheDocument());
     for (const fake of ['+12%', '+5%', '+23%', '-15%', '+8%']) {
       expect(screen.queryByText(fake)).not.toBeInTheDocument();
     }

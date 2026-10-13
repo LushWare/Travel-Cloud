@@ -27,7 +27,6 @@ vi.mock('./analyticsClient.js', () => ({ fetchBusinessSignals: mockFetchBusiness
 vi.mock('./ai/generateRecommendations.js', () => ({ generateRecommendations: mockGenerateRecommendations }));
 vi.mock('./recommendationEngine.js', () => ({
   buildRecommendations: mockBuildRecommendations,
-  VERIFIED_RECOMMENDATION_KEYS: ['verified.finding', 'verified.old-finding'],
 }));
 
 import { listRecommendations } from './recommendationService.js';
@@ -89,15 +88,8 @@ describe('recommendation mode persistence', () => {
         priority: 'high',
       }),
     }));
-    expect(mockRecommendationUpdateMany).toHaveBeenNthCalledWith(1, {
-      where: {
-        scopeKey: 'v10:agency:ai',
-        active: true,
-        key: { in: ['verified.finding', 'verified.old-finding'] },
-      },
-      data: { active: false },
-    });
-    expect(mockRecommendationUpdateMany).toHaveBeenNthCalledWith(2, {
+    expect(mockRecommendationUpdateMany).toHaveBeenCalledTimes(1);
+    expect(mockRecommendationUpdateMany).toHaveBeenCalledWith({
       where: { scopeKey: 'v10:agency:rules', active: true, key: { notIn: ['verified.finding'] } },
       data: { active: false },
     });
@@ -107,6 +99,36 @@ describe('recommendation mode persistence', () => {
     }));
     expect(mockRunUpsert).toHaveBeenCalledWith(expect.objectContaining({ where: { scopeKey: 'v10:agency:ai' } }));
     expect(mockRunUpsert).toHaveBeenCalledWith(expect.objectContaining({ where: { scopeKey: 'v10:agency:rules' } }));
+  });
+
+  it('excludes reviewed recommendations from Active and returns them in Reviewed', async () => {
+    const actor = { id: 'admin-1', role: 'admin', isSuperAdmin: false };
+    const recommendationRow = (id, status) => ({
+      ...aiRecommendation,
+      id,
+      scopeKey: 'v10:agency:ai',
+      sourceAsOf: new Date('2026-10-12T00:00:00.000Z'),
+      active: true,
+      createdAt: new Date('2026-10-12T00:00:00.000Z'),
+      updatedAt: new Date('2026-10-12T00:00:00.000Z'),
+      feedback: status ? [{ status }] : [],
+    });
+    mockPrisma.recommendation.findMany.mockResolvedValue([
+      recommendationRow('unreviewed-id', null),
+      recommendationRow('reviewed-id', 'reviewed'),
+    ]);
+
+    const active = await listRecommendations({ actor, status: 'active', mode: 'ai', requestId: 'request-active' });
+    const reviewed = await listRecommendations({ actor, status: 'reviewed', mode: 'ai', requestId: 'request-reviewed' });
+
+    expect(active.counts).toEqual({ active: 1, reviewed: 1 });
+    expect(active.recommendations.map(({ id }) => id)).toEqual(['unreviewed-id']);
+    expect(reviewed.counts).toEqual({ active: 1, reviewed: 1 });
+    expect(reviewed.recommendations.map(({ id }) => id)).toEqual(['reviewed-id']);
+    expect(mockPrisma.recommendation.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { scopeKey: 'v10:agency:ai', active: true },
+      include: { feedback: { where: { actorId: actor.id }, take: 1 } },
+    }));
   });
 
   it('does not substitute rule-based recommendations when AI generation fails', async () => {
