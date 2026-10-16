@@ -1,16 +1,23 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { Search, ChevronDown, X } from 'lucide-react';
 import { COUNTRIES_PRIORITY } from '../data/countries';
+import { cn } from '../lib/utils';
+
+/** @typedef {{ code: string, name: string, flag?: string }} CountryOption */
 
 /**
  * Searchable country dropdown — shows top 10 initially, filters on keystrokes.
  * Emits ISO alpha-2 code via onChange.
+ * @param {{ value?: string, onChange: (code: string) => void, countries?: CountryOption[], disabled?: boolean, placeholder?: string, className?: string, inputClassName?: string }} props
  */
 export default function CountrySelect({
   value = '',
   onChange,
+  countries = COUNTRIES_PRIORITY,
+  disabled = false,
   placeholder = 'Select country',
   className = '',
+  inputClassName = '',
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -18,22 +25,22 @@ export default function CountrySelect({
   const wrapperRef = useRef(null);
   const inputRef = useRef(null);
 
+  const countryOptions = countries;
+
   // Display name for currently selected country
   const selected = useMemo(
-    () => COUNTRIES_PRIORITY.find((c) => c.code === value),
-    [value],
+    () => countryOptions.find((country) => country.code === value),
+    [countryOptions, value],
   );
 
   // Filtered list — top 10 when empty, filtered when typing
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return COUNTRIES_PRIORITY.slice(0, 10);
-    return COUNTRIES_PRIORITY.filter(
-      (c) =>
-        c.name.toLowerCase().includes(q) ||
-        c.code.toLowerCase().includes(q),
-    ).slice(0, 12);
-  }, [query]);
+    if (!q) return countryOptions;
+    return countryOptions.filter(
+      (country) => country.name.toLowerCase().includes(q) || country.code.toLowerCase().includes(q),
+    );
+  }, [countryOptions, query]);
 
   // Close on outside click
   useEffect(() => {
@@ -50,13 +57,13 @@ export default function CountrySelect({
   // Sync display when value changes externally
   useEffect(() => {
     if (!open) {
-      setQuery(selected ? `${selected.flag} ${selected.name}` : '');
+      setQuery(selected ? (selected.flag ? `${selected.flag} ${selected.name}` : selected.name) : '');
     }
   }, [value, open]);
 
   const select = (country) => {
     onChange(country.code);
-    setQuery(`${country.flag} ${country.name}`);
+    setQuery(country.flag ? `${country.flag} ${country.name}` : country.name);
     setOpen(false);
     setHighlightIdx(-1);
   };
@@ -92,7 +99,7 @@ export default function CountrySelect({
         <input
           ref={inputRef}
           type="text"
-          value={open ? query.replace(/^[^\s]+\s/, '') : query}
+          value={query}
           onChange={(e) => {
             const v = e.target.value;
             setQuery(v);
@@ -102,16 +109,17 @@ export default function CountrySelect({
           }}
           onFocus={() => {
             setOpen(true);
-            setQuery('');
             setHighlightIdx(-1);
           }}
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
+          disabled={disabled}
           autoComplete="off"
-          className="h-8 w-full pl-9 pr-9 py-1 text-sm bg-popover border-2 border-border rounded-xl focus:outline-none focus-visible:border-ring focus-visible:ring-4 focus-visible:ring-ring/10 transition-all"
+          className={cn('h-8 w-full pl-9 pr-9 py-1 text-sm bg-popover border-2 border-border rounded-xl focus:outline-none focus-visible:border-ring focus-visible:ring-4 focus-visible:ring-ring/10 transition-all', inputClassName)}
         />
         <button
           type="button"
+          disabled={disabled}
           tabIndex={-1}
           onClick={() => { setOpen(!open); if (!open) { setQuery(''); inputRef.current?.focus(); } }}
           className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded-lg hover:bg-accent text-muted-foreground transition-colors"
@@ -138,16 +146,11 @@ export default function CountrySelect({
                   idx === highlightIdx ? 'bg-accent text-accent-foreground' : 'text-foreground hover:bg-accent'
                 } ${c.code === value ? 'bg-accent/50 font-medium' : ''}`}
               >
-                <span className="text-base shrink-0">{c.flag}</span>
+                {c.flag && <span className="text-base shrink-0">{c.flag}</span>}
                 <span className="truncate">{c.name}</span>
                 <span className="ml-auto text-xs text-muted-foreground font-mono shrink-0">{c.code}</span>
               </button>
             ))
-          )}
-          {!query && COUNTRIES_PRIORITY.length > 10 && (
-            <div className="px-3 py-1.5 text-xs text-muted-foreground text-center border-t border-border">
-              Type to search all {COUNTRIES_PRIORITY.length} countries
-            </div>
           )}
         </div>
       )}

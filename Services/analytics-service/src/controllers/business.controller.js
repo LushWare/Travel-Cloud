@@ -398,7 +398,7 @@ export const getBusinessSignals = asyncHandler(async (req, res) => {
          SELECT flight.id, MIN(segment."departureAt") AS "nearestDeparture"
          FROM crm_flights."FlightBooking" flight
          JOIN crm_flights."FlightSegment" segment ON segment."flightBookingId" = flight.id
-         WHERE flight.status NOT IN ('ticketed', 'cancelled')
+         WHERE flight.status IN ('pending', 'failed')
            AND segment."departureAt" BETWEEN $1 AND $1::timestamptz + interval '7 days'
            AND ($2::text IS NULL OR flight."createdById" = $2)
          GROUP BY flight.id
@@ -540,10 +540,8 @@ export const getBusinessSignals = asyncHandler(async (req, res) => {
     ),
     pool.query(
       `SELECT COUNT(*) AS "totalFlightBookings",
-        COUNT(*) FILTER (WHERE status = 'quoted') AS "quotedFlights",
         COUNT(*) FILTER (WHERE status = 'pending') AS "pendingFlights",
         COUNT(*) FILTER (WHERE status = 'confirmed') AS "confirmedFlights",
-        COUNT(*) FILTER (WHERE status = 'ticketed') AS "ticketedFlights",
         COUNT(*) FILTER (WHERE status = 'failed') AS "failedFlights",
         COUNT(*) FILTER (WHERE status = 'cancelled') AS "cancelledFlights",
          COUNT(*) FILTER (WHERE EXISTS (
@@ -866,10 +864,8 @@ export const getBusinessSignals = asyncHandler(async (req, res) => {
         },
         flightOverview: {
           totalFlightBookings: numberOf(flightOverview.totalFlightBookings),
-          quotedFlights: numberOf(flightOverview.quotedFlights),
           pendingFlights: numberOf(flightOverview.pendingFlights),
           confirmedFlights: numberOf(flightOverview.confirmedFlights),
-          ticketedFlights: numberOf(flightOverview.ticketedFlights),
           failedFlights: numberOf(flightOverview.failedFlights),
           cancelledFlights: numberOf(flightOverview.cancelledFlights),
           departuresWithin30Days: numberOf(flightOverview.departuresWithin30Days),

@@ -9,6 +9,7 @@ export const PREBOOK_ID_REQUIRED = 'prebookId is required';
 export const BOOKING_ID_REQUIRED = 'bookingId is required';
 export const GUESTS_REQUIRED = 'At least one guest is required';
 export const CONTACT_EMAIL_REQUIRED = 'contact.email is required';
+export const CONTACT_PHONE_REQUIRED = 'contact.phone is required';
 export const BOOKING_NOT_FOUND = 'Hotel booking not found';
 export const BOOKING_ALREADY_CANCELLED = 'Booking is already cancelled';
 

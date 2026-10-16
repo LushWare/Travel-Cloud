@@ -79,7 +79,7 @@ export const SIGNAL_DEFINITIONS = Object.freeze({
   silentPackages: 'Active packages with no package selection during the previous 30 days.',
   quotedSilence: 'Quoted leads with no communication recorded during the previous 7 days.',
   partialAging: 'Partially paid invoices still outstanding and overdue by at least 14 days.',
-  flightsNeedingReview: 'Flight bookings with a segment departing within 7 days whose status is neither ticketed nor cancelled. Confirmed is not the same as ticketed.',
+  flightsNeedingReview: 'Pending or failed flight bookings with a segment departing within 7 days. Confirmed bookings have been provider-confirmed.',
   hotelsNeedingReview: 'Hotel reservations with check-in within 7 days whose status is pending or failed.',
   packagesLowBookings: 'Active packages listed for at least 14 days with recorded lifetime bookings below the package median; includes cohort average and median benchmark.',
   packagesLowViews: 'Active packages listed for at least 14 days with recorded lifetime views below the package median; includes cohort average and median benchmark.',
@@ -211,7 +211,7 @@ export async function generateRecommendations(source) {
             'Look for relative underperformance as well as urgent exceptions. For package and other benchmark signals, compare the measured cohort with its supplied benchmark and distinguish funnel stages (views, inquiries, confirmed leads, recorded bookings, ratings, and reviews). When any package-specific signal has a nonzero count, include actionable package findings and cite those signals. Recommend a practical next investigation or improvement, but never claim a cause the measurements cannot prove.',
             'Return up to 30 concise, non-duplicate recommendations, ordered most important first. Return an empty list only when the data supports no actionable finding. Use a stable lowercase key for recurring findings.',
             'Every recommendation must cite one or more exact signal and scalar field pairs as evidence. Use only the supplied data and stated signal definitions; do not invent counts, dates, amounts, identities, causes, or outcomes. Numbers in a finding must be supported by its cited measurements or cited signal definitions. Never mention names, emails, phone numbers, internal IDs, or free-text notes.',
-            'Choose module and action where staff can investigate the finding. Use only modules: dashboard, leads, packages, flights, hotels, billing, analytics, users, career. For billing actionTab may be quotation, invoice, receipt, or voucher. For flights/hotels it may be bookings. Keep factual phrasing precise: confirmed is not ticketed; a metric is not proof of a cause.',
+            'Choose module and action where staff can investigate the finding. Use only modules: dashboard, leads, packages, flights, hotels, billing, analytics, users, career. For billing actionTab may be quotation, invoice, receipt, or voucher. For flights/hotels it may be bookings. Flight statuses are pending, confirmed, failed, and cancelled; confirmed means provider-confirmed. A metric is not proof of a cause.',
             'For recommendations in the users module, only use the unverifiedCustomerAccounts signal and set actionTab to website-users so staff can review the matching customer records.',
             JSON.stringify({
               asOf: source?.asOf ?? null,
