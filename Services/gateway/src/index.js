@@ -288,6 +288,8 @@ app.use(`${V1}/vacancies`, proxy(SERVICES.career));
 //Retell AI Voice call
 app.use(`${V1}/webhooks/voice`, proxy(SERVICES.voice));
 
+app.use(`${V1}/webhooks/duffel-flights`, proxy(SERVICES.flight));
+
 // Webhooks & notifications → notification-service
 app.use(`${V1}/webhooks`,      proxy(SERVICES.notification));
 app.use(`${V1}/notifications`, proxy(SERVICES.notification));

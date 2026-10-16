@@ -1,4 +1,4 @@
-import type { TravelerForm, TravelerType } from './types';
+import type { DuffelPassenger, TravelerForm, TravelerType } from './types';
 
 export const CABIN_CLASSES = ['Economy', 'Premium Economy', 'Business', 'First'];
 
@@ -14,14 +14,12 @@ export const SORT_OPTIONS: { id: string; label: string }[] = [
   { id: 'stops', label: 'Stops (fewest)' },
 ];
 
-// Grouped by meaning, same convention as StatusBadge (BillingInvoicing) and
-// LeadStatusBadge: cancelled/failed are terminal-negative, confirmed/ticketed
-// are the positive milestone, quoted/pending are still in motion.
-export const STATUS_TABS: { id: 'all' | 'confirmed' | 'pending' | 'cancelled'; label: string }[] = [
+export const STATUS_TABS: { id: 'all' | 'confirmed' | 'pending' | 'cancelled' | 'failed'; label: string }[] = [
   { id: 'all', label: 'All' },
   { id: 'confirmed', label: 'Confirmed' },
   { id: 'pending', label: 'Pending' },
   { id: 'cancelled', label: 'Cancelled' },
+  { id: 'failed', label: 'Failed' },
 ];
 
 export const todayStr = (): string => new Date().toISOString().split('T')[0];
@@ -31,13 +29,58 @@ export const emptyTraveler = (type: TravelerType = 'adult'): TravelerForm => ({
   title: 'Mr',
   firstName: '',
   lastName: '',
+  email: '',
+  phone: '',
   dob: '',
   gender: '',
   passportNumber: '',
   passportExpiry: '',
   nationality: '',
   frequentFlyerNumber: '',
+  mealPreference: 'None',
+  specialAssistance: 'None',
 });
+
+export function buildDuffelPassengers(travelers: TravelerForm[], providerPassengerIds: string[]): DuffelPassenger[] {
+  const infantPassengerIds = travelers
+    .filter((traveler) => traveler.type === 'infant')
+    .map((traveler) => traveler.passengerId)
+    .filter((id): id is string => Boolean(id));
+  let infantIndex = 0;
+
+  return travelers.map((traveler, index) => {
+    const infantPassengerId = traveler.type === 'adult' ? infantPassengerIds[infantIndex++] : undefined;
+    return {
+      id: providerPassengerIds[index],
+      given_name: traveler.firstName,
+      family_name: traveler.lastName,
+      born_on: traveler.dob,
+      email: traveler.email,
+      phone_number: traveler.phone,
+      gender: (traveler.gender || 'M').toLowerCase() as NonNullable<DuffelPassenger['gender']>,
+      title: (traveler.title || 'Mr').toLowerCase() as NonNullable<DuffelPassenger['title']>,
+      ...(infantPassengerId && { infant_passenger_id: infantPassengerId }),
+    };
+  });
+}
+
+export function sanitizeTravelerForBooking(traveler: TravelerForm) {
+  const normalized = { ...traveler };
+  if (typeof normalized.dob === 'string' && normalized.dob.trim()) {
+    const dob = normalized.dob.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dob)) {
+      normalized.dob = dob;
+    } else if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(dob)) {
+      const [month, day, year] = dob.split('/').map(Number);
+      const date = new Date(year, month - 1, day);
+      normalized.dob = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    }
+  }
+
+  return Object.fromEntries(
+    Object.entries(normalized).filter(([, value]) => value !== '' && value !== null && value !== undefined),
+  );
+}
 
 export function fmtDate(iso?: string): string {
   if (!iso) return '-';
@@ -67,13 +110,12 @@ export function fmtMoney(amount?: number, currency?: string): string {
 export const OFFERS_PAGE_SIZE = 20;
 export const BOOKINGS_PAGE_SIZE = 25;
 
-// Same grouping as STATUS_STYLES/STATUS_TABS: confirmed+ticketed is the
-// positive milestone, quoted+pending still in motion, cancelled+failed
-// terminal-negative. An unknown status appears only under All.
+// Each tab matches one persisted provider-backed booking state.
 export const STATUS_BUCKETS = {
-  confirmed: ['confirmed', 'ticketed'],
-  pending: ['quoted', 'pending'],
-  cancelled: ['cancelled', 'failed'],
+  confirmed: ['confirmed'],
+  pending: ['pending'],
+  cancelled: ['cancelled'],
+  failed: ['failed'],
 } as const;
 export type StatusBucket = keyof typeof STATUS_BUCKETS;
 export function statusBucket(bucket: string): StatusBucket | null {

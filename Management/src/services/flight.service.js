@@ -19,11 +19,29 @@ class FlightService {
     }
   }
 
-  async priceOffer(offerId) {
+  async priceOffer(offerId, checkout = {}) {
     try {
-      return await this.api.post('/flights/price', { offerId });
+      return await this.api.post('/flights/price', { offerId, ...checkout });
     } catch (error) {
       console.error('Error pricing flight offer:', error);
+      throw error;
+    }
+  }
+
+  async getCheckoutData(offerId) {
+    try {
+      return await this.api.get(`/flights/offers/${encodeURIComponent(offerId)}/checkout`);
+    } catch (error) {
+      console.error('Error loading flight checkout options:', error);
+      throw error;
+    }
+  }
+
+  async createLinksSession(params = {}) {
+    try {
+      return await this.api.post('/flights/links/session', params);
+    } catch (error) {
+      console.error('Error creating Duffel Links session:', error);
       throw error;
     }
   }
@@ -57,9 +75,19 @@ class FlightService {
 
   async cancelBooking(id, reason) {
     try {
-      return await this.api.post(`/flights/bookings/${id}/cancel`, { reason });
+      const payload = typeof reason === 'object' && reason !== null ? reason : { reason };
+      return await this.api.post(`/flights/bookings/${id}/cancel`, payload);
     } catch (error) {
       console.error('Error cancelling flight booking:', error);
+      throw error;
+    }
+  }
+
+  async createCancellationQuote(id, reason) {
+    try {
+      return await this.api.post(`/flights/bookings/${id}/cancellation-quote`, { reason });
+    } catch (error) {
+      console.error('Error requesting flight cancellation quote:', error);
       throw error;
     }
   }

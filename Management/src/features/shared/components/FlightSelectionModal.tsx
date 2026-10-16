@@ -16,6 +16,7 @@ import { Tabs, TabsList, TabsTrigger } from '../../../components/ui/tabs';
 import { Card } from '../../../components/ui/card';
 import type { TripType, FlightLegSubmission } from '../utils/flightLegDefaults';
 import { apiErrorMessage } from '@/lib/apiErrorMessage';
+import { emptyTraveler, fmtMoney, sanitizeTravelerForBooking, statusBucket, stopsLabel, todayStr } from '@/pages/FlightSearch/helpers';
 
 // ═══════════════════════════════════════════════════════════════════
 //  Types
@@ -28,6 +29,10 @@ interface TravelerForm {
   title: string;
   firstName: string;
   lastName: string;
+  email: string;
+  phone: string;
+  passengerId?: string;
+  infantPassengerId?: string;
   dob: string;
   gender: string;
   passportNumber: string;
@@ -49,6 +54,7 @@ interface FlightSegment {
 
 interface FlightOffer {
   offerId: string;
+  passengerIds?: string[];
   airline?: string;
   airlineCode?: string;
   cabinClass?: string;
@@ -83,21 +89,6 @@ interface FlightSelectionModalProps {
 // ═══════════════════════════════════════════════════════════════════
 //  Helpers
 // ═══════════════════════════════════════════════════════════════════
-const todayStr = () => new Date().toISOString().split('T')[0];
-
-const emptyTraveler = (type: TravelerType = 'adult'): TravelerForm => ({
-  type,
-  title: 'Mr',
-  firstName: '',
-  lastName: '',
-  dob: '',
-  gender: '',
-  passportNumber: '',
-  passportExpiry: '',
-  nationality: '',
-  frequentFlyerNumber: '',
-});
-
 function fmtTime(iso?: string) {
   if (!iso) return '';
   return new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
@@ -108,11 +99,6 @@ function fmtDuration(mins?: number) {
   const h = Math.floor(mins / 60);
   const m = mins % 60;
   return `${h}h ${m > 0 ? `${m}m` : ''}`;
-}
-
-function fmtMoney(amount?: number, currency?: string) {
-  if (amount == null) return '-';
-  return new Intl.NumberFormat(undefined, { style: 'currency', currency: currency || 'USD' }).format(amount);
 }
 
 const CABIN_CLASSES = ['Economy', 'Premium Economy', 'Business', 'First'];
@@ -277,7 +263,12 @@ export default function FlightSelectionModal({
       ...Array.from({ length: searchForm.adults }, () => emptyTraveler('adult')),
       ...Array.from({ length: searchForm.children }, () => emptyTraveler('child')),
       ...Array.from({ length: searchForm.infants }, () => emptyTraveler('infant')),
-    ];
+    ].map((traveler, index) => ({ ...traveler, passengerId: offer.passengerIds?.[index] }));
+    const adultPassengerIds = newTravelers.filter((traveler) => traveler.type === 'adult').map((traveler) => traveler.passengerId).filter(Boolean);
+    let infantGuardianIndex = 0;
+    newTravelers.forEach((traveler) => {
+      if (traveler.type === 'infant') traveler.infantPassengerId = adultPassengerIds[infantGuardianIndex++];
+    });
     setTravelers(newTravelers);
     setBookingStep('travelers');
   }, [searchForm]);
@@ -362,7 +353,19 @@ export default function FlightSelectionModal({
         toast.error('Every traveler needs a first and last name');
         return;
       }
-      if (t.type === 'adult' && !t.gender) {
+      if (!t.dob) {
+        toast.error(`Date of birth is required for traveler ${i + 1}`);
+        return;
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t.email)) {
+        toast.error(`A valid passenger email is required for traveler ${i + 1}`);
+        return;
+      }
+      if (!/^\+[1-9]\d{6,14}$/.test(t.phone)) {
+        toast.error(`Enter traveler ${i + 1}'s phone in international format`);
+        return;
+      }
+      if (!t.gender) {
         toast.error(`Gender is required for traveler ${i + 1}`);
         return;
       }
@@ -380,7 +383,7 @@ export default function FlightSelectionModal({
       const payload = {
         offer: selectedOffer,
         tripType,
-        travelers,
+        travelers: travelers.map((traveler) => sanitizeTravelerForBooking(traveler)),
         contact,
         ...leadContext,
       };
@@ -725,18 +728,47 @@ export default function FlightSelectionModal({
                               <span className="w-5 h-5 rounded-full bg-primary/10 text-primary text-xs flex items-center justify-center font-bold">{idx + 1}</span>
                               Traveler {idx + 1} <span className="text-xs text-muted-foreground capitalize">({t.type})</span>
                             </div>
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                              <Select value={t.title} onValueChange={(value) => updateTraveler(idx, 'title', String(value))}>
-                                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                  {['Mr', 'Mrs', 'Ms', 'Miss'].map(x => <SelectItem key={x} value={x}>{x}</SelectItem>)}
-                                </SelectContent>
-                              </Select>
-                              <Input placeholder="First name *" value={t.firstName}
-                                onChange={(e) => updateTraveler(idx, 'firstName', e.target.value)} />
-                              <Input placeholder="Last name *" value={t.lastName}
-                                onChange={(e) => updateTraveler(idx, 'lastName', e.target.value)} />
-                              {t.type === 'adult' && (
+                            <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+                              <div className="space-y-1">
+                                <label className="block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Title</label>
+                                <Select value={t.title} onValueChange={(value) => updateTraveler(idx, 'title', String(value))}>
+                                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    {['Mr', 'Mrs', 'Ms', 'Miss'].map(x => <SelectItem key={x} value={x}>{x}</SelectItem>)}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div className="space-y-1">
+                                <label className="block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">First name *</label>
+                                <Input placeholder="First name *" value={t.firstName}
+                                  onChange={(e) => updateTraveler(idx, 'firstName', e.target.value)} />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Last name *</label>
+                                <Input placeholder="Last name *" value={t.lastName}
+                                  onChange={(e) => updateTraveler(idx, 'lastName', e.target.value)} />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Date of birth *</label>
+                                <Input
+                                  type="date"
+                                  value={t.dob}
+                                  title="Date of birth"
+                                  onChange={(e) => updateTraveler(idx, 'dob', e.target.value)}
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Passenger email *</label>
+                                <Input type="email" placeholder="Passenger email *" value={t.email}
+                                  onChange={(e) => updateTraveler(idx, 'email', e.target.value)} />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Passenger phone *</label>
+                                <Input type="tel" inputMode="tel" placeholder="+442079460018" value={t.phone}
+                                  onChange={(e) => updateTraveler(idx, 'phone', e.target.value)} />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Gender *</label>
                                 <Select value={t.gender || null} onValueChange={(value) => updateTraveler(idx, 'gender', value ? String(value) : '')}>
                                   <SelectTrigger className="w-full">
                                     <SelectValue>{(value: string) => value === 'M' ? 'Male' : value === 'F' ? 'Female' : 'Gender *'}</SelectValue>
@@ -746,7 +778,7 @@ export default function FlightSelectionModal({
                                     <SelectItem value="F">Female</SelectItem>
                                   </SelectContent>
                                 </Select>
-                              )}
+                              </div>
                             </div>
                           </div>
                         );

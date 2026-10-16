@@ -13,6 +13,9 @@ export const CREATED = 201;
 /** @type {400} */
 export const BAD_REQUEST = 400;
 
+/** @type {409} */
+export const CONFLICT = 409;
+
 /** @type {401} */
 export const UNAUTHORIZED = 401;
 

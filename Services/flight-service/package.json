@@ -11,6 +11,7 @@
     "test:coverage": "vitest run --coverage",
     "test:unit": "vitest run src/",
     "test:integration": "vitest run test/",
+    "test:duffel:sandbox": "node scripts/test-duffel-sandbox.mjs",
     "db:migrate": "npx prisma migrate dev",
     "db:migrate:deploy": "npx prisma migrate deploy",
     "db:migrate:status": "npx prisma migrate status",
