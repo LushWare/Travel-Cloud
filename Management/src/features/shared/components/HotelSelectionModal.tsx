@@ -83,6 +83,27 @@ interface Hotel {
   cheapestRate?: HotelRate;
 }
 
+const formatImportantInformation = (value: string): string => {
+  const parsed = new DOMParser().parseFromString(value, 'text/html');
+  const formatNode = (node: Node): string => {
+    if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? '';
+    if (node.nodeType !== Node.ELEMENT_NODE) return '';
+
+    const element = node as HTMLElement;
+    const content = Array.from(element.childNodes, formatNode).join('');
+    if (element.tagName === 'BR') return '\n';
+    if (element.tagName === 'LI') return `- ${content.trim()}\n`;
+    if (element.tagName === 'P' || element.tagName === 'DIV') return `${content.trim()}\n`;
+    return content;
+  };
+
+  return Array.from(parsed.body.childNodes, formatNode)
+    .join('')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+};
+
 interface Guest {
   occupancyNumber: number;
   firstName: string;
@@ -1147,7 +1168,7 @@ export default function HotelSelectionModal({
                   {!!selectedOffer.importantInformation && (
                     <div className="rounded-md border border-border bg-muted/50 p-3">
                       <h3 className="mb-1 text-sm font-semibold text-foreground">Important information</h3>
-                      <p className="whitespace-pre-line text-sm text-muted-foreground">{selectedOffer.importantInformation}</p>
+                      <p className="whitespace-pre-line text-sm text-muted-foreground">{formatImportantInformation(selectedOffer.importantInformation)}</p>
                     </div>
                   )}
                   {!!selectedOffer.policies?.length && (
