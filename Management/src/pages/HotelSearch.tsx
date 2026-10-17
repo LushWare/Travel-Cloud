@@ -1293,7 +1293,7 @@ export default function HotelSearch() {
                       {hotelProfile.importantInformation && (
                         <section className="rounded-md border border-border bg-card p-4">
                           <h3 className="mb-3 text-base font-semibold">Important Information</h3>
-                          <p className="whitespace-pre-line text-sm leading-6 text-muted-foreground">{hotelProfile.importantInformation}</p>
+                          <div className="hotel-description text-sm leading-6 text-muted-foreground">{renderHotelDescription(hotelProfile.importantInformation)}</div>
                         </section>
                       )}
 

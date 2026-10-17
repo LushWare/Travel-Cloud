@@ -83,27 +83,6 @@ interface Hotel {
   cheapestRate?: HotelRate;
 }
 
-const formatImportantInformation = (value: string): string => {
-  const parsed = new DOMParser().parseFromString(value, 'text/html');
-  const formatNode = (node: Node): string => {
-    if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? '';
-    if (node.nodeType !== Node.ELEMENT_NODE) return '';
-
-    const element = node as HTMLElement;
-    const content = Array.from(element.childNodes, formatNode).join('');
-    if (element.tagName === 'BR') return '\n';
-    if (element.tagName === 'LI') return `- ${content.trim()}\n`;
-    if (element.tagName === 'P' || element.tagName === 'DIV') return `${content.trim()}\n`;
-    return content;
-  };
-
-  return Array.from(parsed.body.childNodes, formatNode)
-    .join('')
-    .replace(/[ \t]+\n/g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
-};
-
 interface Guest {
   occupancyNumber: number;
   firstName: string;
@@ -212,7 +191,12 @@ function cleanProviderDescription(description?: string) {
   if (!description?.trim()) return '';
   if (typeof DOMParser === 'undefined') return description.trim();
 
-  const parsed = new DOMParser().parseFromString(description, 'text/html');
+  let parsed = new DOMParser().parseFromString(description, 'text/html');
+  const escapedMarkup = parsed.body.textContent || '';
+  if (!parsed.body.querySelector('br, div, li, ol, p, ul, h1, h2, h3, h4, h5, h6') && /<\/?(?:br|div|li|ol|p|ul|h[1-6])\b[^>]*>/i.test(escapedMarkup)) {
+    parsed = new DOMParser().parseFromString(escapedMarkup, 'text/html');
+  }
+
   const blockTags = new Set(['BR', 'DIV', 'LI', 'OL', 'P', 'UL', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6']);
   const extractText = (node: Node): string => {
     if (node.nodeType === 3) return node.textContent || '';
@@ -221,6 +205,8 @@ function cleanProviderDescription(description?: string) {
     const element = node as Element;
     if (['SCRIPT', 'STYLE', 'IFRAME', 'OBJECT', 'EMBED'].includes(element.tagName)) return '';
     const text = Array.from(element.childNodes).map(extractText).join('');
+    if (element.tagName === 'BR') return '\n';
+    if (element.tagName === 'LI') return `- ${text.trim()}\n`;
     return blockTags.has(element.tagName) ? `${text}\n` : text;
   };
 
@@ -1168,7 +1154,7 @@ export default function HotelSelectionModal({
                   {!!selectedOffer.importantInformation && (
                     <div className="rounded-md border border-border bg-muted/50 p-3">
                       <h3 className="mb-1 text-sm font-semibold text-foreground">Important information</h3>
-                      <p className="whitespace-pre-line text-sm text-muted-foreground">{formatImportantInformation(selectedOffer.importantInformation)}</p>
+                      <p className="whitespace-pre-line text-sm text-muted-foreground">{cleanProviderDescription(selectedOffer.importantInformation)}</p>
                     </div>
                   )}
                   {!!selectedOffer.policies?.length && (
@@ -1281,7 +1267,7 @@ export default function HotelSelectionModal({
                                               <p className="mt-1 text-sm text-muted-foreground">Non-refundable rate</p>
                                             ) : null}
                                             {roomRate.perks?.length > 0 && <p className="mt-1 text-xs text-success">{roomRate.perks.map((perk) => perk.name).filter(Boolean).join(' · ')}</p>}
-                                            {roomRate.remarks && <p className="mt-1 text-xs text-muted-foreground">{roomRate.remarks}</p>}
+                                            {roomRate.remarks && <p className="mt-1 whitespace-pre-line text-xs text-muted-foreground">{cleanProviderDescription(roomRate.remarks)}</p>}
                                             {roomRate.cancellationPolicies?.cancelPolicyInfos?.length > 0 && (
                                               <details className="mt-1 text-xs text-muted-foreground">
                                                 <summary className="cursor-pointer">Cancellation terms</summary>
@@ -1350,7 +1336,7 @@ export default function HotelSelectionModal({
                                               {policy.amount != null ? ` · fee ${fmtMoney(policy.amount, policy.currency)}` : ''}
                                             </p>
                                           ))}
-                                          {roomRate.remarks && <p className="mt-2 text-xs text-muted-foreground">{roomRate.remarks}</p>}
+                                          {roomRate.remarks && <p className="mt-2 whitespace-pre-line text-xs text-muted-foreground">{cleanProviderDescription(roomRate.remarks)}</p>}
                                           {!!room?.amenities?.length && <p className="mt-2 text-xs text-muted-foreground">{room.amenities.join(' · ')}</p>}
                                           {!!roomRate.perks?.length && <p className="mt-2 text-xs text-success">{roomRate.perks.map((perk) => perk.name).filter(Boolean).join(' · ')}</p>}
                                           {!!roomRate.taxes?.length && <details className="mt-2 text-xs text-muted-foreground">
@@ -1657,7 +1643,7 @@ export default function HotelSelectionModal({
               )}
               {prebookResult?.cancellationChanged && <p className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-foreground">Cancellation terms changed since the search. Review the current rate terms before booking.</p>}
               {prebookResult?.boardChanged && <p className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-foreground">The meal plan changed since the search. Review the current room details before booking.</p>}
-              {prebookResult?.termsAndConditions && <p className="whitespace-pre-line text-sm text-muted-foreground">{prebookResult.termsAndConditions}</p>}
+              {prebookResult?.termsAndConditions && <p className="whitespace-pre-line text-sm text-muted-foreground">{cleanProviderDescription(prebookResult.termsAndConditions)}</p>}
               {!!prebookResult?.addonsRequest?.length && (
                 <div className="rounded-md border border-border p-3 text-sm">
                   <h4 className="font-medium text-foreground">Selected add-ons</h4>
