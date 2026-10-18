@@ -24,7 +24,12 @@ case "$TARGET_ENV" in
     ;;
 esac
 
-PROJECT="travelcrm-506818"
+# prod lives in its own GCP project; dev/staging stay in the original one.
+if [[ "$TARGET_ENV" == "prod" ]]; then
+  PROJECT="lush-travel-cloud-prod"
+else
+  PROJECT="travelcrm-506818"
+fi
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # Where each environment's portals actually live. dev/staging use the deployed

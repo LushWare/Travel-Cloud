@@ -1,4 +1,4 @@
-# All 13 Cloud Run services, one per Services/* directory. `name` and the
+# All 14 Cloud Run services, one per Services/* directory. `name` and the
 # matching service-account id are env-prefixed ("<env>-<service>") because
 # Cloud Run service names and service-account ids are unique per project and
 # all three environments share one GCP project (longest resulting id,
@@ -11,6 +11,12 @@
 # for all 12 backends, which are reachable only via the gateway's
 # run.invoker grant (iam.tf) plus its Google-signed ID token.
 locals {
+  # Frontend origins. Default to the per-env Firebase Hosting sites; a deployment
+  # whose sites have other ids (or custom domains) overrides them via the
+  # client_url / management_url variables.
+  client_url     = var.client_url != "" ? var.client_url : "https://lush-ware-client-${var.env}.web.app"
+  management_url = var.management_url != "" ? var.management_url : "https://lush-ware-management-${var.env}.web.app"
+
   services = {
     gateway = {
       name    = "${var.env}-gateway"
@@ -19,8 +25,8 @@ locals {
       secrets = ["${var.env}-jwt-secret"]
       plain_env = {
         NODE_ENV       = "production"
-        CLIENT_URL     = "https://lush-ware-client-${var.env}.web.app"
-        MANAGEMENT_URL = "https://lush-ware-management-${var.env}.web.app"
+        CLIENT_URL     = local.client_url
+        MANAGEMENT_URL = local.management_url
       }
       allow_unauthenticated = true
     }
@@ -29,7 +35,7 @@ locals {
       memory                = "512Mi"
       cpu                   = "1"
       secrets               = ["${var.env}-database-url", "${var.env}-direct-url", "${var.env}-jwt-secret", "${var.env}-internal-events-token"]
-      plain_env             = { NODE_ENV = "production", CLIENT_URL = "https://lush-ware-client-${var.env}.web.app" }
+      plain_env             = { NODE_ENV = "production", CLIENT_URL = local.client_url }
       allow_unauthenticated = false
     }
     user-service = {
@@ -78,7 +84,7 @@ locals {
       secrets = ["${var.env}-database-url", "${var.env}-direct-url"]
       plain_env = {
         NODE_ENV   = "production"
-        CLIENT_URL = "https://lush-ware-client-${var.env}.web.app"
+        CLIENT_URL = local.client_url
       }
       allow_unauthenticated = false
     }
@@ -143,12 +149,14 @@ locals {
       name    = "${var.env}-flight-service"
       memory  = "512Mi"
       cpu     = "1"
-      secrets = ["${var.env}-database-url", "${var.env}-direct-url", "${var.env}-duffel-access-token", "${var.env}-travelport-client-id", "${var.env}-travelport-client-secret", "${var.env}-travelport-token-url", "${var.env}-travelport-api-base-url", "${var.env}-travelport-access-group"]
+      secrets = ["${var.env}-database-url", "${var.env}-direct-url", "${var.env}-duffel-access-token", "${var.env}-duffel-webhook-secret", "${var.env}-travelport-client-id", "${var.env}-travelport-client-secret", "${var.env}-travelport-token-url", "${var.env}-travelport-api-base-url", "${var.env}-travelport-access-group"]
       plain_env = {
         NODE_ENV             = "production"
-        CLIENT_URL           = "https://lush-ware-client-${var.env}.web.app"
-        MANAGEMENT_URL       = "https://lush-ware-management-${var.env}.web.app"
+        CLIENT_URL           = local.client_url
+        MANAGEMENT_URL       = local.management_url
         TRAVELPORT_MOCK_MODE = "true"
+        # Card checkout via Duffel is opt-in per deployment.
+        DUFFEL_CARD_CHECKOUT_ENABLED = var.duffel_card_checkout_enabled
       }
       allow_unauthenticated = false
     }
@@ -159,7 +167,7 @@ locals {
       secrets = ["${var.env}-database-url", "${var.env}-direct-url"]
       plain_env = {
         NODE_ENV   = "production"
-        CLIENT_URL = "https://lush-ware-client-${var.env}.web.app"
+        CLIENT_URL = local.client_url
       }
       allow_unauthenticated = false
     }
@@ -170,7 +178,7 @@ locals {
       secrets = ["${var.env}-database-url", "${var.env}-direct-url", "${var.env}-internal-service-key", "${var.env}-gemini-api-key"]
       plain_env = {
         NODE_ENV                                  = "production"
-        CLIENT_URL                                = "https://lush-ware-client-${var.env}.web.app"
+        CLIENT_URL                                = local.client_url
         MANAGEMENT_COPILOT_ENABLED                = var.management_copilot_enabled
         MANAGEMENT_COPILOT_PAGE_KEYS              = var.management_copilot_page_keys
         MANAGEMENT_NOTIFICATIONS_ENABLED          = var.management_notifications_enabled
@@ -220,10 +228,10 @@ locals {
       secrets = ["${var.env}-database-url", "${var.env}-direct-url", "${var.env}-internal-service-key", "${var.env}-internal-events-token", "${var.env}-retell-webhook-secret", "${var.env}-retell-tool-secret"]
       plain_env = {
         NODE_ENV   = "production"
-        CLIENT_URL = "https://lush-ware-client-${var.env}.web.app"
+        CLIENT_URL = local.client_url
         # The sales-team email and the record deep-links both point at the
         # Management portal, so this service needs that URL too.
-        MANAGEMENT_URL = "https://lush-ware-management-${var.env}.web.app"
+        MANAGEMENT_URL = local.management_url
         # Calls from one number acted on per rolling 24h. Retell has no
         # documented way to refuse a call already ringing, so the call is
         # answered either way — past the cap this only stops the forwarding

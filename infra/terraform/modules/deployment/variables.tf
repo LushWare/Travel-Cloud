@@ -437,3 +437,29 @@ variable "retell_tool_secret" {
   default     = ""
 }
 
+
+variable "client_url" {
+  description = "Public origin of the Client SPA. Empty keeps the per-env default (https://lush-ware-client-<env>.web.app)."
+  type        = string
+  default     = ""
+}
+
+variable "management_url" {
+  description = "Public origin of the Management SPA. Empty keeps the per-env default (https://lush-ware-management-<env>.web.app)."
+  type        = string
+  default     = ""
+}
+
+# Fails closed: flight-service answers 503 to Duffel webhooks until this is set.
+variable "duffel_webhook_secret" {
+  description = "Duffel webhook signing secret (secret id <env>-duffel-webhook-secret -> DUFFEL_WEBHOOK_SECRET on flight-service)."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "duffel_card_checkout_enabled" {
+  description = "'true' enables Duffel card checkout on flight-service (DUFFEL_CARD_CHECKOUT_ENABLED)."
+  type        = string
+  default     = "false"
+}

@@ -16,15 +16,22 @@ on:
 
 env:
   NODE_VERSION: '20.x'
-  # workflow_dispatch carries the chosen environment; a push to
-  # main auto-deploys the lowest-stakes environment only.
-  TARGET_ENV: ${{ github.event.inputs.environment || 'dev' }}
+  # workflow_dispatch carries the chosen environment. A push to main is the
+  # production release (reviewed code only reaches main via ongoing), so it
+  # deploys prod. dev/staging are manual-only.
+  TARGET_ENV: ${{ github.event.inputs.environment || 'prod' }}
+
+# One deploy per environment at a time. Never cancel a run mid-flight: a
+# half-finished migrate/deploy is worse than a queued one.
+concurrency:
+  group: deploy-${{ github.event.inputs.environment || 'prod' }}
+  cancel-in-progress: false
 
 jobs:
   build-and-push:
     name: Build and push ${{ matrix.service }}
     runs-on: ubuntu-latest
-    environment: ${{ github.event.inputs.environment || 'dev' }}
+    environment: ${{ github.event.inputs.environment || 'prod' }}
     permissions:
       contents: read
       id-token: write
@@ -77,7 +84,7 @@ jobs:
     name: Run database migrations
     runs-on: ubuntu-latest
     needs: build-and-push
-    environment: ${{ github.event.inputs.environment || 'dev' }}
+    environment: ${{ github.event.inputs.environment || 'prod' }}
     permissions:
       contents: read
     steps:
@@ -106,11 +113,84 @@ jobs:
           DIRECT_URL: ${{ secrets.SUPABASE_DIRECT_URL }}
         run: node Services/migrate-all.mjs
 
+  # Infra-as-code applies on every release so a merge that adds a service or a
+  # secret needs no manual step. Order matters: migrations first (a new service
+  # starts against an up-to-date schema), then Terraform (the Cloud Run services
+  # must exist before `deploy` swaps their images), then deploy.
+  #
+  # Prod only: dev/staging keep their manual terraform.yml flow so a manual
+  # dispatch can never apply against a state it was not meant to touch.
+  #
+  # Safety: the apply refuses any plan that deletes or replaces a resource.
+  # Destructive infrastructure changes still go through terraform.yml's manual
+  # `apply`, where a person reads the plan first.
+  terraform:
+    name: Terraform apply (${{ github.event.inputs.environment || 'prod' }})
+    runs-on: ubuntu-latest
+    needs: migrate
+    if: ${{ (github.event.inputs.environment || 'prod') == 'prod' }}
+    environment: ${{ github.event.inputs.environment || 'prod' }}
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TF_VERSION: '1.16.0'
+      TF_DIR: infra/terraform/deployments/prod
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_TERRAFORM_SA }}
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      # Passed through the environment, not interpolated into the script, so a
+      # secret value can never be parsed as shell.
+      - name: Write terraform.tfvars
+        working-directory: ${{ env.TF_DIR }}
+        env:
+          TF_VARS_PROD: ${{ secrets.TF_VARS_PROD }}
+        run: printf '%s\n' "$TF_VARS_PROD" > terraform.tfvars
+
+      - name: Terraform init
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform init -input=false
+
+      # image_tag is the commit just built, so a brand-new service starts on the
+      # image build-and-push produced. Existing services ignore image changes
+      # (lifecycle ignore_changes), so this never rolls anything back.
+      - name: Terraform plan
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform plan -input=false -lock-timeout=300s -var "image_tag=${GITHUB_SHA:0:7}" -out=tf.plan
+
+      - name: Refuse destructive plans
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          destructive=$(terraform show -json tf.plan | jq '[.resource_changes[]? | select(.change.actions | index("delete")) | .address] | length')
+          if [ "$destructive" != "0" ]; then
+            echo "::error::Plan would delete or replace $destructive resource(s). Run terraform.yml manually and review the plan."
+            terraform show -json tf.plan | jq -r '.resource_changes[]? | select(.change.actions | index("delete")) | "  \(.change.actions | join("+"))  \(.address)"'
+            exit 1
+          fi
+
+      - name: Terraform apply
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform apply -input=false -auto-approve tf.plan
+
   deploy:
     name: Deploy ${{ matrix.service }}
     runs-on: ubuntu-latest
-    needs: migrate
-    environment: ${{ github.event.inputs.environment || 'dev' }}
+    # terraform is skipped outside prod; a skipped dependency must not block
+    # the deploy, but a failed one must.
+    needs: [migrate, terraform]
+    if: ${{ !cancelled() && needs.migrate.result == 'success' && contains(fromJSON('["success","skipped"]'), needs.terraform.result) }}
+    environment: ${{ github.event.inputs.environment || 'prod' }}
     permissions:
       contents: read
       id-token: write
@@ -157,7 +237,7 @@ jobs:
   deploy-hosting:
     name: Deploy Firebase Hosting sites
     runs-on: ubuntu-latest
-    environment: ${{ github.event.inputs.environment || 'dev' }}
+    environment: ${{ github.event.inputs.environment || 'prod' }}
     permissions:
       contents: read
       id-token: write
@@ -237,7 +317,7 @@ jobs:
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
-          service_account: firebase-hosting-deployer@travelcrm-506818.iam.gserviceaccount.com
+          service_account: ${{ vars.GCP_FIREBASE_SA || 'firebase-hosting-deployer@travelcrm-506818.iam.gserviceaccount.com' }}
 
       - name: Deploy to Firebase Hosting
-        run: npx --yes firebase-tools@latest deploy --only hosting:client-${{ env.TARGET_ENV }},hosting:management-${{ env.TARGET_ENV }},hosting:landing-${{ env.TARGET_ENV }}
+        run: npx --yes firebase-tools@latest deploy --project ${{ vars.GCP_PROJECT_ID }} --only hosting:client-${{ env.TARGET_ENV }},hosting:management-${{ env.TARGET_ENV }},hosting:landing-${{ env.TARGET_ENV }}

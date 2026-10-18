@@ -9,7 +9,7 @@ terraform {
   }
 
   backend "gcs" {
-    bucket = "lush-ware-travel-crm-tfstate"
+    bucket = "lush-travel-cloud-prod-tfstate"
     prefix = "travel-crm/shared"
   }
 }

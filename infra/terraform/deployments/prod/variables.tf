@@ -393,3 +393,28 @@ variable "retell_tool_secret" {
   default     = ""
 }
 
+
+variable "client_url" {
+  description = "Public origin of the Client SPA for this deployment."
+  type        = string
+  default     = ""
+}
+
+variable "management_url" {
+  description = "Public origin of the Management SPA for this deployment."
+  type        = string
+  default     = ""
+}
+
+variable "duffel_webhook_secret" {
+  description = "Duffel webhook signing secret."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "duffel_card_checkout_enabled" {
+  description = "'true' enables Duffel card checkout."
+  type        = string
+  default     = "false"
+}

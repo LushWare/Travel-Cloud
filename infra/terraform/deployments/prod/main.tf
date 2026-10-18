@@ -49,6 +49,11 @@ module "deployment" {
 
   # Voice agent (Retell AI) signing secrets. Empty until this environment's
   # TF_VARS_* secret carries them — the service fails closed meanwhile.
+  client_url                   = var.client_url
+  management_url               = var.management_url
+  duffel_webhook_secret        = var.duffel_webhook_secret
+  duffel_card_checkout_enabled = var.duffel_card_checkout_enabled
+
   retell_webhook_secret = var.retell_webhook_secret
   retell_tool_secret    = var.retell_tool_secret
 
@@ -56,36 +61,36 @@ module "deployment" {
   company_name                  = var.company_name
   company_short_name            = var.company_short_name
   company_legal_name            = var.company_legal_name
-  company_tagline                = var.company_tagline
-  company_logo                   = var.company_logo
-  company_address                = var.company_address
-  company_gst_number             = var.company_gst_number
-  company_email                  = var.company_email
-  sales_email                    = var.sales_email
-  company_phone                  = var.company_phone
-  company_whatsapp               = var.company_whatsapp
-  company_website                = var.company_website
-  quotation_rating_tagline       = var.quotation_rating_tagline
-  brand_ink                      = var.brand_ink
-  brand_muted                    = var.brand_muted
-  brand_accent                   = var.brand_accent
-  brand_accent_dark              = var.brand_accent_dark
-  quotation_default_terms        = var.quotation_default_terms
-  quotation_cancellation_policy  = var.quotation_cancellation_policy
-  invoice_payment_terms          = var.invoice_payment_terms
-  invoice_payment_instructions   = var.invoice_payment_instructions
-  bank_name                      = var.bank_name
-  bank_account_name              = var.bank_account_name
-  bank_account_number            = var.bank_account_number
-  bank_ifsc_code                 = var.bank_ifsc_code
-  bank_swift_code                = var.bank_swift_code
-  bank_branch                    = var.bank_branch
-  bank_account_type              = var.bank_account_type
-  upi_id                         = var.upi_id
-  whatsapp_template_language     = var.whatsapp_template_language
-  whatsapp_template_quotation    = var.whatsapp_template_quotation
-  whatsapp_template_invoice      = var.whatsapp_template_invoice
-  whatsapp_template_receipt      = var.whatsapp_template_receipt
-  whatsapp_template_voucher      = var.whatsapp_template_voucher
-  admin_emails                   = var.admin_emails
+  company_tagline               = var.company_tagline
+  company_logo                  = var.company_logo
+  company_address               = var.company_address
+  company_gst_number            = var.company_gst_number
+  company_email                 = var.company_email
+  sales_email                   = var.sales_email
+  company_phone                 = var.company_phone
+  company_whatsapp              = var.company_whatsapp
+  company_website               = var.company_website
+  quotation_rating_tagline      = var.quotation_rating_tagline
+  brand_ink                     = var.brand_ink
+  brand_muted                   = var.brand_muted
+  brand_accent                  = var.brand_accent
+  brand_accent_dark             = var.brand_accent_dark
+  quotation_default_terms       = var.quotation_default_terms
+  quotation_cancellation_policy = var.quotation_cancellation_policy
+  invoice_payment_terms         = var.invoice_payment_terms
+  invoice_payment_instructions  = var.invoice_payment_instructions
+  bank_name                     = var.bank_name
+  bank_account_name             = var.bank_account_name
+  bank_account_number           = var.bank_account_number
+  bank_ifsc_code                = var.bank_ifsc_code
+  bank_swift_code               = var.bank_swift_code
+  bank_branch                   = var.bank_branch
+  bank_account_type             = var.bank_account_type
+  upi_id                        = var.upi_id
+  whatsapp_template_language    = var.whatsapp_template_language
+  whatsapp_template_quotation   = var.whatsapp_template_quotation
+  whatsapp_template_invoice     = var.whatsapp_template_invoice
+  whatsapp_template_receipt     = var.whatsapp_template_receipt
+  whatsapp_template_voucher     = var.whatsapp_template_voucher
+  admin_emails                  = var.admin_emails
 }

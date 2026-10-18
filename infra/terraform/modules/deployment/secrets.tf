@@ -21,6 +21,7 @@ locals {
     facebook-app-secret        = var.facebook_app_secret
     facebook-page-access-token = var.facebook_page_access_token
     duffel-access-token        = var.duffel_access_token
+    duffel-webhook-secret      = var.duffel_webhook_secret
     travelport-client-id       = var.travelport_client_id
     travelport-client-secret   = var.travelport_client_secret
     travelport-token-url       = var.travelport_token_url
