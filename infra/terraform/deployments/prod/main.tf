@@ -49,6 +49,7 @@ module "deployment" {
 
   # Voice agent (Retell AI) signing secrets. Empty until this environment's
   # TF_VARS_* secret carries them — the service fails closed meanwhile.
+  api_domain                   = var.api_domain
   client_url                   = var.client_url
   management_url               = var.management_url
   duffel_webhook_secret        = var.duffel_webhook_secret

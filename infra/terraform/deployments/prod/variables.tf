@@ -418,3 +418,9 @@ variable "duffel_card_checkout_enabled" {
   type        = string
   default     = "false"
 }
+
+variable "api_domain" {
+  description = "Custom domain for the gateway (e.g. api.example.com). Empty disables the HTTPS load balancer and keeps the plain *.run.app URL."
+  type        = string
+  default     = ""
+}

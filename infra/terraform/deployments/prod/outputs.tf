@@ -52,3 +52,8 @@ output "notification_service_url" {
   description = "URL of this environment's notification-service Cloud Run service."
   value       = module.deployment.notification_service_url
 }
+
+output "api_lb_ip" {
+  description = "Static IP to point the API domain's A record at (empty when api_domain is unset)."
+  value       = module.deployment.api_lb_ip
+}
