@@ -15,8 +15,8 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { useSearchParams } from 'react-router-dom';
 
-import PageCopilot from '../features/copilot/PageCopilot';
 import PageHeader from '../components/PageHeader';
+import RecommendationStrip from '@/features/recommendations/RecommendationStrip';
 
 // Package, Website, and User analytics are admin-only on the backend
 // (company-wide data with no per-rep ownership) — hide them from salesRep
@@ -75,8 +75,9 @@ const Analytics = () => {
   };
 
   return (
-    <PageCopilot pageKey="analytics" scopeLabel="Analytics" scope={{ tab: activeTabData?.id || 'leads' }}>
+    <>
       <PageHeader title="Analytics" subtitle={activeTabData?.label} />
+      <RecommendationStrip module="analytics" />
 
       <div className="h-full flex flex-col md:flex-row bg-background">
         {/* Mobile: horizontal tabs. The title row moved into PageHeader, so this
@@ -139,19 +140,6 @@ const Analytics = () => {
               );
             })}
           </nav>
-
-          {/* Footer Info */}
-          <div className="p-4 border-t border-border">
-            <div className="p-4 bg-muted/50 rounded-lg border border-border">
-              <div className="flex items-center gap-2 mb-2">
-                <Layers className="w-4 h-4 text-muted-foreground" />
-                <span className="text-xs font-semibold text-foreground">Quick Tip</span>
-              </div>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Use time filters in each report to analyze specific periods.
-              </p>
-            </div>
-          </div>
         </div>
 
         {/* Main Content Area */}
@@ -168,7 +156,7 @@ const Analytics = () => {
           </div>
         </div>
       </div>
-    </PageCopilot>
+    </>
   );
 };
 

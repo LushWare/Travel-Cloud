@@ -15,6 +15,8 @@ interface PackageFiltersProps {
   statusFilter: string | null;
   onStatusFilterChange: (value: string | null) => void;
   statusTabs: StatusTab[];
+  linkedPackageCount?: number;
+  onClearLinkedFilter?: () => void;
 }
 
 const ALL_TAB_VALUE = 'all';
@@ -25,6 +27,8 @@ const PackageFilters = ({
   statusFilter,
   onStatusFilterChange,
   statusTabs,
+  linkedPackageCount,
+  onClearLinkedFilter,
 }: PackageFiltersProps) => {
   return (
     <Card className="p-3 sm:p-4">
@@ -49,22 +53,33 @@ const PackageFilters = ({
           )}
         </div>
 
-        <Tabs
-          value={statusFilter ?? ALL_TAB_VALUE}
-          onValueChange={(value) => onStatusFilterChange(value === ALL_TAB_VALUE ? null : String(value))}
-          className="min-w-0"
-        >
-          <TabsList className="w-full justify-start overflow-x-auto scrollbar-hide sm:w-fit">
-            {statusTabs.map((tab) => (
-              <TabsTrigger key={tab.id ?? ALL_TAB_VALUE} value={tab.id ?? ALL_TAB_VALUE} className="gap-1.5">
-                {tab.label}
-                <span className="px-1.5 py-0.5 rounded bg-muted text-xs font-semibold text-muted-foreground">
-                  {tab.count}
-                </span>
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
+        {linkedPackageCount !== undefined ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-primary/30 bg-primary/5 px-3 py-2">
+            <p className="text-sm text-foreground">
+              Active filter: linked packages <span className="font-mono tabular-nums">({linkedPackageCount})</span>
+            </p>
+            <button type="button" onClick={onClearLinkedFilter} className="text-sm font-medium text-primary hover:underline">
+              Clear filter
+            </button>
+          </div>
+        ) : (
+          <Tabs
+            value={statusFilter ?? ALL_TAB_VALUE}
+            onValueChange={(value) => onStatusFilterChange(value === ALL_TAB_VALUE ? null : String(value))}
+            className="min-w-0"
+          >
+            <TabsList className="w-full justify-start overflow-x-auto scrollbar-hide sm:w-fit">
+              {statusTabs.map((tab) => (
+                <TabsTrigger key={tab.id ?? ALL_TAB_VALUE} value={tab.id ?? ALL_TAB_VALUE} className="gap-1.5">
+                  {tab.label}
+                  <span className="px-1.5 py-0.5 rounded bg-muted text-xs font-semibold text-muted-foreground">
+                    {tab.count}
+                  </span>
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+        )}
       </div>
     </Card>
   );

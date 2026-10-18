@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import websiteUserService from '../../../services/websiteUser.service';
 import { unwrapList } from '../../../services/apiResponse';
 
@@ -23,6 +23,7 @@ export interface WebsiteUsersPagination {
 
 export interface WebsiteUsersFilters {
   search: string;
+  ids?: string;
   isActive?: boolean;
   isEmailVerified?: boolean;
   page: number;
@@ -34,7 +35,7 @@ export interface WebsiteUsersFilters {
  * Custom hook for managing website users
  * Handles fetching, creating, updating, and deleting users
  */
-export const useWebsiteUsers = () => {
+export const useWebsiteUsers = (recordIds?: string) => {
   const [users, setUsers] = useState<WebsiteUser[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,11 +49,13 @@ export const useWebsiteUsers = () => {
   });
   const [filters, setFilters] = useState<WebsiteUsersFilters>({
     search: '',
+    ids: recordIds,
     isActive: undefined,
     isEmailVerified: undefined,
     page: 1,
     limit: 10,
   });
+  const previousRecordIds = useRef(recordIds);
 
   /**
    * Fetch users from API
@@ -346,6 +349,14 @@ export const useWebsiteUsers = () => {
     fetchUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Only on mount
+
+  useEffect(() => {
+    if (previousRecordIds.current === recordIds) return;
+    previousRecordIds.current = recordIds;
+    const updatedFilters = { ...filters, ids: recordIds, page: 1 };
+    setFilters(updatedFilters);
+    void fetchUsers(updatedFilters);
+  }, [fetchUsers, filters, recordIds]);
 
   return {
     users,

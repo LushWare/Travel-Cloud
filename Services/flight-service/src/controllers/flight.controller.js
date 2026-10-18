@@ -3,7 +3,7 @@ import prisma from '../db/client.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import AppError from '../utils/appError.js';
 import { SALES_REP } from '../constants/roles.js';
-import { CREATED, BAD_REQUEST, NOT_FOUND } from '../constants/httpStatus.js';
+import { CREATED, BAD_REQUEST, NOT_FOUND, SERVICE_UNAVAILABLE } from '../constants/httpStatus.js';
 import { BOOKING_NOT_FOUND, BOOKING_ALREADY_CANCELLED } from '../constants/errorMessages.js';
 
 // Every booking read returns its segments in journey order: sequence is the
@@ -51,7 +51,7 @@ async function findOrCreateCustomer({ name, email, phone }) {
 // ── controllers ────────────────────────────────────────────────────────
 
 export const search = asyncHandler(async (req, res) => {
-  const { origin, destination, departureDate, returnDate, adults, children, infants, cabinClass, tripType } = req.body;
+  const { origin, destination, departureDate, returnDate, adults, children, infants, childAges, infantAges, cabinClass, tripType } = req.body;
 
   const offers = await req.flightClient.searchFlights({
     origin,
@@ -61,6 +61,8 @@ export const search = asyncHandler(async (req, res) => {
     adults: adults ?? 1,
     children: children ?? 0,
     infants: infants ?? 0,
+    childAges,
+    infantAges,
     cabinClass: cabinClass || 'Economy',
     tripType: tripType || (returnDate ? 'roundTrip' : 'oneWay'),
   });
@@ -70,12 +72,23 @@ export const search = asyncHandler(async (req, res) => {
 });
 
 export const price = asyncHandler(async (req, res) => {
-  const result = await req.flightClient.priceOffer(req.body.offerId);
+  const result = await req.flightClient.priceOffer(req.body.offerId, req.body);
   res.json({ success: true, data: result });
 });
 
+export const getCheckoutData = asyncHandler(async (req, res) => {
+  if (typeof req.flightClient.getCheckoutData !== 'function') {
+    throw new AppError('Duffel checkout options are unavailable for this provider.', SERVICE_UNAVAILABLE, {
+      code: 'PROVIDER_UNAVAILABLE',
+    });
+  }
+
+  const data = await req.flightClient.getCheckoutData(req.params.offerId);
+  res.json({ success: true, data });
+});
+
 export const book = asyncHandler(async (req, res) => {
-  const { offer, tripType, travelers, contact } = req.body;
+  const { offer, tripType, travelers, contact, services = [], payment, expectedTotal, expectedCurrency } = req.body;
 
   const customer = await findOrCreateCustomer(contact);
 
@@ -83,8 +96,10 @@ export const book = asyncHandler(async (req, res) => {
     offerId: offer.offerId,
     travelers,
     contact,
-    totalAmount: offer.fareTotal,
-    currency: offer.currency,
+    services,
+    payment,
+    totalAmount: expectedTotal ?? offer.fareTotal,
+    currency: expectedCurrency || offer.currency,
   });
 
   const booking = await prisma.flightBooking.create({
@@ -96,11 +111,11 @@ export const book = asyncHandler(async (req, res) => {
       tripType: tripType || ((offer.legCount ?? 1) > 1 ? 'roundTrip' : 'oneWay'),
       cabinClass: offer.cabinClass || 'Economy',
       currency: offer.currency || 'USD',
-      baseFare: offer.baseFare,
-      taxes: offer.taxes,
-      totalAmount: offer.fareTotal,
-      status: order.status === 'confirmed' ? 'confirmed' : 'pending',
-      searchSnapshot: offer,
+      baseFare: order.baseFare ?? offer.baseFare,
+      taxes: order.taxes ?? offer.taxes,
+      totalAmount: order.totalAmount ?? offer.fareTotal,
+      status: order.status || 'pending',
+      searchSnapshot: { ...offer, selectedServices: services },
       ticketingDeadline: order.ticketingDeadline ? new Date(order.ticketingDeadline) : undefined,
       bookedAt: new Date(),
       segments: {
@@ -180,12 +195,59 @@ export const getBooking = asyncHandler(async (req, res) => {
   });
 
   if (!booking) throw new AppError(BOOKING_NOT_FOUND, NOT_FOUND);
-  res.json({ success: true, data: booking });
+
+  let providerOrder = null;
+  if (booking.travelportOrderId) {
+    try {
+      providerOrder = await req.flightClient.getOrder(booking.travelportOrderId);
+    } catch (error) {
+      req.log.warn({ bookingId: booking.id }, 'Could not refresh provider booking details');
+    }
+  }
+  const canCancel = booking.status !== 'cancelled'
+    && (providerOrder?.availableActions
+      ? providerOrder.availableActions.includes('cancel')
+      : Boolean(booking.travelportOrderId));
+
+  res.json({ success: true, data: { ...booking, providerOrder, canCancel } });
+});
+
+export const createCancellationQuote = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const isScopedToOwn = req.user.role === SALES_REP && !req.user.isSuperAdmin;
+  const booking = await prisma.flightBooking.findFirst({
+    where: { id, ...(isScopedToOwn && { createdById: req.user.id }) },
+  });
+  if (!booking) throw new AppError(BOOKING_NOT_FOUND, NOT_FOUND);
+  if (booking.status === 'cancelled') throw new AppError(BOOKING_ALREADY_CANCELLED, BAD_REQUEST);
+  if (!booking.travelportOrderId) {
+    throw new AppError('The airline has not confirmed this booking yet, so it cannot be cancelled.', BAD_REQUEST, {
+      code: 'BOOKING_NOT_CONFIRMED',
+    });
+  }
+
+  if (typeof req.flightClient.createCancellationQuote === 'function') {
+    const quote = await req.flightClient.createCancellationQuote(booking.travelportOrderId);
+    return res.json({ success: true, data: { ...quote, quoteAvailable: true } });
+  }
+
+  res.json({
+    success: true,
+    data: {
+      quoteAvailable: false,
+      cancellationId: null,
+      refundAmount: null,
+      refundCurrency: null,
+      refundTo: null,
+      expiresAt: null,
+      airlineCredits: [],
+    },
+  });
 });
 
 export const cancelBooking = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { reason } = req.body || {};
+  const { reason, cancellationId } = req.body || {};
   const isScopedToOwn = req.user.role === SALES_REP && !req.user.isSuperAdmin;
 
   const booking = await prisma.flightBooking.findFirst({
@@ -195,7 +257,20 @@ export const cancelBooking = asyncHandler(async (req, res) => {
   if (booking.status === 'cancelled') throw new AppError(BOOKING_ALREADY_CANCELLED, BAD_REQUEST);
 
   if (booking.travelportOrderId) {
-    await req.flightClient.cancelOrder(booking.travelportOrderId);
+    if (typeof req.flightClient.confirmCancellation === 'function') {
+      if (!cancellationId) {
+        throw new AppError('Request and review a cancellation quote before confirming cancellation.', BAD_REQUEST, {
+          code: 'CANCELLATION_QUOTE_REQUIRED',
+        });
+      }
+      await req.flightClient.confirmCancellation(booking.travelportOrderId, cancellationId);
+    } else {
+      await req.flightClient.cancelOrder(booking.travelportOrderId);
+    }
+  } else if (typeof req.flightClient.createCancellationQuote === 'function') {
+    throw new AppError('The airline has not confirmed this booking yet, so it cannot be cancelled.', BAD_REQUEST, {
+      code: 'BOOKING_NOT_CONFIRMED',
+    });
   }
 
   const updated = await prisma.flightBooking.update({
@@ -205,4 +280,13 @@ export const cancelBooking = asyncHandler(async (req, res) => {
   });
 
   res.json({ success: true, data: updated });
+});
+
+export const createLinksSession = asyncHandler(async (req, res) => {
+  const client = req.flightClient;
+  if (!client.createLinksSession) {
+    throw new AppError('Duffel Links is only supported when Duffel is configured', BAD_REQUEST);
+  }
+  const session = await client.createLinksSession(req.body);
+  res.status(200).json({ success: true, data: session });
 });

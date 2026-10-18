@@ -97,7 +97,7 @@ const PackageCard = ({
           <ImageIcon className="w-12 h-12 text-muted-foreground opacity-50" />
         )}
         <Badge
-          className={`absolute top-3 right-3 ${pkg.isActive ? 'bg-success/10 text-success' : 'bg-warning/10 text-warning'}`}
+          className={`absolute top-3 right-3 border font-semibold shadow-dropdown ${pkg.isActive ? 'border-success bg-success text-success-foreground' : 'border-warning bg-warning text-warning-foreground'}`}
         >
           {statusLabel}
         </Badge>

@@ -32,9 +32,10 @@ export function buildSearchRequest(overrides = {}) {
   const checkout = new Date(); checkout.setDate(checkout.getDate() + 4);
   return {
     city: overrides.city || 'Colombo',
+    country: overrides.country || 'LK',
     checkin: overrides.checkin || new Date().toISOString().split('T')[0],
     checkout: overrides.checkout || checkout.toISOString().split('T')[0],
-    occupancies: overrides.occupancies || [{ adults: 1, children: 0 }],
+    occupancies: overrides.occupancies || [{ adults: 1, children: [] }],
     currency: overrides.currency || 'USD',
     guestNationality: overrides.guestNationality || 'LK',
     limit: overrides.limit ?? 10,
@@ -43,16 +44,17 @@ export function buildSearchRequest(overrides = {}) {
 
 export function buildGuest(overrides = {}) {
   return {
+    occupancyNumber: overrides.occupancyNumber ?? 1,
     firstName: overrides.firstName || faker.person.firstName(),
     lastName: overrides.lastName || faker.person.lastName(),
-    title: overrides.title || 'Mr',
+    email: overrides.email || faker.internet.email().toLowerCase(),
   };
 }
 
 export function buildBookingRequest(overrides = {}) {
   return {
     prebookId: overrides.prebookId || 'prebook-mock-001',
-    guests: overrides.guests || [buildGuest(), buildGuest({ title: 'Mrs' })],
+    guests: overrides.guests || [buildGuest()],
     contact: overrides.contact || {
       name: faker.person.fullName(),
       email: faker.internet.email().toLowerCase(),

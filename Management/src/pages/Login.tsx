@@ -87,14 +87,12 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center bg-background px-4 sm:px-6 lg:px-8">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <img
-            src="/logo-full.png"
-            alt={getLoginBranding().title}
-            className="h-16 w-auto max-w-[280px] mx-auto mb-6 object-contain"
-          />
-          <h1 className="font-heading text-2xl font-bold text-foreground mb-1">
-            {getLoginBranding().title}
-          </h1>
+          <div className="mb-2 flex items-center justify-center gap-3">
+            <img src="/logo.jpeg" alt="" className="h-10 w-10 shrink-0 object-contain" />
+            <h1 className="font-heading text-xl font-bold text-foreground">
+              {getLoginBranding().title}
+            </h1>
+          </div>
           <p className="text-sm text-muted-foreground">{getLoginBranding().subtitle}</p>
         </div>
 

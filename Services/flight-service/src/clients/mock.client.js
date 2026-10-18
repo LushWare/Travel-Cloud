@@ -101,6 +101,10 @@ export class MockFlightClient {
     };
   }
 
+  async createLinksSession() {
+    return { url: 'https://links.duffel.com/s/mock-session' };
+  }
+
   // ── Private mock data builders ───────────────────────────────────
 
   #buildMockSegment({ origin, destination, departureDate, sequence, airline }) {

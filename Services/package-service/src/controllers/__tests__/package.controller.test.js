@@ -31,10 +31,53 @@ vi.mock('../../../../shared/pricing-engine/src/index.js', () => ({
   }),
 }));
 
-import { calculatePrice, getAIStatus } from '../package.controller.js';
+vi.mock('../../db/client.js', () => ({
+  default: {
+    package: {
+      findMany: vi.fn().mockResolvedValue([]),
+      count: vi.fn().mockResolvedValue(0),
+    },
+  },
+}));
+
+import prisma from '../../db/client.js';
+import { calculatePrice, getAIStatus, getPackages } from '../package.controller.js';
 import { recomputeBasePrice } from '../../services/package.service.js';
 
 const makeRes = () => ({ json: vi.fn() });
+
+describe('getPackages', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    prisma.package.findMany.mockResolvedValue([]);
+    prisma.package.count.mockResolvedValue(0);
+  });
+
+  it('preserves the draft filter for super-admin requests', async () => {
+    const req = { query: { page: '1', limit: '12', isActive: 'false' }, user: { role: 'superAdmin' } };
+    const res = makeRes();
+
+    await getPackages(req, res);
+
+    expect(prisma.package.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { isActive: false },
+    }));
+    expect(prisma.package.count).toHaveBeenCalledWith({ where: { isActive: false } });
+  });
+
+  it('orders active packages before drafts when requested for All Packages', async () => {
+    const req = { query: { page: '1', limit: '12', draftsLast: 'true' }, user: { role: 'superAdmin' } };
+    const res = makeRes();
+
+    await getPackages(req, res);
+
+    expect(prisma.package.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: {},
+      orderBy: [{ isActive: 'desc' }, { createdAt: 'desc' }],
+    }));
+    expect(prisma.package.count).toHaveBeenCalledWith({ where: {} });
+  });
+});
 
 describe('getAIStatus', () => {
   const ORIGINAL_ENV = process.env;

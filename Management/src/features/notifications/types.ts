@@ -1,4 +1,12 @@
-import type { ClaimSection, ClaimSeverity, CopilotFact } from '@/features/copilot/types';
+export type NotificationSeverity = 'info' | 'warning' | 'critical';
+export type NotificationSection = 'attention' | 'changed' | 'current_state' | 'experienced_view';
+export type NotificationFact = {
+  kind: 'count' | 'amount' | 'percentage' | 'duration';
+  value: string;
+  evidenceId?: string;
+  unit?: string;
+  derivation?: string;
+};
 
 export type NotificationCategory = 'revenue' | 'pipeline' | 'operations' | 'customer' | 'risk';
 
@@ -6,17 +14,17 @@ export type BusinessNotification = {
   id: string;
   key: string;
   category: NotificationCategory;
-  severity: ClaimSeverity;
-  section: ClaimSection;
+  severity: NotificationSeverity;
+  section: NotificationSection;
   text: string;
-  facts: CopilotFact[];
+  facts: NotificationFact[];
   materialValue: string;
   target?: { path: string; query?: Record<string, string>; label: string };
   firstSeenAt: string;
   unread: boolean;
 };
 
-export type UnreadCounts = Record<ClaimSeverity, number>;
+export type UnreadCounts = Record<NotificationSeverity, number>;
 
 export type NotificationSession = {
   notifications: BusinessNotification[];

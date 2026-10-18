@@ -19,6 +19,7 @@ interface PieChartComponentProps {
   pieProps?: Record<string, unknown>;
   tooltipFormatter?: (value: any) => string;
   labelFormatter?: (label: any) => string;
+  totalFormatter?: (total: number) => string;
 }
 
 const PieChartComponent = ({
@@ -30,6 +31,7 @@ const PieChartComponent = ({
   legendProps = {},
   pieProps = {},
   tooltipFormatter,
+  totalFormatter = (value) => `${value}`,
 }: PieChartComponentProps) => {
   const total = data.reduce((sum, item) => sum + (item[dataKey] || 0), 0);
 
@@ -65,7 +67,7 @@ const PieChartComponent = ({
 
         {/* Center Label */}
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-          <span className="font-mono text-2xl font-semibold tabular-nums text-foreground">{total}</span>
+          <span className="font-mono text-2xl font-semibold tabular-nums text-foreground">{totalFormatter(total)}</span>
           <span className="text-xs text-muted-foreground">Total</span>
         </div>
       </div>

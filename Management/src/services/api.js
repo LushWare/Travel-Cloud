@@ -654,6 +654,10 @@ export const invoiceAPI = {
     const api = new ApiService();
     return api.get("/billing/invoices", params);
   },
+  getStats: async () => {
+    const api = new ApiService();
+    return api.get("/billing/invoices/stats");
+  },
   create: async (payload) => {
     const api = new ApiService();
     return api.post("/billing/invoices", payload);

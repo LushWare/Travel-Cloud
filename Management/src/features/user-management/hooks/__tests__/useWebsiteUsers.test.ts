@@ -37,6 +37,27 @@ beforeEach(() => {
 });
 
 describe('useWebsiteUsers.fetchUsers', () => {
+  it('passes recommendation IDs to the customer list request and updates them when the filter changes', async () => {
+    mockGetAllUsers.mockResolvedValue({
+      status: 'success',
+      data: [],
+      pagination: { total: 0, page: 1, limit: 10, pages: 1 },
+    });
+    const firstIds = '11111111-1111-4111-8111-111111111111,33333333-3333-4333-8333-333333333333';
+    const secondIds = '44444444-4444-4444-8444-444444444444';
+    const { result, rerender } = renderHook(
+      ({ ids }) => useWebsiteUsers(ids),
+      { initialProps: { ids: firstIds } },
+    );
+
+    await waitFor(() => expect(mockGetAllUsers).toHaveBeenLastCalledWith(expect.objectContaining({ ids: firstIds })));
+
+    act(() => rerender({ ids: secondIds }));
+
+    await waitFor(() => expect(mockGetAllUsers).toHaveBeenLastCalledWith(expect.objectContaining({ ids: secondIds })));
+    expect(result.current.filters.ids).toBe(secondIds);
+  });
+
   it('populates users from the flat-array contract instead of throwing "Invalid response format" (regression)', async () => {
     mockGetAllUsers.mockResolvedValue({
       status: 'success',

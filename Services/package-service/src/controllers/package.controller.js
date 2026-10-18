@@ -22,17 +22,18 @@ import {
 // first page of one the caller then narrows locally — which is what let a
 // count disagree with the number of matching packages.
 export const getPackages = asyncHandler(async (req, res) => {
-  const { page = 1, limit = 12, sort = 'createdAt', order = 'desc', destination, ...rest } = req.query;
+  const { page = 1, limit = 12, sort = 'createdAt', order = 'desc', destination, draftsLast, ...rest } = req.query;
 
   const pageNumber = Math.max(1, Math.trunc(Number(page)) || 1);
   const pageSize = Math.min(100, Math.max(1, Math.trunc(Number(limit)) || 12));
 
   const where = assembleWhere(rest);
 
-  const isProtected = req.user && ['admin', 'salesRep'].includes(req.user.role);
+  const isProtected = req.user && ['admin', 'staff', 'salesRep', 'superAdmin'].includes(req.user.role);
   if (!isProtected) {
     where.isActive = true;
   }
+  const prioritizeActive = isProtected && draftsLast === 'true' && where.isActive === undefined;
 
   // Destinations are addressed by slug but stored as a display string
   // ("Bali, Indonesia"), so the slug is resolved against the values actually
@@ -52,7 +53,9 @@ export const getPackages = asyncHandler(async (req, res) => {
     prisma.package.findMany({
       where,
       include,
-      orderBy: buildListOrderBy(sort, order),
+      orderBy: prioritizeActive
+        ? [{ isActive: 'desc' }, buildListOrderBy(sort, order)]
+        : buildListOrderBy(sort, order),
       skip: (pageNumber - 1) * pageSize,
       take: pageSize,
     }),

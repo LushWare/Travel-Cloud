@@ -201,6 +201,7 @@ const BillingAnalytics = () => {
               dataKey="value"
               nameKey="name"
               height={280}
+              totalFormatter={(total) => total.toFixed(2)}
             />
           ) : (
             <div className="flex items-center justify-center h-[280px] text-muted-foreground text-sm">

@@ -44,6 +44,10 @@ class WebsiteUserService {
         queryParams.search = params.search;
       }
 
+      if (params.ids && params.ids !== '') {
+        queryParams.ids = params.ids;
+      }
+
       // Only add boolean filters if explicitly set
       if (params.isActive !== undefined && params.isActive !== null) {
         queryParams.isActive = params.isActive;

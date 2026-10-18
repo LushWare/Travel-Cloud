@@ -171,6 +171,17 @@ locals {
       }
       allow_unauthenticated = false
     }
+    recommendation-service = {
+      name    = "${var.env}-recommendation-service"
+      memory  = "512Mi"
+      cpu     = "1"
+      secrets = ["${var.env}-database-url", "${var.env}-direct-url", "${var.env}-gemini-api-key"]
+      plain_env = {
+        NODE_ENV     = "production"
+        GEMINI_MODEL = "gemini-3.5-flash-lite"
+      }
+      allow_unauthenticated = false
+    }
     assistant-service = {
       name    = "${var.env}-assistant-service"
       memory  = "512Mi"

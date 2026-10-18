@@ -36,6 +36,7 @@ import {
 } from '../user.controller.js';
 
 const ID = '11111111-1111-4111-8111-111111111111';
+const SECOND_ID = '33333333-3333-4333-8333-333333333333';
 const ACTOR = { id: '22222222-2222-4222-8222-222222222222', role: 'admin' };
 
 function buildReqRes({ body = {}, params = {}, query = {}, user = ACTOR } = {}) {
@@ -157,6 +158,31 @@ describe('getAllUsers', () => {
         ],
       },
     }));
+  });
+
+  it('filters by a bounded list of opaque record IDs', async () => {
+    mockFindMany.mockResolvedValue([]);
+    mockCount.mockResolvedValue(0);
+    const firstRecordId = 'customer-legacy-A';
+    const secondRecordId = 'customer-legacy-B';
+    const { req, res, next } = buildReqRes({ query: { role: 'customer', ids: `${firstRecordId},${secondRecordId}` } });
+
+    await getAllUsers(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(mockFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { role: 'customer', id: { in: [firstRecordId, secondRecordId] } },
+    }));
+  });
+
+  it('rejects more than 100 IDs before querying users', async () => {
+    const ids = Array.from({ length: 101 }, (_, index) => `customer-${index}`).join(',');
+    const { req, res, next } = buildReqRes({ query: { ids } });
+
+    await getAllUsers(req, res, next);
+
+    expect(mockFindMany).not.toHaveBeenCalled();
+    expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 400 }));
   });
 
   it('rejects an invalid role filter with 400', async () => {

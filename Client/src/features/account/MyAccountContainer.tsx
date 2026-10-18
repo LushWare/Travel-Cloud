@@ -160,46 +160,24 @@ export default function MyAccountContainer() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 font-sans text-gray-900">
       {/* Hero Section */}
-      <div className="relative w-full py-28 overflow-visible">
-        <picture className="absolute inset-0">
-          <source srcSet="/lush/hero/mountain.webp" type="image/webp" />
-          <img
-            src="/lush/hero/mountain.jpg"
-            alt="Mountain landscape"
-            className="h-full w-full object-cover"
-          />
-        </picture>
-        <div className="absolute inset-0 bg-black/55" />
-        <div className="relative z-raised max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+      <div className="relative isolate flex min-h-[360px] items-end overflow-visible bg-brand-950 pb-14 pt-28 text-white sm:pb-16">
+        <img
+          src="/2.png"
+          alt="A bright shoreline framed by tropical greenery"
+          className="absolute inset-0 h-full w-full object-cover object-center"
+        />
+        <div className="absolute inset-0 bg-gradient-to-r from-brand-950/90 via-brand-950/60 to-transparent" aria-hidden="true" />
+        <div className="relative z-raised w-full max-w-7xl px-6 sm:px-12 md:px-24">
+          <p className="mb-4 text-xs font-semibold uppercase tracking-[0.16em] text-brand-accent-200">Your travel account</p>
           <h1
-            className={`text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-6 transition-all duration-700 delay-100 ${
-              isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
-            }`}
-            style={{ lineHeight: '1.15' }}
+            className="mb-4 max-w-none font-serif text-4xl font-medium leading-[1.1] text-white drop-shadow-sm sm:text-6xl xl:whitespace-nowrap"
           >
-            Welcome Back,{' '}
-            <span className="relative inline-block">
-              <span className="text-white">
-                {user?.name || 'Traveler'}
-              </span>
-              <svg className="absolute -bottom-2 left-0 w-full text-brand-accent-400" viewBox="0 0 300 12" fill="none" aria-hidden="true">
-                <path
-                  d="M2 10C50 2 100 2 150 6C200 10 250 10 298 4"
-                  stroke="currentColor"
-                  strokeWidth="3"
-                  strokeLinecap="round"
-                />
-              </svg>
-            </span>
+            Welcome back, <span className="text-brand-accent-200">{user?.name || 'Traveler'}.</span>
           </h1>
-          <p
-            className={`text-lg md:text-xl text-white/80 max-w-3xl mx-auto mb-8 transition-all duration-700 delay-200 ${
-              isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
-            }`}
-          >
-            Manage your bookings, customized packages, and travel plans all in one place
+          <p className="max-w-4xl text-base font-light leading-6 text-white/90 sm:text-lg xl:whitespace-nowrap">
+            Manage your bookings, customized packages, and travel plans all in one place.
           </p>
         </div>
 
@@ -208,30 +186,30 @@ export default function MyAccountContainer() {
           <div className="bg-white rounded-2xl border border-gray-200 p-1 flex justify-center gap-2 flex-wrap w-fit">
             <button
               onClick={() => setActiveTab('bookings')}
-              className={`px-6 py-4 font-bold text-sm md:text-base whitespace-nowrap rounded-xl transition-all ${
+              className={`min-h-12 rounded-xl px-6 py-3.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 md:text-base ${
                 activeTab === 'bookings'
                   ? 'bg-brand-600 text-white'
-                  : 'text-gray-700 hover:bg-gray-100'
+                  : 'text-brand-800 hover:bg-brand-50'
               }`}
             >
               Regular Bookings ({normalBookings.length})
             </button>
             <button
               onClick={() => setActiveTab('customized')}
-              className={`px-6 py-3 font-bold text-sm md:text-base whitespace-nowrap rounded-xl transition-all ${
+              className={`min-h-12 rounded-xl px-6 py-3.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 md:text-base ${
                 activeTab === 'customized'
                   ? 'bg-brand-600 text-white'
-                  : 'text-gray-700 hover:bg-gray-100'
+                  : 'text-brand-800 hover:bg-brand-50'
               }`}
             >
               Customized Packages ({allCustomizedPackages.length})
             </button>
             <button
               onClick={() => setActiveTab('manual')}
-              className={`px-6 py-3 font-bold text-sm md:text-base whitespace-nowrap rounded-xl transition-all ${
+              className={`min-h-12 rounded-xl px-6 py-3.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 md:text-base ${
                 activeTab === 'manual'
                   ? 'bg-brand-600 text-white'
-                  : 'text-gray-700 hover:bg-gray-100'
+                  : 'text-brand-800 hover:bg-brand-50'
               }`}
             >
               Trip Plans ({manualItineraries.length})
@@ -248,7 +226,7 @@ export default function MyAccountContainer() {
                 {(user?.name || user?.email || 'U').charAt(0).toUpperCase()}
               </div>
               <div className="min-w-0 flex-1">
-                <h2 className="truncate text-xl font-bold text-gray-900">{user?.name || 'Traveler'}</h2>
+                <h2 className="truncate font-serif text-xl font-semibold text-gray-900">{user?.name || 'Traveler'}</h2>
               </div>
             </div>
 
@@ -273,7 +251,7 @@ export default function MyAccountContainer() {
             <button
               type="button"
               onClick={() => setIsEditMode(true)}
-              className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-700"
+              className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-brand-600 px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
             >
               <Edit2 className="size-4" aria-hidden="true" />
               Edit Profile
@@ -283,7 +261,7 @@ export default function MyAccountContainer() {
           {/* Right Column */}
           <div className="flex-1 w-full lg:w-auto" data-main-content>
             <div>
-              <h2 className="text-3xl font-bold text-gray-900 mb-12">My Requests</h2>
+              <h2 className="mb-12 font-serif text-3xl font-semibold text-gray-900">My Requests</h2>
 
               {loading ? (
                 <div className="flex items-center justify-center py-24" role="status">
@@ -299,7 +277,7 @@ export default function MyAccountContainer() {
                   <button
                     type="button"
                     onClick={() => { void loadRequests(); }}
-                    className="inline-flex items-center gap-2 px-6 py-3 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-semibold transition-colors"
+                    className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-brand-600 px-7 py-3 font-semibold text-white transition-colors hover:bg-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
                   >
                     Try Again
                   </button>

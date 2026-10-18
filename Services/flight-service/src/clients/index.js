@@ -14,6 +14,17 @@ import logger from '../config/logger.js';
  * @returns {import('./interface.js').FlightApiClient}
  */
 export function createFlightClient() {
+  const provider = process.env.FLIGHT_PROVIDER?.toLowerCase();
+  if (provider === 'mock') {
+    return new MockFlightClient();
+  }
+  if (provider === 'travelport') {
+    return new TravelportClient();
+  }
+  if (provider === 'duffel') {
+    return new DuffelClient();
+  }
+
   // Duffel takes priority if configured (token-based, simpler setup)
   if (process.env.DUFFEL_ACCESS_TOKEN) {
     return new DuffelClient();

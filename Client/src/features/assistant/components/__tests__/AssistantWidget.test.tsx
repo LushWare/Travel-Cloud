@@ -185,6 +185,7 @@ describe('AssistantWidget', () => {
     openPanel();
     expect(eventsOf('opened')).toHaveLength(1);
     expect(dialog()).toBeInTheDocument();
+    expect(input()).toHaveFocus();
 
     await user.click(screen.getByRole('button', { name: 'Close assistant panel' }));
     expect(dialog()).not.toBeInTheDocument();
@@ -204,6 +205,14 @@ describe('AssistantWidget', () => {
     // Anchor bottom edge is 16px, anchor is 64px tall, 12px gap — the panel
     // clears the anchor at 92px instead of covering it.
     expect(wrapper).toHaveStyle({ bottom: '92px' });
+  });
+
+  it('does not trap page scrolling when the transcript has no overflow', () => {
+    renderWidget('/');
+    openPanel();
+
+    const transcript = dialog()?.querySelector('.overflow-y-auto');
+    expect(transcript).not.toHaveAttribute('data-lenis-prevent');
   });
 
   it('shows what the page did under the reply, and only once the page has done it', async () => {
@@ -259,6 +268,7 @@ describe('AssistantWidget', () => {
     expect(
       await screen.findByText('I can only change the trip on the trip planner and the customize pages — open one and ask me there.'),
     ).toBeInTheDocument();
+    expect(input()).toHaveFocus();
   });
 
   it('renders the page\u2019s own count and its filters under a view answer', async () => {

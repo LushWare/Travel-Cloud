@@ -5,6 +5,7 @@
 
 import { useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
+import { useSearchParams } from 'react-router-dom';
 import Swal from 'sweetalert2';
 import {
   Package, Plus, Sparkles, MapPin,
@@ -46,9 +47,13 @@ import { createDefaultPackage } from '../types';
 import { SAMPLE_PACKAGES } from './sampleData';
 import { apiErrorMessage } from '@/lib/apiErrorMessage';
 import PageHeader from '../../../components/PageHeader';
+import RecommendationStrip from '@/features/recommendations/RecommendationStrip';
 
 const ItineraryGenerationContainer = () => {
   const [, navigate] = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const linkedPackageIds = searchParams.get('ids');
+  const recommendationFocus = searchParams.get('focus') === 'recommendation';
   const { user } = useAuth();
   const { hasPermission } = usePermission();
   const [searchTerm, setSearchTerm] = useState('');
@@ -71,6 +76,7 @@ const ItineraryGenerationContainer = () => {
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [pagination, setPagination] = useState<{ pages: number; total: number } | null>(null);
+  const [isLoadingPackages, setIsLoadingPackages] = useState(true);
   const [itemsPerPage] = useState(12);
 
   // Stats state
@@ -97,6 +103,13 @@ const ItineraryGenerationContainer = () => {
   const { formData: newFormData, setFormData: setNewFormData } = useItineraryForm(null, createDefaultPackage());
   const { images, setImages, handleUpload: handleImageUploadHook, removeImage, deletingIndexes } = useImageUpload();
 
+  useEffect(() => {
+    if (!linkedPackageIds) return;
+    setSearchTerm('');
+    setStatusFilter(null);
+    setCurrentPage(1);
+  }, [linkedPackageIds]);
+
   // Filter packages
   const filteredPackages = filterPackages(packages, searchTerm);
 
@@ -104,7 +117,7 @@ const ItineraryGenerationContainer = () => {
   const statusTabs = [
     { id: null, label: 'All Packages', count: stats.total },
     { id: 'active', label: 'Active', count: stats.active },
-    { id: 'featured', label: 'Featured', count: stats.featured },
+    { id: 'drafts', label: 'Drafts', count: Math.max(0, stats.total - stats.active) },
   ];
 
   /**
@@ -129,29 +142,43 @@ const ItineraryGenerationContainer = () => {
    */
   useEffect(() => {
     const loadPackages = async (page = 1) => {
+      setIsLoadingPackages(true);
       try {
         const params: Record<string, any> = { page, limit: itemsPerPage };
-        if (statusFilter === 'active') params.isActive = true;
-        if (statusFilter === 'featured') params.isFeatured = true;
+        if (linkedPackageIds) {
+          params.ids = linkedPackageIds;
+        } else {
+          if (statusFilter === null) params.draftsLast = true;
+          if (statusFilter === 'active') params.isActive = true;
+          if (statusFilter === 'drafts') params.isActive = false;
+        }
 
-        const response = isSalesRep
-          ? await ApiService.getPackagesProtected(params)
-          : await ApiService.getPackages(params);
+        const response = await ApiService.getPackagesProtected(params);
 
         if (response.success && Array.isArray(response.data)) {
           setPackages(response.data);
-          if (response.pagination) {
-            setPagination(response.pagination);
-          }
+          const total = Number(response.pagination?.total ?? response.total ?? response.count ?? response.data.length);
+          const pages = Number(response.pagination?.totalPages ?? response.pagination?.pages) || Math.max(1, Math.ceil(total / itemsPerPage));
+          setPagination({ pages, total });
         }
       } catch (error) {
         console.error('Error loading packages:', error);
+      } finally {
+        setIsLoadingPackages(false);
       }
     };
 
-    loadPackages(currentPage);
+    loadPackages(linkedPackageIds ? 1 : currentPage);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSalesRep, currentPage, itemsPerPage, statusFilter]);
+  }, [isSalesRep, currentPage, itemsPerPage, statusFilter, linkedPackageIds]);
+
+  useEffect(() => {
+    if (!linkedPackageIds || !recommendationFocus || isLoadingPackages) return;
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById('recommendation-target')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [linkedPackageIds, recommendationFocus, isLoadingPackages, packages]);
 
   // Handlers
   const handleNewPackageDialogOpen = () => {
@@ -599,8 +626,8 @@ const ItineraryGenerationContainer = () => {
   return (
     <div className="min-h-screen bg-background">
       <PageHeader
-        title={statusFilter ? `${statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)} Packages` : 'All Packages'}
-        subtitle={`${filteredPackages.length} packages found`}
+        title={linkedPackageIds ? 'Linked Packages' : statusFilter ? `${statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)} Packages` : 'All Packages'}
+        subtitle={`${searchTerm ? filteredPackages.length : pagination?.total ?? filteredPackages.length} packages found`}
         actions={
           <>
             <Tabs value={viewMode} onValueChange={(value) => value && setViewMode(value as 'grid' | 'list')}>
@@ -630,47 +657,52 @@ const ItineraryGenerationContainer = () => {
       />
 
       <div className="px-4 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-6">
-        <PackageStats stats={stats} />
+        {!linkedPackageIds && <PackageStats stats={stats} />}
+        <RecommendationStrip module="packages" />
 
-        <PackageFilters
-          searchTerm={searchTerm}
-          onSearchChange={handleSearchChange}
-          statusFilter={statusFilter}
-          onStatusFilterChange={handleStatusFilterChange}
-          statusTabs={statusTabs}
-        />
-
-        {filteredPackages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
-            <Package className="w-16 h-16 mb-4 opacity-50" />
-            <p className="text-lg font-medium text-foreground">No packages found</p>
-            <p className="text-sm">Create your first package to get started</p>
-          </div>
-        ) : (
-          <div className={viewMode === 'grid' ? 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6' : 'space-y-4'}>
-            {filteredPackages.map((pkg: any) => (
-              <PackageCard
-                key={pkg._id || pkg.id}
-                pkg={pkg}
-                onView={handleViewPackage}
-                onEdit={handleEditPackage}
-                onDownload={handleDownloadPackage}
-                onDelete={handleDeletePackage}
-                onDuplicate={handleDuplicatePackage}
-              />
-            ))}
-          </div>
-        )}
-
-        {pagination && pagination.pages > 1 && (
-          <Pagination
-            currentPage={currentPage}
-            totalPages={pagination.pages}
-            onPageChange={handlePageChange}
-            itemsPerPage={itemsPerPage}
-            totalItems={pagination.total}
+        <div id="recommendation-target" className="scroll-mt-20 space-y-4 sm:space-y-6">
+          <PackageFilters
+            searchTerm={searchTerm}
+            onSearchChange={handleSearchChange}
+            statusFilter={statusFilter}
+            onStatusFilterChange={handleStatusFilterChange}
+            statusTabs={statusTabs}
+            linkedPackageCount={linkedPackageIds ? (pagination?.total ?? filteredPackages.length) : undefined}
+            onClearLinkedFilter={() => setSearchParams({})}
           />
-        )}
+
+          {filteredPackages.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+              <Package className="w-16 h-16 mb-4 opacity-50" />
+              <p className="text-lg font-medium text-foreground">No packages found</p>
+              <p className="text-sm">Create your first package to get started</p>
+            </div>
+          ) : (
+            <div className={viewMode === 'grid' ? 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6' : 'space-y-4'}>
+              {filteredPackages.map((pkg: any) => (
+                <PackageCard
+                  key={pkg._id || pkg.id}
+                  pkg={pkg}
+                  onView={handleViewPackage}
+                  onEdit={handleEditPackage}
+                  onDownload={handleDownloadPackage}
+                  onDelete={handleDeletePackage}
+                  onDuplicate={handleDuplicatePackage}
+                />
+              ))}
+            </div>
+          )}
+
+          {pagination && pagination.pages > 1 && (
+            <Pagination
+              currentPage={currentPage}
+              totalPages={pagination.pages}
+              onPageChange={handlePageChange}
+              itemsPerPage={itemsPerPage}
+              totalItems={pagination.total}
+            />
+          )}
+        </div>
       </div>
 
       {/* Modals */}

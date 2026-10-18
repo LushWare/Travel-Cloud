@@ -83,6 +83,7 @@ const SERVICES = [
   'career-service',
   'flight-service',
   'assistant-service',
+  'recommendation-service',
   'voice-service',
 ];
 

@@ -64,35 +64,16 @@ export {
   LeadIntakeResult,
   LeadClaimResult,
 } from './leadIntake.js';
+export { ASSISTANT_TOOL_ACCESS } from './assistantToolAccess.js';
+export { LEAD_RECORD_FIELDS, leadEvidenceId, pageEvidenceId } from './crmEvidence.js';
 export {
-  ManagementPageKeys,
-  ManagementSinceWindows,
-  ManagementFactKinds,
-  ManagementClaimSections,
-  ManagementEvidenceTypes,
-  ManagementSeverities,
-  ManagementRoles,
-  ManagementToolAccess,
-  LEAD_COPILOT_FIELDS,
-  leadEvidenceId,
-  pageEvidenceId,
-  ManagementCopilotSeenRequest,
-  BriefingFactSchema,
-  PriorClaimSchema,
-  ManagementAssistantTurnRequest,
-  BriefingClaimSchema,
-  ManagementSourceSchema,
-  ManagementSourceTargetSchema,
-  ManagementAssistantTurnResult,
-  DeterministicInsightSchema,
-  ManagementDeterministicResult,
+  BusinessNotificationSchema,
   ManagementNotificationCategories,
   ManagementNotificationTargetSchema,
-  BusinessNotificationSchema,
   ManagementNotificationsRequest,
   ManagementNotificationsResult,
   ManagementNotificationsSeenRequest,
-} from './managementCopilot.js';
+} from './businessNotifications.js';
 export {
   ASSISTANT_FORM_FIELDS,
   ASSISTANT_FORM_FIELD_TYPES,

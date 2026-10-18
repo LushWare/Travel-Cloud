@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
-  Users, UserCheck, UserX, TrendingUp,
-  ChevronRight, Search, Loader2,
+  Users, UserCheck, UserX, TrendingUp, ChevronRight,
+  Search, Loader2,
 } from 'lucide-react';
 import { leadAPI } from '../../../services/api';
 import toast from '@/lib/toast';
@@ -11,6 +11,8 @@ import { formatPercent } from '@/utils/number';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import type { LucideIcon } from 'lucide-react';
+import { StatCard } from '@/components/shared/StatCard';
+import { repLabelFor } from '../utils/salesRepLabel';
 
 interface StatSummary {
   total: number;
@@ -46,16 +48,28 @@ const LeadStats = ({ summary, salesReps, onAssignSuccess }: LeadStatsProps) => {
 
   const handleStatClick = async (type: StatKey) => {
     try {
-      let filtered: any[] = [];
+      const pageSize = 100;
+      const firstResponse = await leadAPI.getAllLeads({ page: 1, limit: pageSize } as any);
+      const apiLeads: any[] = Array.isArray(firstResponse.data)
+        ? firstResponse.data
+        : firstResponse.data?.leads || [];
+      const pageCount = Number(firstResponse.pagination?.pages) || 1;
+
+      for (let page = 2; page <= pageCount; page += 1) {
+        const response = await leadAPI.getAllLeads({ page, limit: pageSize } as any);
+        const pageLeads = Array.isArray(response.data) ? response.data : response.data?.leads || [];
+        apiLeads.push(...pageLeads);
+      }
+
+      let filtered: any[];
       // 'converted' was dead code here in the original: handleStatClick's
       // `type` param only ever receives 'total'/'assigned'/'unassigned' (the
       // 'conversion' stat tile is non-clickable), so this branch could never
       // fire - confirmed by TS's real type-checking, not guessed.
-      const res = await leadAPI.getAllLeads({ limit: 50 } as any);
-      const apiLeads = res.data?.leads || res.data || [];
       if (type === 'total') filtered = apiLeads;
-      else if (type === 'assigned') filtered = apiLeads.filter((l: any) => l.assignedTo || l.salesRep);
-      else if (type === 'unassigned') filtered = apiLeads.filter((l: any) => !l.assignedTo && !l.salesRep);
+      else if (type === 'assigned') filtered = apiLeads.filter((lead: any) => Boolean(lead.assignedToId));
+      else if (type === 'unassigned') filtered = apiLeads.filter((lead: any) => !lead.assignedToId);
+      else filtered = [];
 
       setModalType(type);
       setModalLeads(filtered);
@@ -98,13 +112,6 @@ const LeadStats = ({ summary, salesReps, onAssignSuccess }: LeadStatsProps) => {
     { key: 'conversion', label: 'Conversion Rate', value: formatPercent(stats.conversionRate), icon: TrendingUp, color: 'primary', clickable: false },
   ];
 
-  const colorClasses: Record<string, string> = {
-    muted: 'bg-muted text-muted-foreground',
-    success: 'bg-success/10 text-success',
-    warning: 'bg-warning/10 text-warning',
-    primary: 'bg-primary/10 text-primary',
-  };
-
   return (
     <>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -115,21 +122,25 @@ const LeadStats = ({ summary, salesReps, onAssignSuccess }: LeadStatsProps) => {
           return (
             <div
               key={stat.key}
+              role={isClickable ? 'button' : undefined}
+              tabIndex={isClickable ? 0 : undefined}
+              aria-label={isClickable ? `Show ${stat.label.toLowerCase()} leads` : undefined}
               onClick={() => isClickable && handleStatClick(stat.key)}
-              className={`bg-card rounded-xl border border-border p-3 sm:p-5 ${isClickable ? 'cursor-pointer hover:shadow-[var(--shadow-card)] transition-shadow' : ''}`}
+              onKeyDown={(event) => {
+                if (!isClickable || (event.key !== 'Enter' && event.key !== ' ')) return;
+                event.preventDefault();
+                void handleStatClick(stat.key);
+              }}
+              className={isClickable ? 'h-full cursor-pointer rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2' : 'h-full'}
             >
-              <div className="flex items-center justify-between">
-                <div className={`p-2.5 rounded-lg ${colorClasses[stat.color]}`}>
-                  <Icon className="w-5 h-5" />
-                </div>
-                {isClickable && (
-                  <ChevronRight className="w-4 h-4 text-muted-foreground" />
-                )}
-              </div>
-              <div className="mt-4">
-                <p className="text-xl sm:text-2xl font-semibold font-mono tabular-nums text-foreground">{stat.value}</p>
-                <p className="text-sm text-muted-foreground mt-0.5">{stat.label}</p>
-              </div>
+              <StatCard
+                icon={Icon}
+                label={stat.label}
+                value={stat.value}
+                color={stat.color}
+                trailingIcon={isClickable ? ChevronRight : undefined}
+                className={`h-full ${isClickable ? 'cursor-pointer transition-shadow hover:shadow-[var(--shadow-card)]' : ''}`}
+              />
             </div>
           );
         })}
@@ -204,7 +215,7 @@ const LeadStats = ({ summary, salesReps, onAssignSuccess }: LeadStatsProps) => {
 
                         {modalType !== 'unassigned' && (
                           <span className="text-sm text-muted-foreground">
-                            {lead.salesRep || lead.adviser || 'Unassigned'}
+                            {repLabelFor(lead.assignedToId, salesReps)}
                           </span>
                         )}
                       </div>

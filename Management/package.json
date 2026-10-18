@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
+    "@duffel/components": "^3.17.0",
     "@fontsource-variable/archivo": "^5.3.0",
     "@fontsource-variable/jetbrains-mono": "^5.3.0",
     "@fontsource-variable/public-sans": "^5.3.0",

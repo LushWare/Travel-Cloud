@@ -8,7 +8,7 @@ const logger = pino({
   redact: {
     paths: [
       'password', 'token', 'authorization', 'email',
-      'req.headers.cookie', 'req.headers.authorization', 'req.headers["x-retell-signature"]',
+      'req.headers.cookie', 'req.headers.authorization', 'req.headers.x-internal-token', 'req.headers["x-retell-signature"]',
       'transcript', 'recordingUrl', 'recording_url',
     ],
     censor: '[REDACTED]',

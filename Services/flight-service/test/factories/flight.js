@@ -76,6 +76,8 @@ export function buildTraveler(overrides = {}) {
     title: overrides.title || 'Mr',
     firstName: overrides.firstName || faker.person.firstName(),
     lastName: overrides.lastName || faker.person.lastName(),
+    email: overrides.email || faker.internet.email().toLowerCase(),
+    phone: overrides.phone || '',
     dob: overrides.dob || '1990-05-15',
     gender: overrides.gender || 'M',
     passportNumber: overrides.passportNumber || faker.string.alphanumeric(9).toUpperCase(),

@@ -123,7 +123,12 @@ export default function SearchForm({
             adults={form.adults}
             children={form.children}
             infants={form.infants}
-            onChange={(c: { adults: number; children: number; infants: number }) => setForm((f) => ({ ...f, ...c }))}
+            onChange={(c: { adults: number; children: number; infants: number }) => setForm((f) => ({
+              ...f,
+              ...c,
+              childAges: Array.from({ length: c.children }, (_, index) => f.childAges[index] ?? ''),
+              infantAges: Array.from({ length: c.infants }, (_, index) => f.infantAges[index] ?? ''),
+            }))}
           />
         </div>
         <div className="flex items-end">
@@ -133,6 +138,41 @@ export default function SearchForm({
           </Button>
         </div>
       </div>
+
+      {(form.children > 0 || form.infants > 0) && (
+        <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+          {form.childAges.map((age, index) => (
+            <div key={`child-${index}`}>
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">Child {index + 1} age</label>
+              <Input
+                type="number"
+                min={2}
+                max={17}
+                value={age}
+                onChange={(event) => setForm((current) => ({
+                  ...current,
+                  childAges: current.childAges.map((value, ageIndex) => ageIndex === index ? event.target.value : value),
+                }))}
+              />
+            </div>
+          ))}
+          {form.infantAges.map((age, index) => (
+            <div key={`infant-${index}`}>
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">Infant {index + 1} age</label>
+              <Input
+                type="number"
+                min={0}
+                max={1}
+                value={age}
+                onChange={(event) => setForm((current) => ({
+                  ...current,
+                  infantAges: current.infantAges.map((value, ageIndex) => ageIndex === index ? event.target.value : value),
+                }))}
+              />
+            </div>
+          ))}
+        </div>
+      )}
     </form>
   );
 }

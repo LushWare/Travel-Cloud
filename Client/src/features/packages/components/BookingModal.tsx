@@ -1,4 +1,4 @@
-import { type FormEvent } from 'react';
+import { type FormEvent, useEffect } from 'react';
 import {
   ArrowRight, Calendar, Check, ChevronLeft, Sparkles, Users, X,
 } from 'lucide-react';
@@ -65,6 +65,18 @@ export default function BookingModal({
 }: BookingModalProps) {
   const { written, markWritten, clearWritten } = useAssistantWrittenFields();
 
+  useEffect(() => {
+    if (!open) return;
+
+    const root = document.documentElement;
+    const previousOverflow = root.style.overflow;
+    root.style.overflow = 'hidden';
+
+    return () => {
+      root.style.overflow = previousOverflow;
+    };
+  }, [open]);
+
   // Registered while the dialog is open, and only then: a modal-hosted form is not
   // a page, so the assistant may fill it exactly as long as it is on screen. The
   // panel raises above the dialog while this is registered (see the widget).
@@ -106,45 +118,52 @@ export default function BookingModal({
     <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onClose(); }}>
       <DialogContent
         showCloseButton={false}
-        className="flex flex-col rounded-3xl bg-white p-0 text-gray-900 shadow-modal ring-1 ring-gray-200 max-w-4xl lg:max-w-5xl max-h-[95vh] overflow-hidden"
+        className="flex h-[min(92dvh,48rem)] w-[calc(100%-2rem)] flex-col overflow-hidden rounded-2xl bg-white p-0 text-gray-900 shadow-2xl ring-1 ring-black/10 sm:max-w-3xl"
+        data-lenis-prevent
       >
-        <DialogHeader className="sticky top-0 z-elevated flex-row items-center justify-between gap-4 rounded-t-3xl bg-brand-600 p-6 lg:p-8 text-white max-sm:p-5">
-          <div className="min-w-0">
-            <DialogTitle className="text-2xl lg:text-3xl font-black text-white leading-tight mb-2">
-              Book Your Adventure
-            </DialogTitle>
-            <DialogDescription className="text-brand-100 text-sm lg:text-base">
-              Fill in your details and we'll get back to you within 24 hours
-            </DialogDescription>
+        <DialogHeader className="sticky top-0 z-elevated flex-row shrink-0 items-center justify-between gap-4 border-b border-white/10 bg-brand-dark-900 px-6 py-5 text-white sm:px-8">
+          <div className="flex min-w-0 items-center gap-4">
+            <span className="hidden h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-brand-accent-300/40 bg-brand-accent-300/10 text-brand-accent-300 sm:flex">
+              <Calendar className="h-5 w-5" aria-hidden="true" />
+            </span>
+            <div className="min-w-0">
+              <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-brand-accent-300">Trip enquiry</p>
+              <DialogTitle className="font-display text-2xl font-semibold leading-tight text-white sm:text-3xl">
+                Book Your Adventure
+              </DialogTitle>
+              <DialogDescription className="mt-1 text-sm text-white/70">
+                Fill in your details and we'll get back to you within 24 hours
+              </DialogDescription>
+            </div>
           </div>
           <DialogClose
             aria-label="Close booking dialog"
-            className="flex-shrink-0 p-2 rounded-xl text-white hover:bg-white/20 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-white/70 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
           >
-            <X className="w-6 h-6 lg:w-8 lg:h-8" />
+            <X className="h-5 w-5" />
           </DialogClose>
         </DialogHeader>
 
-        <div className="overflow-y-auto">
+        <div data-booking-scroll className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain bg-neutral-50">
           {/* Step Progress Indicator */}
-          <div className="px-6 lg:px-8 pt-6 max-sm:px-5">
-            <Stepper steps={BOOKING_STEPS} currentStep={currentStep} className="mb-6" />
+          <div className="border-b border-neutral-200 px-6 py-5 sm:px-8">
+            <Stepper steps={BOOKING_STEPS} currentStep={currentStep} />
           </div>
 
-          <form onSubmit={onSubmit} className="p-6 lg:p-8 space-y-6 max-sm:p-5 relative">
+          <form onSubmit={onSubmit} className="relative space-y-6 bg-white px-4 py-5 sm:px-8 sm:py-8">
             {/* Step 1: Contact Information */}
             {currentStep === 1 && (
-              <div className="space-y-6">
+              <div className="space-y-5">
                 <div>
-                  <h4 className="text-xl font-bold text-gray-900 mb-4">Contact Information</h4>
-                  <p className="text-sm text-gray-600 mb-6">Let's start with your contact details</p>
+                  <h4 className="font-display text-2xl font-semibold text-brand-dark-900">Where can we reach you?</h4>
+                  <p className="mt-1 text-sm text-gray-600">Add your contact details to get started.</p>
                 </div>
 
                 {/* Email - Required */}
                 <div>
-                  <div className="flex items-center gap-2 mb-3">
-                    <label className="block text-sm font-black text-gray-900">Email Address</label>
-                    <span className="px-2.5 py-1 text-xs font-bold text-brand-700 bg-brand-100 rounded-full">Required</span>
+                  <div className="mb-2 flex items-center gap-2">
+                    <label className="block text-sm font-semibold text-gray-800">Email address</label>
+                    <span className="text-xs font-medium text-brand-700">Required</span>
                   </div>
                   <input
                     type="email"
@@ -157,10 +176,10 @@ export default function BookingModal({
                         setFormErrors({...formErrors, email: ''});
                       }
                     }}
-                    className={`w-full px-5 py-4 text-base border-2 rounded-2xl focus:ring-4 transition-all max-sm:px-4 max-sm:py-3 ${
+                    className={`w-full rounded-lg border px-4 py-3 text-sm transition-colors placeholder:text-gray-400 focus:outline-none focus:ring-4 ${
                       formErrors.email
                         ? 'border-red-500 focus:border-red-500 focus:ring-red-100'
-                        : `border-gray-300 focus:border-brand-600 focus:ring-brand-100 bg-white ${assistantMarkedFieldClass(written.has('email'))}`
+                        : `border-gray-300 bg-white focus:border-brand-600 focus:ring-brand-100 ${assistantMarkedFieldClass(written.has('email'))}`
                     }`}
                     placeholder="your.email@example.com"
                   />
@@ -175,12 +194,12 @@ export default function BookingModal({
                   )}
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                   {/* Name - Optional */}
                   <div>
-                    <div className="flex items-center gap-2 mb-3">
-                      <label className="block text-sm font-semibold text-gray-700">Full Name</label>
-                      <span className="text-xs text-gray-500">(Optional)</span>
+                    <div className="mb-2 flex items-center gap-2">
+                      <label className="block text-sm font-semibold text-gray-800">Full name</label>
+                      <span className="text-xs text-gray-500">Optional</span>
                     </div>
                     <input
                       type="text"
@@ -192,7 +211,7 @@ export default function BookingModal({
                           setFormErrors({...formErrors, name: ''});
                         }
                       }}
-                      className={`w-full px-5 py-4 text-base border-2 border-gray-300 rounded-2xl focus:ring-4 focus:ring-brand-100 focus:border-brand-600 transition-all bg-white hover:bg-gray-50 max-sm:px-4 max-sm:py-3 ${assistantMarkedFieldClass(
+                      className={`w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm transition-colors placeholder:text-gray-400 focus:border-brand-600 focus:outline-none focus:ring-4 focus:ring-brand-100 ${assistantMarkedFieldClass(
                         written.has('name'),
                       )}`}
                       placeholder="John Doe"
@@ -202,9 +221,9 @@ export default function BookingModal({
 
                   {/* Phone - Optional with country code */}
                   <div>
-                    <div className="flex items-center gap-2 mb-3">
-                      <label className="block text-sm font-semibold text-gray-700">Phone Number</label>
-                      <span className="text-xs text-gray-500">(Optional)</span>
+                    <div className="mb-2 flex items-center gap-2">
+                      <label className="block text-sm font-semibold text-gray-800">Phone number</label>
+                      <span className="text-xs text-gray-500">Optional</span>
                     </div>
                     <PhoneInput
                       international
@@ -217,20 +236,20 @@ export default function BookingModal({
                           setFormErrors({...formErrors, phone: ''});
                         }
                       }}
-                      className="phone-input-wrapper"
+                      className="phone-input-wrapper booking-phone-input"
                       placeholder="Enter phone number"
                     />
                   </div>
                 </div>
 
-                <div className="pt-4">
+                <div className="border-t border-gray-100 pt-5">
                   <button
                     type="button"
                     onClick={onNext}
-                    className="w-full bg-brand-600 text-white py-4 lg:py-5 rounded-xl font-black text-base lg:text-lg hover:bg-brand-700 transition-colors flex items-center justify-center gap-3 max-sm:py-3.5"
+                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-brand-700 px-5 py-3.5 text-sm font-semibold text-white transition-colors hover:bg-brand-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
                   >
                     Next Step
-                    <ArrowRight className="w-5 h-5 lg:w-6 lg:h-6" />
+                    <ArrowRight className="h-4 w-4 text-brand-accent-300" />
                   </button>
                 </div>
               </div>
@@ -238,30 +257,27 @@ export default function BookingModal({
 
             {/* Step 2: Travel Details */}
             {currentStep === 2 && (
-              <div className="space-y-8">
+              <div className="space-y-6">
                 {/* Enhanced Header */}
-                <div className="text-center pb-4 border-b border-gray-200">
-                  <div className="inline-flex items-center justify-center w-16 h-16 bg-brand-600 rounded-2xl mb-4">
-                    <Calendar className="w-8 h-8 text-white" />
-                  </div>
-                  <h4 className="text-2xl lg:text-3xl font-black text-gray-900 mb-2">
+                <div className="border-b border-gray-100 pb-5">
+                  <h4 className="font-display text-2xl font-semibold text-brand-dark-900">
                     Plan Your Journey
                   </h4>
-                  <p className="text-sm text-gray-600">Select your travel dates and preferences</p>
+                  <p className="mt-1 text-sm text-gray-600">Choose your dates and tell us who is travelling.</p>
                 </div>
 
                 {/* Date Range Picker - Enhanced */}
-                <div className="bg-gray-50 rounded-3xl p-6 lg:p-8 border border-gray-200 w-full max-sm:p-5">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="p-2 bg-brand-100 rounded-xl flex-shrink-0">
-                      <Calendar className="w-5 h-5 text-brand-700" />
+                <div className="w-full rounded-2xl border border-brand-100 bg-brand-50/60 p-3 sm:p-6">
+                  <div className="mb-4 flex items-center gap-3">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-100 text-brand-700">
+                      <Calendar className="h-4 w-4" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <label className="block text-base font-bold text-gray-900">Travel Date Range</label>
-                      <span className="text-xs text-gray-600 font-medium">Click dates to select your range</span>
+                      <label className="block text-sm font-semibold text-gray-900">Travel dates</label>
+                      <span className="text-xs text-gray-600">Select a start date, then an end date.</span>
                     </div>
                   </div>
-                  <div className="flex justify-center bg-white rounded-2xl p-4 lg:p-6 border border-gray-200 w-full overflow-x-auto">
+                  <div className="flex w-full justify-center overflow-x-auto rounded-xl border border-brand-100 bg-white p-2 sm:p-4">
                     <DatePicker
                         selected={formData.travelDate ? (typeof formData.travelDate === 'string' ? new Date(formData.travelDate) : formData.travelDate) : null}
                         onChange={(dates: Date | [Date | null, Date | null] | null) => {
@@ -317,18 +333,18 @@ export default function BookingModal({
                       selectsRange
                       inline
                       minDate={new Date()}
-                      calendarClassName="!shadow-floating !border-gray-200 !rounded-2xl"
+                      calendarClassName="booking-calendar"
                     />
                   </div>
                   {formData.travelDate && (
                     <div className={`mt-4 p-4 rounded-xl transition-all duration-300 ${
                       formData.endDate
-                        ? 'bg-green-50 border-2 border-green-200'
-                        : 'bg-brand-50 border-2 border-brand-200'
+                        ? 'bg-brand-50 border border-brand-200'
+                        : 'bg-neutral-100 border border-neutral-200'
                     }`}>
                       <div className="flex items-center gap-2 justify-center">
                         <Check className={`w-5 h-5 ${formData.endDate ? 'text-green-700' : 'text-brand-700'}`} />
-                        <p className={`text-sm font-bold ${formData.endDate ? 'text-green-800' : 'text-brand-800'}`}>
+                        <p className={`text-sm font-medium ${formData.endDate ? 'text-brand-800' : 'text-gray-700'}`}>
                           {formData.endDate
                             ? `Selected: ${(typeof formData.travelDate === 'string' ? new Date(formData.travelDate) : formData.travelDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} - ${(typeof formData.endDate === 'string' ? new Date(formData.endDate) : formData.endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
                             : `Start Date: ${(typeof formData.travelDate === 'string' ? new Date(formData.travelDate) : formData.travelDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} - Select end date`}
@@ -339,23 +355,23 @@ export default function BookingModal({
                 </div>
 
                 {/* Enhanced Travelers & Requests Section */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
                   {/* Number of Travelers - Enhanced */}
-                  <div className="bg-white rounded-2xl p-6 border border-gray-200 hover:border-gray-300 transition-colors min-w-0 max-sm:p-5">
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className="p-2 bg-brand-100 rounded-xl flex-shrink-0">
-                        <Users className="w-5 h-5 text-brand-700" />
+                  <div className="min-w-0 rounded-xl border border-neutral-200 bg-neutral-50 p-5 transition-colors hover:border-neutral-300">
+                    <div className="mb-4 flex items-center gap-3">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-100 text-brand-700">
+                        <Users className="h-4 w-4" />
                       </div>
                       <div className="min-w-0 flex-1">
-                        <label className="block text-base font-bold text-gray-900">Number of Travelers</label>
-                        <span className="text-xs text-gray-500">(Optional)</span>
+                        <label className="block text-sm font-semibold text-gray-900">Travellers</label>
+                        <span className="text-xs text-gray-500">Number of people in your group</span>
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
                       <button
                         type="button"
                         onClick={() => setFormData({...formData, travelers: Math.max(1, formData.travelers - 1)})}
-                        className="w-12 h-12 rounded-xl bg-white border-2 border-gray-300 text-gray-700 font-bold text-lg hover:bg-gray-50 hover:border-gray-400 transition-colors flex items-center justify-center flex-shrink-0"
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-gray-300 bg-white text-lg font-medium text-gray-700 transition-colors hover:border-brand-500 hover:text-brand-700"
                         aria-label="Decrease travelers"
                       >
                         −
@@ -368,7 +384,7 @@ export default function BookingModal({
                           clearWritten('travelers');
                           setFormData({...formData, travelers: +e.target.value || 1});
                         }}
-                        className={`flex-1 min-w-0 px-5 py-4 text-center text-2xl font-bold border-2 border-gray-300 rounded-xl focus:ring-4 focus:ring-brand-100 focus:border-brand-600 transition-all bg-white ${assistantMarkedFieldClass(
+                        className={`min-w-0 flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-center text-lg font-semibold focus:border-brand-600 focus:outline-none focus:ring-4 focus:ring-brand-100 ${assistantMarkedFieldClass(
                           written.has('travelers'),
                         )}`}
                         placeholder="2"
@@ -378,7 +394,7 @@ export default function BookingModal({
                       <button
                         type="button"
                         onClick={() => setFormData({...formData, travelers: formData.travelers + 1})}
-                        className="w-12 h-12 rounded-xl bg-white border-2 border-gray-300 text-gray-700 font-bold text-lg hover:bg-gray-50 hover:border-gray-400 transition-colors flex items-center justify-center flex-shrink-0"
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-gray-300 bg-white text-lg font-medium text-gray-700 transition-colors hover:border-brand-500 hover:text-brand-700"
                         aria-label="Increase travelers"
                       >
                         +
@@ -387,14 +403,14 @@ export default function BookingModal({
                   </div>
 
                   {/* Special Requests - Enhanced */}
-                  <div className="bg-white rounded-2xl p-6 border border-gray-200 hover:border-gray-300 transition-colors min-w-0 max-sm:p-5">
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className="p-2 bg-brand-100 rounded-xl flex-shrink-0">
-                        <Sparkles className="w-5 h-5 text-brand-700" />
+                  <div className="min-w-0 rounded-xl border border-neutral-200 bg-neutral-50 p-5 transition-colors hover:border-neutral-300">
+                    <div className="mb-4 flex items-center gap-3">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-100 text-brand-700">
+                        <Sparkles className="h-4 w-4" />
                       </div>
                       <div className="min-w-0 flex-1">
-                        <label className="block text-base font-bold text-gray-900">Special Requests</label>
-                        <span className="text-xs text-gray-500">(Optional)</span>
+                        <label className="block text-sm font-semibold text-gray-900">Special requests</label>
+                        <span className="text-xs text-gray-500">Optional notes for our team</span>
                       </div>
                     </div>
                     <textarea
@@ -404,7 +420,7 @@ export default function BookingModal({
                         clearWritten('message');
                         setFormData({...formData, message: e.target.value});
                       }}
-                      className={`w-full px-5 py-4 text-base border-2 border-gray-300 rounded-xl focus:ring-4 focus:ring-brand-100 focus:border-brand-600 transition-all resize-none bg-white hover:bg-gray-50 placeholder:text-gray-400 ${assistantMarkedFieldClass(
+                      className={`w-full resize-none rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm transition-colors placeholder:text-gray-400 focus:border-brand-600 focus:outline-none focus:ring-4 focus:ring-brand-100 ${assistantMarkedFieldClass(
                         written.has('message'),
                       )}`}
                       placeholder="Any dietary requirements, accessibility needs, or special occasions? We're here to make your trip perfect!"
@@ -414,11 +430,11 @@ export default function BookingModal({
                 </div>
 
                 {/* Navigation Buttons */}
-                <div className="pt-6 flex gap-3 border-t border-gray-200">
+                <div className="flex gap-3 border-t border-gray-100 pt-5">
                   <button
                     type="button"
                     onClick={onPrevious}
-                    className="flex-1 bg-white text-gray-700 border border-gray-300 py-4 rounded-xl font-bold text-base lg:text-lg hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
+                    className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50"
                   >
                     <ChevronLeft className="w-5 h-5" />
                     Previous
@@ -426,10 +442,10 @@ export default function BookingModal({
                   <button
                     type="button"
                     onClick={onNext}
-                    className="flex-1 bg-brand-600 text-white py-4 rounded-xl font-black text-base lg:text-lg hover:bg-brand-700 transition-colors flex items-center justify-center gap-3"
+                    className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-brand-700 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-brand-800"
                   >
                     Next Step
-                    <ArrowRight className="w-5 h-5 lg:w-6 lg:h-6" />
+                    <ArrowRight className="h-4 w-4 text-brand-accent-300" />
                   </button>
                 </div>
               </div>
@@ -437,42 +453,42 @@ export default function BookingModal({
 
             {/* Step 3: Review & Submit */}
             {currentStep === 3 && (
-              <div className="space-y-6">
+                <div className="space-y-5">
                 <div>
-                  <h4 className="text-xl font-bold text-gray-900 mb-4">Review & Submit</h4>
-                  <p className="text-sm text-gray-600 mb-6">Please review your information before submitting</p>
+                    <h4 className="font-display text-2xl font-semibold text-brand-dark-900">Review your trip request</h4>
+                    <p className="mt-1 text-sm text-gray-600">Check your details before sending them to our travel team.</p>
                 </div>
 
-                <div className="bg-gray-50 rounded-2xl p-6 space-y-4 border border-gray-200 max-sm:p-5">
-                  <div className="border-b border-gray-200 pb-4">
-                    <h5 className="font-bold text-gray-900 mb-3">Contact Information</h5>
-                    <div className="space-y-2 text-sm">
-                      <p><span className="font-semibold">Email:</span> {formData.email || <span className="text-gray-400">Not provided</span>}</p>
-                      <p><span className="font-semibold">Name:</span> {formData.name || <span className="text-gray-400">Not provided</span>}</p>
-                      <p><span className="font-semibold">Phone:</span> {formData.phone || <span className="text-gray-400">Not provided</span>}</p>
+                <div className="grid grid-cols-1 gap-4 rounded-xl border border-neutral-200 bg-neutral-50 p-5 sm:grid-cols-2 sm:p-6">
+                  <div className="space-y-3 border-b border-neutral-200 pb-4 sm:border-b-0 sm:border-r sm:pb-0 sm:pr-5">
+                    <h5 className="text-sm font-semibold text-brand-dark-900">Contact details</h5>
+                    <div className="space-y-2 text-sm text-gray-700">
+                      <p className="break-words"><span className="font-medium text-gray-500">Email</span><br />{formData.email || <span className="text-gray-400">Not provided</span>}</p>
+                      <p><span className="font-medium text-gray-500">Name</span><br />{formData.name || <span className="text-gray-400">Not provided</span>}</p>
+                      <p><span className="font-medium text-gray-500">Phone</span><br />{formData.phone || <span className="text-gray-400">Not provided</span>}</p>
                     </div>
                   </div>
-                  <div className="border-b border-gray-200 pb-4">
-                    <h5 className="font-bold text-gray-900 mb-3">Travel Details</h5>
-                    <div className="space-y-2 text-sm">
-                      <p><span className="font-semibold">Date Range:</span> {
+                  <div className="space-y-3">
+                    <h5 className="text-sm font-semibold text-brand-dark-900">Travel details</h5>
+                    <div className="space-y-2 text-sm text-gray-700">
+                      <p><span className="font-medium text-gray-500">Dates</span><br />{
                         formData.travelDate && formData.endDate
                           ? `${(typeof formData.travelDate === 'string' ? new Date(formData.travelDate) : formData.travelDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} - ${(typeof formData.endDate === 'string' ? new Date(formData.endDate) : formData.endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
                           : formData.travelDate
                           ? `${(typeof formData.travelDate === 'string' ? new Date(formData.travelDate) : formData.travelDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} (Start only)`
                           : <span className="text-gray-400">Not provided</span>
                       }</p>
-                      <p><span className="font-semibold">Travelers:</span> {formData.travelers || 1}</p>
-                      <p><span className="font-semibold">Special Requests:</span> {formData.message || <span className="text-gray-400">None</span>}</p>
+                      <p><span className="font-medium text-gray-500">Travellers</span><br />{formData.travelers || 1}</p>
+                      <p><span className="font-medium text-gray-500">Special requests</span><br />{formData.message || <span className="text-gray-400">None</span>}</p>
                     </div>
                   </div>
                 </div>
 
-                <div className="pt-4 flex gap-3">
+                <div className="flex gap-3 border-t border-gray-100 pt-5">
                   <button
                     type="button"
                     onClick={onPrevious}
-                    className="flex-1 bg-white text-gray-700 border border-gray-300 py-4 rounded-xl font-bold text-base lg:text-lg hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
+                    className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50"
                   >
                     <ChevronLeft className="w-5 h-5" />
                     Previous
@@ -481,7 +497,7 @@ export default function BookingModal({
                     type="submit"
                     disabled={isSubmittingBooking}
                     aria-busy={isSubmittingBooking}
-                    className={`flex-1 bg-brand-600 text-white py-4 rounded-xl font-black text-base lg:text-lg hover:bg-brand-700 transition-colors flex items-center justify-center gap-3 ${
+                    className={`flex flex-1 items-center justify-center gap-2 rounded-lg bg-brand-700 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-brand-800 ${
                       isSubmittingBooking ? 'opacity-70 cursor-not-allowed' : ''
                     }`}
                   >
@@ -490,7 +506,7 @@ export default function BookingModal({
                         ? 'Submitting...'
                         : 'Submit Booking Request'}
                     </span>
-                    <ArrowRight className="w-5 h-5 lg:w-6 lg:h-6" />
+                    <ArrowRight className="h-4 w-4 text-brand-accent-300" />
                   </button>
                 </div>
               </div>

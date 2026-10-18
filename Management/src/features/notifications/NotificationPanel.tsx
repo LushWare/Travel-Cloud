@@ -8,9 +8,7 @@ import {
   PopoverHeader,
   PopoverTitle,
 } from '@/components/ui/popover';
-import { LiveStatus, useAnnouncer } from '@/features/copilot/Announcer';
-import { useCopilotControl } from '@/contexts/CopilotControlContext';
-import type { CopilotClaim } from '@/features/copilot/types';
+import { LiveStatus, useAnnouncer } from './Announcer';
 import { cn } from '@/lib/utils';
 import { useNotifications } from './NotificationProvider';
 import NotificationRow from './NotificationRow';
@@ -33,7 +31,6 @@ type NotificationPanelProps = {
 
 export default function NotificationPanel({ open, onClose }: NotificationPanelProps) {
   const navigate = useNavigate();
-  const copilot = useCopilotControl();
   const session = useNotifications();
   const [showInfo, setShowInfo] = useState(false);
   const [announcement, announce] = useAnnouncer();
@@ -85,7 +82,6 @@ export default function NotificationPanel({ open, onClose }: NotificationPanelPr
                 notification={notification}
                 announce={announce}
                 onView={handleView}
-                onAskCopilot={copilot ? handleAskCopilot : undefined}
                 onDismiss={handleDismiss}
               />
             ))}
@@ -100,13 +96,6 @@ export default function NotificationPanel({ open, onClose }: NotificationPanelPr
     session.acknowledge(notification);
     onClose();
     navigate(toNotificationUrl(notification.target));
-  };
-
-  const handleAskCopilot = (claim: CopilotClaim) => {
-    const notification = session.notifications.find((candidate) => candidate.key === (claim.key ?? claim.id));
-    if (notification) session.acknowledge(notification);
-    onClose();
-    copilot?.askAbout(claim);
   };
 
   const handleDismiss = (notification: BusinessNotification) => {

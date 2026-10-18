@@ -22,10 +22,8 @@ datasource db {
 }
 
 enum FlightBookingStatus {
-  quoted
   pending
   confirmed
-  ticketed
   cancelled
   failed
 
@@ -68,7 +66,7 @@ model FlightBooking {
   taxes               Float
   totalAmount         Float
 
-  status              FlightBookingStatus @default(quoted)
+  status              FlightBookingStatus @default(pending)
   searchSnapshot       Json               // raw normalized offer, kept for audit/re-pricing
   ticketingDeadline   DateTime?
   bookedAt            DateTime?

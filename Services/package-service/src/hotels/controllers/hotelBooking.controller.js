@@ -12,39 +12,78 @@ function getClient(req) {
   return req._hotelClient;
 }
 
+function getCancellationPolicies(booking) {
+  const roomDetails = booking.roomDetails && typeof booking.roomDetails === 'object' ? booking.roomDetails : {};
+  const searchSnapshot = booking.searchSnapshot && typeof booking.searchSnapshot === 'object' ? booking.searchSnapshot : {};
+  return roomDetails.cancellationPolicies
+    || searchSnapshot.cheapestRate?.cancellationPolicies
+    || searchSnapshot.cancellationPolicies
+    || null;
+}
+
+function getCancellationEligibility(booking, now = new Date()) {
+  const status = String(booking.providerStatus || booking.status || '').toLowerCase();
+  if (!['confirmed', 'pending'].includes(status)) {
+    return { canCancel: false, cancellationUnavailableReason: 'Only active bookings can be cancelled.' };
+  }
+  if (!booking.liteapiBookingId) {
+    return { canCancel: false, cancellationUnavailableReason: 'This booking has no provider reference, so it cannot be cancelled through the hotel provider.' };
+  }
+  const checkinDate = booking.checkin ? new Date(booking.checkin) : null;
+  if (!checkinDate || Number.isNaN(checkinDate.getTime())) {
+    return { canCancel: false, cancellationUnavailableReason: 'The booking check-in date is unavailable.' };
+  }
+  const checkinDay = booking.checkin instanceof Date
+    ? checkinDate.toISOString().slice(0, 10)
+    : String(booking.checkin).slice(0, 10);
+  const today = now.toISOString().slice(0, 10);
+  if (checkinDay <= today) {
+    return { canCancel: false, cancellationUnavailableReason: 'Cancellation is unavailable on or after the check-in date.' };
+  }
+  return { canCancel: true, cancellationUnavailableReason: null };
+}
+
+function withCancellationEligibility(booking) {
+  return {
+    ...booking,
+    cancellationPolicies: getCancellationPolicies(booking),
+    ...getCancellationEligibility(booking),
+  };
+}
+
 // ── Controllers ──────────────────────────────────────────────────────
 
 export const search = asyncHandler(async (req, res) => {
   const offers = await getClient(req).searchHotels(req.body);
-
-  // Enrich with hotel names + images via batch lookup — search response only has hotelId + rates
-  if (offers.length > 0) {
-    const hotelIds = [...new Set(offers.map((o) => o.hotelId))];
-    try {
-      const details = await getClient(req).getHotelsByIds(hotelIds);
-      const detailMap = new Map(details.filter(Boolean).map((d) => [d.hotelId, d]));
-      for (const offer of offers) {
-        const d = detailMap.get(offer.hotelId);
-        if (d) {
-          offer.name = d.name || offer.name;
-          offer.starRating = d.starRating || offer.starRating;
-          offer.images = d.images?.length ? d.images : offer.images;
-          offer.address = d.address || offer.address;
-          offer.latitude = d.latitude || offer.latitude;
-          offer.longitude = d.longitude || offer.longitude;
-        }
-      }
-    } catch (err) {
-      req.log.warn({ err: err.message }, 'Batch hotel details fetch failed, using search data only');
-    }
-  }
-
   req.log.info({ count: offers.length }, 'Hotel search completed');
-  res.json({ success: true, data: offers });
+  res.json({ success: true, data: offers, total: offers.length });
 });
 
 export const getDetails = asyncHandler(async (req, res) => {
   res.json({ success: true, data: await getClient(req).getHotelDetails(req.body.hotelId || req.query.hotelId) });
+});
+
+export const getCities = asyncHandler(async (req, res) => {
+  const cities = await getClient(req).getCities(req.query.countryCode);
+  res.json({ success: true, data: cities });
+});
+
+export const getCountries = asyncHandler(async (_req, res) => {
+  const countries = await getClient(_req).getCountries();
+  res.json({ success: true, data: countries });
+});
+
+export const getHotelFilterOptions = asyncHandler(async (req, res) => {
+  const options = await getClient(req).getHotelFilterOptions();
+  res.json({ success: true, data: options });
+});
+
+export const getReviews = asyncHandler(async (req, res) => {
+  const { hotelId, limit, offset, getSentiment } = req.body;
+  res.json({
+    success: true,
+    data: await getClient(req).getHotelReviews(hotelId, { limit, offset, getSentiment }),
+  });
 });
 
 export const prebook = asyncHandler(async (req, res) => {
@@ -52,9 +91,9 @@ export const prebook = asyncHandler(async (req, res) => {
 });
 
 export const book = asyncHandler(async (req, res) => {
-  const { prebookId, guests, contact, offer } = req.body;
+  const { prebookId, clientReference, guests, contact, holder, offer, payment } = req.body;
 
-  const result = await getClient(req).book({ prebookId, guests, contact });
+  const result = await getClient(req).book({ prebookId, clientReference, guests, contact, holder, payment });
 
   const booking = await prisma.hotelBooking.create({
     data: {
@@ -71,7 +110,7 @@ export const book = asyncHandler(async (req, res) => {
       createdById: req.user?.id || 'unknown',
       guestInfo: guests,
       roomDetails: offer?.cheapestRate || {},
-      searchSnapshot: offer || {},
+      searchSnapshot: { ...(offer || {}), clientReference: clientReference || null },
     },
   });
 
@@ -97,7 +136,7 @@ export const listBookings = asyncHandler(async (req, res) => {
   ]);
   res.json({
     success: true,
-    data: bookings,
+    data: bookings.map(withCancellationEligibility),
     pagination: {
       total,
       page,
@@ -113,7 +152,59 @@ export const getBooking = asyncHandler(async (req, res) => {
     where: { id: req.params.id, ...(isScoped && { createdById: req.user.id }) },
   });
   if (!booking) throw new AppError(BOOKING_NOT_FOUND, NOT_FOUND);
-  res.json({ success: true, data: booking });
+
+  let providerBooking = null;
+  let providerRefreshFailed = false;
+  if (booking.liteapiBookingId) {
+    try {
+      providerBooking = await getClient(req).getBooking(booking.liteapiBookingId);
+    } catch (error) {
+      providerRefreshFailed = true;
+      req.log.warn({ bookingId: booking.id, err: error }, 'Could not refresh hotel booking details from provider');
+    }
+  }
+
+  const details = {
+    ...booking,
+    ...providerBooking,
+    id: booking.id,
+    liteapiBookingId: booking.liteapiBookingId,
+    status: booking.status,
+    hotelId: providerBooking?.hotelId || booking.hotelId,
+    checkin: providerBooking?.checkin || booking.checkin,
+    checkout: providerBooking?.checkout || booking.checkout,
+    hotelName: providerBooking?.hotelName || booking.hotelName,
+    hotelAddress: booking.hotelAddress || providerBooking?.address,
+    totalAmount: providerBooking?.totalAmount ?? booking.totalAmount,
+    currency: providerBooking?.currency || booking.currency,
+    pnrCode: providerBooking?.pnr || booking.pnrCode,
+    cancellationReason: providerBooking?.cancellationReason || booking.cancellationReason,
+    providerStatus: providerBooking?.status || null,
+    clientReference: providerBooking?.clientReference || null,
+    commission: providerBooking?.commission ?? null,
+    paymentStatus: providerBooking?.paymentStatus || null,
+    paymentTransactionId: providerBooking?.paymentTransactionId || null,
+    lastFreeCancellationDate: providerBooking?.lastFreeCancellationDate || null,
+    refundableTag: providerBooking?.refundableTag || null,
+    mandatoryFees: providerBooking?.mandatoryFees || null,
+    optionalFees: providerBooking?.optionalFees || null,
+    specialRemarks: providerBooking?.specialRemarks || null,
+    knowBeforeYouGo: providerBooking?.knowBeforeYouGo || null,
+    addons: providerBooking?.addons || [],
+    addonsTotalAmount: providerBooking?.addonsTotalAmount || 0,
+    amountRefunded: providerBooking?.amountRefunded || 0,
+    refundType: providerBooking?.refundType || null,
+    createdAt: providerBooking?.createdAt || booking.createdAt,
+    bookedRooms: providerBooking?.bookedRooms || [],
+    holder: providerBooking?.holder || null,
+    cancellationPolicies: providerBooking?.cancellationPolicies || getCancellationPolicies(booking),
+  };
+  const enrichedDetails = withCancellationEligibility(details);
+  if (providerRefreshFailed) {
+    enrichedDetails.canCancel = false;
+    enrichedDetails.cancellationUnavailableReason = 'Could not verify current cancellation eligibility with the hotel provider.';
+  }
+  res.json({ success: true, data: enrichedDetails });
 });
 
 export const cancelBooking = asyncHandler(async (req, res) => {
@@ -123,24 +214,34 @@ export const cancelBooking = asyncHandler(async (req, res) => {
   });
   if (!booking) throw new AppError(BOOKING_NOT_FOUND, NOT_FOUND);
   if (booking.status === 'cancelled') throw new AppError(BOOKING_ALREADY_CANCELLED, BAD_REQUEST);
+  const localEligibility = getCancellationEligibility(booking);
+  if (!localEligibility.canCancel) throw new AppError(localEligibility.cancellationUnavailableReason, BAD_REQUEST);
+  const providerBooking = await getClient(req).getBooking(booking.liteapiBookingId);
+  const eligibility = getCancellationEligibility({
+    ...booking,
+    providerStatus: providerBooking.status,
+    checkin: providerBooking.checkin || booking.checkin,
+  });
+  if (!eligibility.canCancel) throw new AppError(eligibility.cancellationUnavailableReason, BAD_REQUEST);
 
-  if (booking.liteapiBookingId) {
-    try { await getClient(req).cancelBooking(booking.liteapiBookingId, req.body?.reason); } catch (_) { /* best-effort: local cancellation proceeds regardless */ }
+  const cancellation = await getClient(req).cancelBooking(booking.liteapiBookingId, req.body?.reason);
+  if (cancellation && !['cancelled', 'cancelled_with_charges'].includes(cancellation.status)) {
+    throw new AppError('The hotel provider did not confirm this cancellation.', BAD_REQUEST);
   }
 
   const updated = await prisma.hotelBooking.update({
     where: { id: req.params.id },
     data: { status: 'cancelled', cancelledAt: new Date(), cancellationReason: req.body?.reason || null },
   });
-  res.json({ success: true, data: updated });
+  res.json({ success: true, data: { ...updated, cancellation } });
 });
 
 // ── Lead-scoped controllers ─────────────────────────────────────────
 
 export const bookWithContext = asyncHandler(async (req, res) => {
-  const { prebookId, guests, contact, offer, leadId, packageId, customizedPackageId, dayNumber } = req.body;
+  const { prebookId, clientReference, guests, contact, holder, offer, payment, leadId, packageId, customizedPackageId, dayNumber } = req.body;
 
-  const result = await getClient(req).book({ prebookId, guests, contact });
+  const result = await getClient(req).book({ prebookId, clientReference, guests, contact, holder, payment });
 
   const booking = await prisma.hotelBooking.create({
     data: {
@@ -158,7 +259,7 @@ export const bookWithContext = asyncHandler(async (req, res) => {
       customerId: contact?.customerId || null,
       guestInfo: guests,
       roomDetails: offer?.cheapestRate || {},
-      searchSnapshot: offer || {},
+      searchSnapshot: { ...(offer || {}), clientReference: clientReference || null },
       leadId: leadId || null,
       packageId: packageId || null,
       customizedPackageId: customizedPackageId || null,
@@ -180,4 +281,9 @@ export const getHotelBookingsByLead = asyncHandler(async (req, res) => {
   });
 
   res.json({ success: true, data: bookings });
+});
+
+export const getEsimPackages = asyncHandler(async (req, res) => {
+  const packages = await getClient(req).getEsimPackages(req.params.countryCode);
+  res.json({ success: true, data: packages });
 });

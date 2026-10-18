@@ -92,11 +92,8 @@ export const getSidebarInfo = () => {
     return {
         name: BRANDING.company.name,
         shortName: BRANDING.company.shortName,
-        // The icon is delivered with the app (public/icon.png: the LUSH/WARE
-        // lockup on the light brand-50 tile), not read from org settings, so the
-        // rail always has a real mark. /logo-full.png still carries the retired
-        // wordmark for the login screens.
-        logoUrl: '/icon.png',
+        // The shipped LUSH/WARE logo is the local fallback when no org logo is configured.
+        logoUrl: '/logo.jpeg',
     };
 };
 

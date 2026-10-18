@@ -1,48 +1,129 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Plane, Search, ListChecks, SlidersHorizontal } from 'lucide-react';
 import { toast } from '@/lib/toast';
 import { flightAPI } from '../../services/flight.service';
+import { leadAPI } from '../../services/api';
+import AIRPORTS from '../../data/airports';
+import { COUNTRY_BY_CODE } from '../../data/countries';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import FlightErrorBoundary from './FlightErrorBoundary';
 import OfferCard, { OfferSkeleton } from './OfferCard';
 import SearchForm from './SearchForm';
-import { TravelerDetailsStep, ReviewStep, ConfirmationStep } from './BookingWizard';
+import { DuffelAncillariesStep, TravelerDetailsStep, ReviewStep, ConfirmationStep } from './BookingWizard';
 import BookingsPanel from './BookingsPanel';
-import PageCopilot from '@/features/copilot/PageCopilot';
+import RecommendationStrip from '@/features/recommendations/RecommendationStrip';
 import PageHeader from '@/components/PageHeader';
-import { SORT_OPTIONS, STATUS_BUCKETS, OFFERS_PAGE_SIZE, emptyTraveler, statusBucket, todayStr } from './helpers';
+import { SORT_OPTIONS, STATUS_BUCKETS, OFFERS_PAGE_SIZE, buildDuffelPassengers, emptyTraveler, sanitizeTravelerForBooking, statusBucket, todayStr } from './helpers';
 import type { StatusBucket } from './helpers';
 import { journeyStops, splitLegs } from '@/features/shared/utils/flightSegments';
 import type {
   BookingStep,
   ContactForm,
+  DuffelCheckoutData,
   FlightBookingRecord,
+  FlightCancellationQuote,
   FlightOffer,
   FlightSearchContext,
   FlightTab,
   SearchFormState,
   TravelerForm,
   TravelerType,
+  SelectedDuffelService,
   TripType,
 } from './types';
 import { apiErrorMessage } from '@/lib/apiErrorMessage';
 
 const SORT_LABEL: Record<string, string> = Object.fromEntries(SORT_OPTIONS.map((s) => [s.id, s.label]));
 
-export default function FlightSearch() {
-  const [activeTab, setActiveTab] = useState<FlightTab>('search');
+interface LeadTravelerPrefill {
+  name: string;
+  email: string;
+  phone: string;
+  firstName: string;
+  lastName: string;
+}
 
-  const [tripType, setTripType] = useState<TripType>('oneWay');
+const normalizeAirportText = (value: string) => value
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .trim()
+  .toLocaleLowerCase();
+
+function resolveAirportCode(value: string) {
+  const trimmed = value.trim();
+  const code = trimmed.match(/\b([A-Z]{3})\b/)?.[1] || trimmed.toUpperCase();
+  const exactCode = AIRPORTS.find((airport) => airport.code === code);
+  if (exactCode) return exactCode.code;
+
+  const cityTokens = trimmed.split(/[,|;/]+/).map(normalizeAirportText).filter(Boolean);
+  const match = AIRPORTS.find((airport) => cityTokens.includes(normalizeAirportText(airport.city)));
+  if (match) return match.code;
+
+  const countryCode = /^[A-Z]{2}$/i.test(trimmed) ? trimmed.toUpperCase() : '';
+  const countryName = COUNTRY_BY_CODE[countryCode]?.name || trimmed;
+  const countryAirport = AIRPORTS.find((airport) => normalizeAirportText(airport.country) === normalizeAirportText(countryName));
+  return countryAirport?.code || trimmed;
+}
+
+function normalizeCheckoutOffer(data: DuffelCheckoutData, fallback: FlightOffer): FlightOffer {
+  const offer = data.offer;
+  return {
+    ...fallback,
+    offerId: offer.id,
+    airline: offer.owner.name,
+    airlineCode: offer.owner.iata_code || fallback.airlineCode,
+    baseFare: Number(offer.base_amount),
+    taxes: Number(offer.tax_amount || 0),
+    fareTotal: Number(offer.total_amount),
+    currency: offer.total_currency,
+    refundable: offer.conditions?.refund_before_departure?.allowed,
+    legCount: offer.slices.length,
+    passengerIds: offer.passengers.map((passenger) => passenger.id),
+    segments: offer.slices.flatMap((slice, sliceIndex) => slice.segments.map((segment, segmentIndex) => ({
+      sequence: sliceIndex * 100 + segmentIndex + 1,
+      origin: segment.origin.iata_code || undefined,
+      destination: segment.destination.iata_code || undefined,
+      departureAt: segment.departing_at,
+      arrivalAt: segment.arriving_at,
+      marketingCarrier: segment.marketing_carrier.iata_code || undefined,
+      operatingCarrierName: segment.operating_carrier.name || segment.marketing_carrier.name || 'Unknown carrier',
+      flightNumber: `${segment.marketing_carrier.iata_code}${segment.marketing_carrier_flight_number}`,
+      stops: slice.segments.length - 1,
+    }))),
+  };
+}
+
+export default function FlightSearch() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const paramNumber = (key: string, fallback: number) => {
+    const value = Number(searchParams.get(key));
+    return Number.isInteger(value) && value >= 0 ? value : fallback;
+  };
+  const recommendationFocus = searchParams.get('focus') === 'recommendation';
+  const linkedBookingIds = useMemo(
+    () => new Set((searchParams.get('ids') || '').split(',').filter(Boolean)),
+    [searchParams],
+  );
+  const [activeTab, setActiveTab] = useState<FlightTab>(() => searchParams.get('tab') === 'bookings' ? 'bookings' : 'search');
+
+  useEffect(() => {
+    if (searchParams.get('tab') === 'bookings') setActiveTab('bookings');
+  }, [searchParams]);
+
+  const [tripType, setTripType] = useState<TripType>(() => searchParams.get('tripType') === 'roundTrip' ? 'roundTrip' : 'oneWay');
   const [form, setForm] = useState<SearchFormState>({
-    origin: '',
-    destination: '',
-    departureDate: todayStr(),
-    returnDate: '',
-    adults: 1,
-    children: 0,
-    infants: 0,
+    origin: resolveAirportCode(searchParams.get('origin') || ''),
+    destination: resolveAirportCode(searchParams.get('destination') || ''),
+    departureDate: searchParams.get('departureDate') || (searchParams.get('leadId') ? '' : todayStr()),
+    returnDate: searchParams.get('returnDate') || '',
+    adults: Math.max(1, paramNumber('adults', 1)),
+    children: paramNumber('children', 0),
+    infants: paramNumber('infants', 0),
+    childAges: [],
+    infantAges: [],
     cabinClass: 'Economy',
   });
   const [nonstopOnly, setNonstopOnly] = useState(false);
@@ -54,6 +135,7 @@ export default function FlightSearch() {
   // The context that produced the offers on screen — what the traveler count,
   // the booking's tripType and the provider passenger ids are read from.
   const [searchContext, setSearchContext] = useState<FlightSearchContext | null>(null);
+  const autoSearchKey = useRef('');
   const [visibleCount, setVisibleCount] = useState(OFFERS_PAGE_SIZE);
 
   const [sortBy, setSortBy] = useState('price');
@@ -63,22 +145,61 @@ export default function FlightSearch() {
 
   const [step, setStep] = useState<BookingStep>('results');
   const [selectedOffer, setSelectedOffer] = useState<FlightOffer | null>(null);
+  const [checkoutData, setCheckoutData] = useState<DuffelCheckoutData | null>(null);
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [selectedServices, setSelectedServices] = useState<SelectedDuffelService[]>([]);
+  const [priceChange, setPriceChange] = useState<{ previousTotal: number; currentTotal: number; currency: string } | null>(null);
+  const [priceChangeAccepted, setPriceChangeAccepted] = useState(false);
   const [travelers, setTravelers] = useState<TravelerForm[]>([]);
   const [contact, setContact] = useState<ContactForm>({ name: '', email: '', phone: '' });
+  const leadId = searchParams.get('leadId');
+  const leadPrefillRef = useRef<LeadTravelerPrefill | null>(null);
+  const leadPrefillRequestRef = useRef<Promise<LeadTravelerPrefill | null> | null>(null);
   const [booking, setBooking] = useState(false);
-  const [confirmedBooking, setConfirmedBooking] = useState<{ pnr: string } | null>(null);
+  const [confirmedBooking, setConfirmedBooking] = useState<{ pnr?: string; status?: string } | null>(null);
 
   const [bookings, setBookings] = useState<FlightBookingRecord[]>([]);
   const [loadingBookings, setLoadingBookings] = useState(false);
   const [bookingStatusFilter, setBookingStatusFilter] = useState('all');
   const [bookingSearch, setBookingSearch] = useState('');
-  const [cancelDialog, setCancelDialog] = useState<{ id: string; reason: string } | null>(null);
 
   const paxCount = form.adults + form.children + form.infants;
+  const ancillaryPassengers = checkoutData
+    ? buildDuffelPassengers(travelers, checkoutData.offer.passengers.map((passenger) => passenger.id))
+    : [];
 
   // A round trip arrives as one flat segment list; the outbound leg ends the
   // first time the journey reaches the searched destination.
   const turnPoint = searchContext?.tripType === 'roundTrip' ? searchContext.destination : undefined;
+
+  const loadLeadTravelerPrefill = useCallback(async () => {
+    if (!leadId) return null;
+    if (leadPrefillRef.current) return leadPrefillRef.current;
+    if (!leadPrefillRequestRef.current) {
+      leadPrefillRequestRef.current = leadAPI.getLead(leadId)
+        .then((response: any) => {
+          const lead = response?.data?.data ?? response?.data ?? response;
+          const name = String(lead?.name || '').trim();
+          const [firstName = '', ...lastNameParts] = name.split(/\s+/).filter(Boolean);
+          const prefill = {
+            name,
+            email: String(lead?.email || ''),
+            phone: String(lead?.phone || ''),
+            firstName,
+            lastName: lastNameParts.join(' '),
+          };
+          leadPrefillRef.current = prefill;
+          setContact({ name: prefill.name, email: prefill.email, phone: prefill.phone });
+          return prefill;
+        })
+        .catch(() => null);
+    }
+    return leadPrefillRequestRef.current;
+  }, [leadId]);
+
+  useEffect(() => {
+    if (leadId) void loadLeadTravelerPrefill();
+  }, [leadId, loadLeadTravelerPrefill]);
 
   const availableAirlines = useMemo(() => {
     const set = new Map<string, string>();
@@ -129,8 +250,13 @@ export default function FlightSearch() {
 
   const visibleOffers = sortedAndFilteredOffers.slice(0, visibleCount);
 
+  const scopedBookings = useMemo(
+    () => linkedBookingIds.size > 0 ? bookings.filter((booking) => linkedBookingIds.has(booking.id)) : bookings,
+    [bookings, linkedBookingIds],
+  );
+
   const filteredBookings = useMemo(() => {
-    let list = bookings;
+    let list = scopedBookings;
     const bucket = statusBucket(bookingStatusFilter);
     if (bucket) {
       list = list.filter((b) => statusBucket(b.status) === bucket);
@@ -144,19 +270,19 @@ export default function FlightSearch() {
       );
     }
     return list;
-  }, [bookings, bookingStatusFilter, bookingSearch]);
+  }, [scopedBookings, bookingStatusFilter, bookingSearch]);
 
   const statusCounts = useMemo(() => {
-    const c: Record<string, number> = { all: bookings.length };
+    const c: Record<string, number> = { all: scopedBookings.length };
     (Object.keys(STATUS_BUCKETS) as StatusBucket[]).forEach((b) => {
       c[b] = 0;
     });
-    bookings.forEach((b) => {
+    scopedBookings.forEach((b) => {
       const bucket = statusBucket(b.status);
       if (bucket) c[bucket]++;
     });
     return c;
-  }, [bookings]);
+  }, [scopedBookings]);
 
   const handleSearch = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -164,8 +290,20 @@ export default function FlightSearch() {
       toast.error('Origin, destination and departure date are required');
       return;
     }
+    if (!/^[A-Z]{3}$/.test(form.origin) || !/^[A-Z]{3}$/.test(form.destination)) {
+      toast.error('Select a valid airport for both From and To');
+      return;
+    }
     if (tripType === 'roundTrip' && !form.returnDate) {
       toast.error('Return date is required for round trips');
+      return;
+    }
+    if (form.childAges.length !== form.children || form.childAges.some((age) => !age || Number(age) < 2 || Number(age) > 17)) {
+      toast.error('Enter each child traveler’s age (2–17) to search accurate fares');
+      return;
+    }
+    if (form.infantAges.length !== form.infants || form.infantAges.some((age) => age === '' || Number(age) < 0 || Number(age) > 1)) {
+      toast.error('Enter each infant traveler’s age (0–1) to search accurate fares');
       return;
     }
 
@@ -186,6 +324,8 @@ export default function FlightSearch() {
         adults: form.adults,
         children: form.children || 0,
         infants: form.infants || 0,
+        childAges: form.childAges.map(Number),
+        infantAges: form.infantAges.map(Number),
         cabinClass: form.cabinClass,
         tripType,
       });
@@ -213,65 +353,189 @@ export default function FlightSearch() {
     }
   };
 
+  useEffect(() => {
+    const leadId = searchParams.get('leadId');
+    if (!leadId || !/^[A-Z]{3}$/.test(form.origin) || !/^[A-Z]{3}$/.test(form.destination) || !form.departureDate) return;
+    if (tripType === 'roundTrip' && !form.returnDate) return;
+
+    const key = [leadId, searchParams.get('dayNumber') || '', searchParams.get('flightType') || 'itinerary'].join('|');
+    if (autoSearchKey.current === key) return;
+    autoSearchKey.current = key;
+    void handleSearch();
+    // The handoff fields are the inputs; the handler intentionally uses their current render values.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, form.origin, form.destination, form.departureDate, form.returnDate, tripType]);
+
   const handleSwap = () => {
     setForm((f) => ({ ...f, origin: f.destination, destination: f.origin }));
   };
 
   const selectOffer = useCallback(
-    (offer: FlightOffer) => {
-      setSelectedOffer(offer);
+    async (offer: FlightOffer) => {
+      setCheckoutLoading(true);
+      try {
+        const leadPrefill = await loadLeadTravelerPrefill();
+        const response = await flightAPI.getCheckoutData(offer.offerId);
+        const data = response.data as DuffelCheckoutData;
+        const refreshedOffer = normalizeCheckoutOffer(data, offer);
+        setCheckoutData(data);
+        setSelectedOffer(refreshedOffer);
+        const fareChanged = refreshedOffer.fareTotal !== offer.fareTotal || refreshedOffer.currency !== offer.currency;
+        setPriceChange(fareChanged ? {
+          previousTotal: offer.fareTotal,
+          currentTotal: refreshedOffer.fareTotal,
+          currency: refreshedOffer.currency || offer.currency || 'USD',
+        } : null);
+        setPriceChangeAccepted(false);
+        setSelectedServices([]);
       // One traveler per searched passenger, not per current form value, and
       // carrying the provider's own passenger id so the offer can be booked.
       const ctx = searchContext;
-      const newTravelers = [
+        const newTravelers = [
         ...Array.from({ length: ctx?.adults ?? form.adults }, () => emptyTraveler('adult' as TravelerType)),
         ...Array.from({ length: ctx?.children ?? form.children }, () => emptyTraveler('child' as TravelerType)),
         ...Array.from({ length: ctx?.infants ?? form.infants }, () => emptyTraveler('infant' as TravelerType)),
-      ].map((t, i) => ({ ...t, passengerId: offer.passengerIds?.[i] }));
-      setTravelers(newTravelers);
-      setStep('travelers');
+        ].map((t, i) => ({ ...t, passengerId: data.offer.passengers[i]?.id }));
+        const firstAdultIndex = newTravelers.findIndex((traveler) => traveler.type === 'adult');
+        if (leadPrefill && firstAdultIndex >= 0) {
+          newTravelers[firstAdultIndex] = {
+            ...newTravelers[firstAdultIndex],
+            firstName: leadPrefill.firstName,
+            lastName: leadPrefill.lastName,
+            email: leadPrefill.email,
+            phone: leadPrefill.phone,
+          };
+          setContact({ name: leadPrefill.name, email: leadPrefill.email, phone: leadPrefill.phone });
+        }
+        setTravelers(newTravelers);
+        setStep('travelers');
+      } catch (error) {
+        toast.error(apiErrorMessage(error));
+      } finally {
+        setCheckoutLoading(false);
+      }
     },
-    [form.adults, form.children, form.infants, searchContext]
+    [form.adults, form.children, form.infants, loadLeadTravelerPrefill, searchContext]
   );
+
+  const selectUpsell = async (offerId: string) => {
+    if (!selectedOffer) return;
+    setCheckoutLoading(true);
+    try {
+      const response = await flightAPI.getCheckoutData(offerId);
+      const data = response.data as DuffelCheckoutData;
+      const refreshedOffer = normalizeCheckoutOffer(data, selectedOffer);
+      setCheckoutData(data);
+      setSelectedOffer(refreshedOffer);
+      const fareChanged = refreshedOffer.fareTotal !== selectedOffer.fareTotal || refreshedOffer.currency !== selectedOffer.currency;
+      setPriceChange(fareChanged ? {
+        previousTotal: selectedOffer.fareTotal,
+        currentTotal: refreshedOffer.fareTotal,
+        currency: refreshedOffer.currency || selectedOffer.currency || 'USD',
+      } : null);
+      setPriceChangeAccepted(false);
+      setSelectedServices([]);
+      setTravelers((prev) => prev.map((traveler, index) => ({
+        ...traveler,
+        passengerId: data.offer.passengers[index]?.id,
+      })));
+    } catch (error) {
+      toast.error(apiErrorMessage(error));
+    } finally {
+      setCheckoutLoading(false);
+    }
+  };
 
   const updateTraveler = (index: number, field: keyof TravelerForm, value: string) => {
     setTravelers((prev) => prev.map((t, i) => (i === index ? { ...t, [field]: value } : t)));
   };
 
   const goToReview = () => {
+    if (priceChange && !priceChangeAccepted) {
+      toast.error('Accept the updated fare before continuing');
+      return;
+    }
     for (let i = 0; i < travelers.length; i++) {
       const t = travelers[i];
       if (!t.firstName || !t.lastName) {
         toast.error('Every traveler needs a first and last name');
         return;
       }
-      if (t.type === 'adult' && !t.gender) {
+      if (!t.dob) {
+        toast.error(`Date of birth is required for traveler ${i + 1}`);
+        return;
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t.email)) {
+        toast.error(`A valid passenger email is required for traveler ${i + 1}`);
+        return;
+      }
+      if (!/^\+[1-9]\d{6,14}$/.test(t.phone)) {
+        toast.error(`Enter traveler ${i + 1}'s phone in international format, for example +442079460018`);
+        return;
+      }
+      if (!t.gender) {
         toast.error(`Gender is required for traveler ${i + 1}`);
         return;
       }
+    }
+    const adultPassengerIds = travelers.filter((traveler) => traveler.type === 'adult').map((traveler) => traveler.passengerId);
+    const infantCount = travelers.filter((traveler) => traveler.type === 'infant').length;
+    if (infantCount > adultPassengerIds.length) {
+      toast.error('Each infant must travel with a different adult');
+      return;
+    }
+    if (checkoutData?.offer.passenger_identity_documents_required && travelers.some((traveler) =>
+      !traveler.passportNumber || !traveler.passportExpiry || !traveler.nationality,
+    )) {
+      toast.error('Duffel requires passport details for every traveler on this fare');
+      return;
     }
     if (!contact.email) {
       toast.error('Contact email is required');
       return;
     }
-    setStep('review');
+    setStep('ancillaries');
   };
 
-  const confirmBooking = async () => {
+  const confirmBooking = async (
+    payment?: { cardId: string; threeDSecureSessionId: string },
+    expectedTotal?: number,
+    expectedCurrency?: string,
+  ) => {
     setBooking(true);
     try {
       // Optional traveler fields (dob, passport, nationality…) sit in the form as
       // empty strings, and the API's schema only accepts them as absent — an
       // empty string fails its format checks and the whole booking 400s.
-      const bookedTravelers = travelers.map((t) =>
-        Object.fromEntries(Object.entries(t).filter(([, value]) => value !== '')),
-      );
-      const response = await flightAPI.book({
+      const infantPassengerIds = travelers
+        .filter((traveler) => traveler.type === 'infant')
+        .map((traveler) => traveler.passengerId)
+        .filter((id): id is string => Boolean(id));
+      let infantIndex = 0;
+      const bookedTravelers = travelers.map((traveler) => ({
+        ...sanitizeTravelerForBooking(traveler),
+        ...(traveler.type === 'adult' && infantPassengerIds[infantIndex] && { infantPassengerId: infantPassengerIds[infantIndex++] }),
+      }));
+      const bookingPayload = {
         offer: selectedOffer,
         tripType: searchContext?.tripType ?? tripType,
         travelers: bookedTravelers,
         contact,
-      });
+        services: selectedServices,
+        ...(payment && { payment }),
+        ...(expectedTotal != null && { expectedTotal }),
+        ...(expectedCurrency && { expectedCurrency }),
+      };
+      const leadId = searchParams.get('leadId');
+      const response = leadId
+        ? await flightAPI.bookForLead({
+            ...bookingPayload,
+            leadId,
+            ...(searchParams.get('packageId') && { packageId: searchParams.get('packageId') }),
+            ...(paramNumber('dayNumber', 0) > 0 && { dayNumber: paramNumber('dayNumber', 0) }),
+            flightType: searchParams.get('flightType') || 'itinerary',
+          })
+        : await flightAPI.book(bookingPayload);
       setConfirmedBooking(response.data);
       setStep('confirmation');
       toast.success('Flight booked successfully');
@@ -288,6 +552,10 @@ export default function FlightSearch() {
     setHasSearched(false);
     setSearchSummary('');
     setSelectedOffer(null);
+    setCheckoutData(null);
+    setSelectedServices([]);
+    setPriceChange(null);
+    setPriceChangeAccepted(false);
     setTravelers([]);
     setContact({ name: '', email: '', phone: '' });
     setConfirmedBooking(null);
@@ -319,27 +587,61 @@ export default function FlightSearch() {
     if (activeTab === 'bookings') fetchBookings();
   }, [activeTab, fetchBookings]);
 
+  useEffect(() => {
+    if (activeTab !== 'bookings' || linkedBookingIds.size === 0 || !recommendationFocus || loadingBookings) return;
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById('recommendation-target')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeTab, linkedBookingIds, recommendationFocus, loadingBookings, filteredBookings.length]);
+
   // A new result set (or a changed filter/sort) starts a fresh page.
   useEffect(() => {
     setVisibleCount(OFFERS_PAGE_SIZE);
   }, [offers, sortBy, filterStops, filterAirlines, nonstopOnly]);
 
-  const cancelBooking = async (id: string, reason: string) => {
+  const loadBookingDetails = async (id: string): Promise<FlightBookingRecord | null> => {
     try {
-      await flightAPI.cancelBooking(id, reason || 'Cancelled by agent');
-      toast.success('Booking cancelled');
-      setCancelDialog(null);
-      fetchBookings();
+      const response = await flightAPI.getBooking(id);
+      return response.data as FlightBookingRecord;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- flight.service.js is untyped JS, error shape is unknown at this boundary
     } catch (error: any) {
       toast.error(apiErrorMessage(error));
+      return null;
+    }
+  };
+
+  const requestCancellationQuote = async (id: string, reason: string): Promise<FlightCancellationQuote | null> => {
+    try {
+      const response = await flightAPI.createCancellationQuote(id, reason);
+      return response.data as FlightCancellationQuote;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- flight.service.js is untyped JS, error shape is unknown at this boundary
+    } catch (error: any) {
+      toast.error(apiErrorMessage(error));
+      return null;
+    }
+  };
+
+  const cancelBooking = async (id: string, reason: string, cancellationId?: string | null): Promise<boolean> => {
+    try {
+      await flightAPI.cancelBooking(id, {
+        reason: reason || 'Cancelled by agent',
+        cancellationId,
+      });
+      toast.success('Cancellation confirmed. Refund timing depends on the airline and payment provider.');
+      await fetchBookings();
+      return true;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- flight.service.js is untyped JS, error shape is unknown at this boundary
+    } catch (error: any) {
+      toast.error(apiErrorMessage(error));
+      return false;
     }
   };
 
   return (
-    <PageCopilot pageKey="flights" scopeLabel="Flights">
       <FlightErrorBoundary>
       <PageHeader title="Flights" subtitle="Search, book and manage flight reservations" />
+      <div className="mx-auto max-w-7xl px-4 pt-4 md:px-6"><RecommendationStrip module="flights" /></div>
       <div className="min-h-screen bg-background mx-auto max-w-7xl p-4 md:p-6">
         <div className="mb-6">
           <Tabs
@@ -347,6 +649,7 @@ export default function FlightSearch() {
             onValueChange={(value) => {
               if (!value) return;
               setActiveTab(value as FlightTab);
+              setSearchParams({ tab: value });
               if (value === 'search') resetSearch();
             }}
           >
@@ -547,21 +850,47 @@ export default function FlightSearch() {
             {step === 'travelers' && selectedOffer && (
               <TravelerDetailsStep
                 selectedOffer={selectedOffer}
+                checkoutData={checkoutData!}
+                priceChange={priceChange}
+                priceChangeAccepted={priceChangeAccepted}
+                onPriceChangeAccepted={setPriceChangeAccepted}
                 travelers={travelers}
                 updateTraveler={updateTraveler}
                 contact={contact}
                 setContact={setContact}
+                onSelectUpsell={selectUpsell}
                 onBack={() => setStep('results')}
                 onNext={goToReview}
               />
             )}
 
-            {step === 'review' && selectedOffer && (
+            {step === 'ancillaries' && selectedOffer && checkoutData && (
+              <DuffelAncillariesStep
+                checkoutData={checkoutData}
+                passengers={ancillaryPassengers}
+                onServicesChange={setSelectedServices}
+                onBack={() => setStep('travelers')}
+                onNext={() => setStep('review')}
+              />
+            )}
+
+            {step === 'review' && selectedOffer && checkoutData && (
               <ReviewStep
                 selectedOffer={selectedOffer}
+                checkoutData={checkoutData}
+                selectedServices={selectedServices}
+                cardCheckoutEnabled={checkoutData.cardCheckoutEnabled}
                 travelers={travelers}
                 contact={contact}
                 booking={booking}
+                onPriceWithCard={async (cardId, services, expectedTotal) => {
+                  const response = await flightAPI.priceOffer(selectedOffer.offerId, {
+                    cardId,
+                    services,
+                    expectedTotal,
+                  });
+                  return response.data;
+                }}
                 onBack={() => setStep('travelers')}
                 onConfirm={confirmBooking}
               />
@@ -570,9 +899,10 @@ export default function FlightSearch() {
             {step === 'confirmation' && confirmedBooking && (
               <ConfirmationStep
                 pnr={confirmedBooking.pnr}
+                status={confirmedBooking.status}
                 selectedOffer={selectedOffer}
                 travelerCount={travelers.length}
-                onCopyPNR={() => copyPNR(confirmedBooking.pnr)}
+                onCopyPNR={() => confirmedBooking.pnr && copyPNR(confirmedBooking.pnr)}
                 onNewSearch={resetSearch}
                 onViewBookings={() => {
                   setActiveTab('bookings');
@@ -584,22 +914,32 @@ export default function FlightSearch() {
         )}
 
         {activeTab === 'bookings' && (
-          <BookingsPanel
-            bookings={bookings}
-            filteredBookings={filteredBookings}
-            loading={loadingBookings}
-            statusFilter={bookingStatusFilter}
-            setStatusFilter={setBookingStatusFilter}
-            statusCounts={statusCounts}
-            search={bookingSearch}
-            setSearch={setBookingSearch}
-            cancelDialog={cancelDialog}
-            setCancelDialog={setCancelDialog}
-            onCancel={cancelBooking}
-          />
+          <>
+            {linkedBookingIds.size > 0 && (
+              <div className="mb-3 flex items-center justify-between gap-3 rounded-md border border-primary/30 bg-primary/5 px-3 py-2">
+                <p className="text-sm text-foreground">Active filter: linked flight bookings <span className="font-mono tabular-nums">({filteredBookings.length})</span></p>
+                <Button variant="ghost" size="sm" onClick={() => setSearchParams({ tab: 'bookings' })}>Clear filter</Button>
+              </div>
+            )}
+            <div id="recommendation-target" className="scroll-mt-20">
+              <BookingsPanel
+                bookings={bookings}
+                filteredBookings={filteredBookings}
+                loading={loadingBookings}
+                statusFilter={bookingStatusFilter}
+                setStatusFilter={setBookingStatusFilter}
+                statusCounts={statusCounts}
+                search={bookingSearch}
+                setSearch={setBookingSearch}
+                focusBookingId={searchParams.get('bookingId')}
+                onLoadBooking={loadBookingDetails}
+                onRequestCancellationQuote={requestCancellationQuote}
+                onCancel={cancelBooking}
+              />
+            </div>
+          </>
         )}
       </div>
       </FlightErrorBoundary>
-    </PageCopilot>
   );
 }

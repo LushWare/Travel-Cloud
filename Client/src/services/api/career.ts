@@ -24,4 +24,9 @@ const careerApi = {
   },
 };
 
+export const fetchActiveVacancies = async () => careerApi.getActiveVacancies({ status: 'active' });
+
+export const submitCareerApplication = async (applicationData: ApplicationPayload) =>
+  careerApi.submitApplication(applicationData);
+
 export default careerApi;

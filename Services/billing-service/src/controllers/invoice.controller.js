@@ -253,15 +253,28 @@ export const sendPaymentReminder = asyncHandler(async (req, res) => {
 });
 
 export const getInvoiceStats = asyncHandler(async (req, res) => {
-  const [total, paid, overdue, draft] = await Promise.all([
-    prisma.invoice.count({ where: { status: { not: 'cancelled' } } }),
-    prisma.invoice.count({ where: { paymentStatus: 'paid' } }),
-    prisma.invoice.count({ where: { status: { in: ['sent', 'partial', 'overdue'] }, dueDate: { lt: new Date() } } }),
-    prisma.invoice.count({ where: { status: 'draft' } }),
+  const leadFilter = await buildLeadFilter(req.user);
+  const [total, paid, overdue, draft, revenue, collected, outstanding] = await Promise.all([
+    prisma.invoice.count({ where: { ...leadFilter, status: { not: 'cancelled' } } }),
+    prisma.invoice.count({ where: { ...leadFilter, paymentStatus: 'paid' } }),
+    prisma.invoice.count({ where: { ...leadFilter, status: { in: ['sent', 'partial', 'overdue'] }, dueDate: { lt: new Date() } } }),
+    prisma.invoice.count({ where: { ...leadFilter, status: 'draft' } }),
+    prisma.invoice.aggregate({ _sum: { totalAmount: true }, where: { ...leadFilter, status: { not: 'cancelled' } } }),
+    prisma.invoice.aggregate({ _sum: { paidAmount: true }, where: { ...leadFilter, status: { not: 'cancelled' } } }),
+    prisma.invoice.aggregate({
+      _sum: { outstandingAmount: true },
+      where: { ...leadFilter, status: { in: ['sent', 'viewed', 'partial', 'overdue'] } },
+    }),
   ]);
-  const revenue = await prisma.invoice.aggregate({ _sum: { totalAmount: true }, where: { status: { not: 'cancelled' } } });
-  const collected = await prisma.invoice.aggregate({ _sum: { paidAmount: true }, where: { status: { not: 'cancelled' } } });
-  res.json({ success: true, data: { total, paid, overdue, draft, totalRevenue: revenue._sum.totalAmount || 0, totalCollected: collected._sum.paidAmount || 0 } });
+  res.json({
+    success: true,
+    data: {
+      total, paid, overdue, draft,
+      totalRevenue: revenue._sum.totalAmount || 0,
+      totalCollected: collected._sum.paidAmount || 0,
+      totalOutstanding: outstanding._sum.outstandingAmount || 0,
+    },
+  });
 });
 
 export const getOverdueInvoices = asyncHandler(async (req, res) => {
