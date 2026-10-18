@@ -1,3 +1,14 @@
+function futureStay() {
+  const checkin = new Date();
+  checkin.setDate(checkin.getDate() + 30);
+  const checkout = new Date(checkin);
+  checkout.setDate(checkout.getDate() + 4);
+  return {
+    checkin: checkin.toISOString().slice(0, 10),
+    checkout: checkout.toISOString().slice(0, 10),
+  };
+}
+
 /**
  * @implements {import('./interface.js').HotelApiClient}
  *
@@ -162,13 +173,14 @@ export class MockHotelClient {
     if (!holder?.email && !contact?.email) throw new Error('holder.email is required');
 
     const suffix = Math.random().toString(36).slice(2, 8).toUpperCase();
+    const stay = futureStay();
     return {
       bookingId: `MOCK-BOOK-${suffix}`,
       pnr: `HTL${suffix}`,
       status: 'confirmed',
       hotelName: 'Mock Hotel',
-      checkin: new Date().toISOString().split('T')[0],
-      checkout: new Date(Date.now() + 3 * 86400000).toISOString().split('T')[0],
+      checkin: stay.checkin,
+      checkout: stay.checkout,
       totalAmount: 250.00,
       currency: 'USD',
     };
@@ -194,13 +206,14 @@ export class MockHotelClient {
    */
   async getBooking(bookingId) {
     if (!bookingId) throw new Error('bookingId is required');
+    const stay = futureStay();
     return {
       bookingId,
       pnr: 'HTL' + bookingId.slice(-6),
       status: 'confirmed',
       hotelName: 'Grand Hyatt',
-      checkin: '2026-08-01',
-      checkout: '2026-08-05',
+      checkin: stay.checkin,
+      checkout: stay.checkout,
       totalAmount: 450,
       currency: 'USD',
     };

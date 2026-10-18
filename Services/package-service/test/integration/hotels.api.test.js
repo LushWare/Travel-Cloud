@@ -198,7 +198,11 @@ describe('Hotel API — Booking Management', () => {
   describe('POST /api/v1/hotels/bookings/:id/cancel', () => {
     const uuid = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
     it('should cancel a booking', async () => {
-      prisma.hotelBooking.findFirst.mockResolvedValue({ id: uuid, status: 'confirmed', liteapiBookingId: null });
+      const checkin = new Date();
+      checkin.setDate(checkin.getDate() + 30);
+      prisma.hotelBooking.findFirst.mockResolvedValue({
+        id: uuid, status: 'confirmed', liteapiBookingId: 'MOCK-BOOK-1', checkin,
+      });
       prisma.hotelBooking.update.mockResolvedValue({ id: uuid, status: 'cancelled' });
       const res = await request(app).post(`/api/v1/hotels/bookings/${uuid}/cancel`).set(auth()).send({ reason: 'test' });
       expect(res.status).toBe(200);
@@ -223,7 +227,7 @@ describe('Hotel API — bookWithContext', () => {
         .send({
           prebookId: 'mock-prebook',
           guests: [buildGuest()],
-          contact: { email: 'agent@test.com' },
+          contact: { email: 'agent@test.com', phone: '+15555550100' },
           offer: { hotelId: 'MOCK-HOTEL-1', name: 'Grand Hyatt' },
           leadId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
           dayNumber: 2,

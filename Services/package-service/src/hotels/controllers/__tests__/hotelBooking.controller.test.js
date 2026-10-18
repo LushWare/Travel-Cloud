@@ -129,7 +129,11 @@ describe('getBooking', () => {
 
 describe('cancelBooking', () => {
   it('should cancel a booking', async () => {
-    prisma.hotelBooking.findFirst.mockResolvedValue({ id: 'b1', status: 'confirmed', liteapiBookingId: null });
+    const checkin = new Date();
+    checkin.setDate(checkin.getDate() + 30);
+    prisma.hotelBooking.findFirst.mockResolvedValue({
+      id: 'b1', status: 'confirmed', liteapiBookingId: 'MOCK-BOOK-1', checkin,
+    });
     prisma.hotelBooking.update.mockResolvedValue({ id: 'b1', status: 'cancelled' });
     const req = mockReq({ params: { id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890' }, body: { reason: 'test' } });
     const res = mockRes();

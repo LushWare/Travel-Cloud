@@ -9,7 +9,8 @@ describe('searchSchema', () => {
   it('should pass a valid search', () => {
     const r = searchSchema.safeParse({
       checkin: '2026-09-01', checkout: '2026-09-03',
-      occupancies: [{ adults: 2, children: 1 }], city: 'Colombo',
+      occupancies: [{ adults: 2, children: [] }], city: 'Colombo', country: 'LK',
+      guestNationality: 'US',
     });
     expect(r.success).toBe(true);
     expect(r.data.guestNationality).toBe('US');
@@ -17,11 +18,14 @@ describe('searchSchema', () => {
   });
 
   it('should apply defaults', () => {
-    const r = searchSchema.safeParse({ checkin: '2026-09-01', checkout: '2026-09-03' });
+    const r = searchSchema.safeParse({
+      checkin: '2026-09-01', checkout: '2026-09-03',
+      city: 'Colombo', country: 'LK', guestNationality: 'US',
+    });
     expect(r.success).toBe(true);
     expect(r.data.occupancies[0].adults).toBe(1);
-    expect(r.data.limit).toBe(20);
-    expect(r.data.radiusUnit).toBe('km');
+    expect(r.data.limit).toBe(5000);
+    expect(r.data.radius).toBe(10000);
   });
 
   it('should reject missing dates', () => {
@@ -74,8 +78,8 @@ describe('bookSchema', () => {
   it('should pass a valid booking', () => {
     const r = bookSchema.safeParse({
       prebookId: 'pb-1',
-      guests: [{ firstName: 'John', lastName: 'Doe' }],
-      contact: { email: 'john@test.com' },
+      guests: [{ occupancyNumber: 1, firstName: 'John', lastName: 'Doe' }],
+      contact: { email: 'john@test.com', phone: '+15555550100' },
     });
     expect(r.success).toBe(true);
   });
@@ -106,8 +110,8 @@ describe('bookWithContextSchema', () => {
   it('should pass with lead context fields', () => {
     const r = bookWithContextSchema.safeParse({
       prebookId: 'pb-1',
-      guests: [{ firstName: 'John', lastName: 'Doe' }],
-      contact: { email: 'john@test.com' },
+      guests: [{ occupancyNumber: 1, firstName: 'John', lastName: 'Doe' }],
+      contact: { email: 'john@test.com', phone: '+15555550100' },
       leadId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
       dayNumber: 3,
     });
@@ -117,8 +121,8 @@ describe('bookWithContextSchema', () => {
   it('should pass without optional lead context', () => {
     const r = bookWithContextSchema.safeParse({
       prebookId: 'pb-1',
-      guests: [{ firstName: 'John', lastName: 'Doe' }],
-      contact: { email: 'john@test.com' },
+      guests: [{ occupancyNumber: 1, firstName: 'John', lastName: 'Doe' }],
+      contact: { email: 'john@test.com', phone: '+15555550100' },
     });
     expect(r.success).toBe(true);
   });
@@ -126,8 +130,8 @@ describe('bookWithContextSchema', () => {
   it('should reject invalid leadId UUID', () => {
     const r = bookWithContextSchema.safeParse({
       prebookId: 'pb-1',
-      guests: [{ firstName: 'John', lastName: 'Doe' }],
-      contact: { email: 'john@test.com' },
+      guests: [{ occupancyNumber: 1, firstName: 'John', lastName: 'Doe' }],
+      contact: { email: 'john@test.com', phone: '+15555550100' },
       leadId: 'not-a-uuid',
     });
     expect(r.success).toBe(false);
@@ -138,8 +142,8 @@ describe('bookWithContextSchema', () => {
     // is a valid Prisma primary key but not RFC 4122 v1-5 compliant.
     const r = bookWithContextSchema.safeParse({
       prebookId: 'pb-1',
-      guests: [{ firstName: 'John', lastName: 'Doe' }],
-      contact: { email: 'john@test.com' },
+      guests: [{ occupancyNumber: 1, firstName: 'John', lastName: 'Doe' }],
+      contact: { email: 'john@test.com', phone: '+15555550100' },
       leadId: 'd0000000-0000-0000-0000-00000000000c',
       packageId: 'b0000000-0000-0000-0000-000000000001',
       customizedPackageId: 'b0000000-0000-0000-0000-000000000002',

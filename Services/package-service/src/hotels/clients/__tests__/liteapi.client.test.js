@@ -43,7 +43,7 @@ describe('LiteApiClient error sanitisation', () => {
       client.book({
         prebookId: 'pb-1',
         guests: [{ firstName: 'Sam', lastName: 'Rep' }],
-        contact: { email: 'a@b.test' },
+        contact: { email: 'a@b.test', phone: '+15555550100' },
       }),
     retrieve: () => client.getBooking('bk-1'),
     list: () => client.listBookings(),

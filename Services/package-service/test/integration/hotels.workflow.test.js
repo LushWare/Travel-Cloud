@@ -30,6 +30,10 @@ function auth(overrides = {}) {
 }
 
 function makeBooking(overrides = {}) {
+  const checkin = new Date();
+  checkin.setDate(checkin.getDate() + 30);
+  const checkout = new Date(checkin);
+  checkout.setDate(checkout.getDate() + 2);
   return {
     id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
     liteapiBookingId: 'MOCK-BOOK-ABC123',
@@ -37,8 +41,8 @@ function makeBooking(overrides = {}) {
     hotelName: 'Grand Hyatt',
     hotelAddress: '100 Main Street, City Center',
     hotelImage: null,
-    checkin: new Date('2026-09-01'),
-    checkout: new Date('2026-09-03'),
+    checkin,
+    checkout,
     currency: 'USD',
     totalAmount: 250,
     status: 'confirmed',
@@ -232,7 +236,7 @@ describe('Hotel Booking — bookWithContext workflow', () => {
       .send({
         prebookId: 'mock-prebook',
         guests: [buildGuest()],
-        contact: { email: 'agent@test.com' },
+        contact: { email: 'agent@test.com', phone: '+15555550100' },
         offer: { hotelId: 'MOCK-HOTEL-1', name: 'Grand Hyatt' },
         leadId,
         dayNumber: 3,
