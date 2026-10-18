@@ -52,12 +52,14 @@ resource "google_compute_backend_service" "gateway" {
   name                  = "${var.env}-gateway-backend"
   protocol              = "HTTPS"
   load_balancing_scheme = "EXTERNAL_MANAGED"
-  # Planner / assistant AI turns can run past the 30s default.
-  timeout_sec = 120
+  # No timeout_sec: Google rejects it on a backend that fronts a serverless NEG.
+  # The request deadline is the Cloud Run service's own timeout.
 
   backend {
     group = google_compute_region_network_endpoint_group.gateway[0].id
   }
+
+  depends_on = [google_project_service.compute]
 }
 
 resource "google_compute_url_map" "api" {
@@ -66,6 +68,8 @@ resource "google_compute_url_map" "api" {
   project         = var.project_id
   name            = "${var.env}-api-lb"
   default_service = google_compute_backend_service.gateway[0].id
+
+  depends_on = [google_project_service.compute]
 }
 
 resource "google_compute_managed_ssl_certificate" "api" {
@@ -82,6 +86,10 @@ resource "google_compute_managed_ssl_certificate" "api" {
   lifecycle {
     create_before_destroy = true
   }
+
+  # Enabling the Compute API takes a moment to propagate; without this the cert
+  # was created first and refused with "Compute Engine API has not been used".
+  depends_on = [google_project_service.compute]
 }
 
 resource "google_compute_target_https_proxy" "api" {
@@ -91,6 +99,8 @@ resource "google_compute_target_https_proxy" "api" {
   name             = "${var.env}-api-https-proxy"
   url_map          = google_compute_url_map.api[0].id
   ssl_certificates = [google_compute_managed_ssl_certificate.api[0].id]
+
+  depends_on = [google_project_service.compute]
 }
 
 resource "google_compute_global_forwarding_rule" "api_https" {
@@ -103,6 +113,8 @@ resource "google_compute_global_forwarding_rule" "api_https" {
   ip_protocol           = "TCP"
   port_range            = "443"
   target                = google_compute_target_https_proxy.api[0].id
+
+  depends_on = [google_project_service.compute]
 }
 
 output "api_lb_ip" {
