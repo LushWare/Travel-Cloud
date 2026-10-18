@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { AlertTriangle, Ban, CheckCircle2, Eye, ListChecks, Loader2 } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { AlertTriangle, Ban, CheckCircle2, Eye, ExternalLink, ListChecks, Loader2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
@@ -35,6 +35,7 @@ interface BookingsPanelProps {
   statusCounts: Record<string, number>;
   search: string;
   setSearch: (value: string) => void;
+  focusBookingId?: string | null;
   onLoadBooking: (id: string) => Promise<FlightBookingRecord | null>;
   onRequestCancellationQuote: (id: string, reason: string) => Promise<FlightCancellationQuote | null>;
   onCancel: (id: string, reason: string, cancellationId?: string | null) => Promise<boolean>;
@@ -49,6 +50,7 @@ export default function BookingsPanel({
   statusCounts,
   search,
   setSearch,
+  focusBookingId,
   onLoadBooking,
   onRequestCancellationQuote,
   onCancel,
@@ -63,6 +65,7 @@ export default function BookingsPanel({
   const [cancellationQuote, setCancellationQuote] = useState<FlightCancellationQuote | null>(null);
   const [loadingQuote, setLoadingQuote] = useState(false);
   const [confirmingCancellation, setConfirmingCancellation] = useState(false);
+  const autoOpenedBookingId = useRef<string | null>(null);
   const visibleBookings = filteredBookings.slice(0, visibleCount);
   const selectedServices = selectedBooking?.providerOrder?.services?.length
     ? selectedBooking.providerOrder.services
@@ -74,13 +77,21 @@ export default function BookingsPanel({
     setDetailsError('');
     try {
       const details = await onLoadBooking(booking.id);
-      if (details) setSelectedBooking(details);
+      if (details) setSelectedBooking({ ...booking, ...details, leadId: details.leadId ?? booking.leadId });
     } catch (error) {
       setDetailsError(apiErrorMessage(error));
     } finally {
       setLoadingDetails(false);
     }
   };
+
+  useEffect(() => {
+    if (!focusBookingId || loading || autoOpenedBookingId.current === focusBookingId || selectedBooking) return;
+    const booking = bookings.find((item) => item.id === focusBookingId);
+    if (!booking) return;
+    autoOpenedBookingId.current = focusBookingId;
+    void openBooking(booking);
+  }, [bookings, focusBookingId, loading, selectedBooking]);
 
   const openCancellation = async (booking: FlightBookingRecord) => {
     setCancellationBooking(booking);
@@ -151,6 +162,19 @@ export default function BookingsPanel({
     { key: 'travelers', header: 'Travelers', numeric: true, render: (b) => b.travelers?.length || 0 },
     { key: 'fare', header: 'Fare', numeric: true, render: (b) => fmtMoney(b.totalAmount, b.currency) },
     { key: 'status', header: 'Status', render: (b) => <BookingStatusBadge status={b.status} /> },
+    {
+      key: 'lead',
+      header: 'Lead',
+      render: (booking) => booking.leadId ? (
+        <a
+          href={`/leads?ids=${encodeURIComponent(booking.leadId)}&leadId=${encodeURIComponent(booking.leadId)}&open=1`}
+          className="inline-flex items-center gap-1 text-primary hover:underline"
+          aria-label={`Open lead ${booking.leadId}`}
+        >
+          {booking.leadId.slice(0, 8)} <ExternalLink className="h-3 w-3" />
+        </a>
+      ) : <span className="text-muted-foreground">Unlinked</span>,
+    },
     {
       key: 'actions',
       header: 'Actions',
@@ -230,6 +254,15 @@ export default function BookingsPanel({
               {selectedBooking?.pnr ? `PNR ${selectedBooking.pnr}` : 'Booking reference pending'}
               {selectedBooking?.travelportOrderId ? ` · ${selectedBooking.travelportOrderId}` : ''}
             </DialogDescription>
+            {selectedBooking?.leadId && (
+              <a
+                href={`/leads?ids=${encodeURIComponent(selectedBooking.leadId)}&leadId=${encodeURIComponent(selectedBooking.leadId)}&open=1`}
+                className="inline-flex w-fit items-center gap-1 text-sm text-primary hover:underline"
+                aria-label={`Open lead ${selectedBooking.leadId}`}
+              >
+                <ExternalLink className="h-3.5 w-3.5" /> Lead {selectedBooking.leadId.slice(0, 8)}
+              </a>
+            )}
           </DialogHeader>
 
           {loadingDetails ? (

@@ -91,7 +91,7 @@ const LeadFilters = ({
           >
             <TabsList className="w-full justify-start overflow-x-auto scrollbar-hide">
               {STATUSES.map((status) => (
-                <TabsTrigger key={status.key} value={status.key} className="gap-1.5">
+                <TabsTrigger key={status.key} value={status.key} className="flex-none gap-1.5">
                   <span className={`hidden sm:block w-2 h-2 rounded-full ${status.dot}`} />
                   <span className="sm:hidden">{status.shortLabel}</span>
                   <span className="hidden sm:inline">{status.label}</span>

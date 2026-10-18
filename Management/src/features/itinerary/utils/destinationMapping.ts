@@ -251,6 +251,22 @@ export const getCountryCodeFromDestination = (destination?: string | null): stri
     return null;
 };
 
+export const getMappedCityFromDestination = (
+    destination?: string | null,
+    countryCode?: string | null,
+): string | null => {
+    if (!destination || typeof destination !== 'string') return null;
+
+    const normalizedDestination = destination.toLowerCase();
+    const normalizedCountryCode = countryCode?.toUpperCase();
+    const match = Object.entries(DESTINATION_COUNTRY_MAP).find(([city, code]) =>
+        (!normalizedCountryCode || code === normalizedCountryCode)
+        && normalizedDestination.includes(city.toLowerCase()),
+    );
+
+    return match?.[0] || null;
+};
+
 /**
  * Get region from destination
  * @param {string} destination - Destination name
@@ -307,5 +323,6 @@ export const getRegionFromDestination = (destination?: string | null): string | 
 export default {
     DESTINATION_COUNTRY_MAP,
     getCountryCodeFromDestination,
+    getMappedCityFromDestination,
     getRegionFromDestination,
 };

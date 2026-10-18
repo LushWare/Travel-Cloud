@@ -1,8 +1,11 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Plane, Search, ListChecks, SlidersHorizontal } from 'lucide-react';
 import { toast } from '@/lib/toast';
 import { flightAPI } from '../../services/flight.service';
+import { leadAPI } from '../../services/api';
+import AIRPORTS from '../../data/airports';
+import { COUNTRY_BY_CODE } from '../../data/countries';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
@@ -35,6 +38,36 @@ import { apiErrorMessage } from '@/lib/apiErrorMessage';
 
 const SORT_LABEL: Record<string, string> = Object.fromEntries(SORT_OPTIONS.map((s) => [s.id, s.label]));
 
+interface LeadTravelerPrefill {
+  name: string;
+  email: string;
+  phone: string;
+  firstName: string;
+  lastName: string;
+}
+
+const normalizeAirportText = (value: string) => value
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .trim()
+  .toLocaleLowerCase();
+
+function resolveAirportCode(value: string) {
+  const trimmed = value.trim();
+  const code = trimmed.match(/\b([A-Z]{3})\b/)?.[1] || trimmed.toUpperCase();
+  const exactCode = AIRPORTS.find((airport) => airport.code === code);
+  if (exactCode) return exactCode.code;
+
+  const cityTokens = trimmed.split(/[,|;/]+/).map(normalizeAirportText).filter(Boolean);
+  const match = AIRPORTS.find((airport) => cityTokens.includes(normalizeAirportText(airport.city)));
+  if (match) return match.code;
+
+  const countryCode = /^[A-Z]{2}$/i.test(trimmed) ? trimmed.toUpperCase() : '';
+  const countryName = COUNTRY_BY_CODE[countryCode]?.name || trimmed;
+  const countryAirport = AIRPORTS.find((airport) => normalizeAirportText(airport.country) === normalizeAirportText(countryName));
+  return countryAirport?.code || trimmed;
+}
+
 function normalizeCheckoutOffer(data: DuffelCheckoutData, fallback: FlightOffer): FlightOffer {
   const offer = data.offer;
   return {
@@ -65,6 +98,10 @@ function normalizeCheckoutOffer(data: DuffelCheckoutData, fallback: FlightOffer)
 
 export default function FlightSearch() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const paramNumber = (key: string, fallback: number) => {
+    const value = Number(searchParams.get(key));
+    return Number.isInteger(value) && value >= 0 ? value : fallback;
+  };
   const recommendationFocus = searchParams.get('focus') === 'recommendation';
   const linkedBookingIds = useMemo(
     () => new Set((searchParams.get('ids') || '').split(',').filter(Boolean)),
@@ -76,15 +113,15 @@ export default function FlightSearch() {
     if (searchParams.get('tab') === 'bookings') setActiveTab('bookings');
   }, [searchParams]);
 
-  const [tripType, setTripType] = useState<TripType>('oneWay');
+  const [tripType, setTripType] = useState<TripType>(() => searchParams.get('tripType') === 'roundTrip' ? 'roundTrip' : 'oneWay');
   const [form, setForm] = useState<SearchFormState>({
-    origin: '',
-    destination: '',
-    departureDate: todayStr(),
-    returnDate: '',
-    adults: 1,
-    children: 0,
-    infants: 0,
+    origin: resolveAirportCode(searchParams.get('origin') || ''),
+    destination: resolveAirportCode(searchParams.get('destination') || ''),
+    departureDate: searchParams.get('departureDate') || (searchParams.get('leadId') ? '' : todayStr()),
+    returnDate: searchParams.get('returnDate') || '',
+    adults: Math.max(1, paramNumber('adults', 1)),
+    children: paramNumber('children', 0),
+    infants: paramNumber('infants', 0),
     childAges: [],
     infantAges: [],
     cabinClass: 'Economy',
@@ -98,6 +135,7 @@ export default function FlightSearch() {
   // The context that produced the offers on screen — what the traveler count,
   // the booking's tripType and the provider passenger ids are read from.
   const [searchContext, setSearchContext] = useState<FlightSearchContext | null>(null);
+  const autoSearchKey = useRef('');
   const [visibleCount, setVisibleCount] = useState(OFFERS_PAGE_SIZE);
 
   const [sortBy, setSortBy] = useState('price');
@@ -114,6 +152,9 @@ export default function FlightSearch() {
   const [priceChangeAccepted, setPriceChangeAccepted] = useState(false);
   const [travelers, setTravelers] = useState<TravelerForm[]>([]);
   const [contact, setContact] = useState<ContactForm>({ name: '', email: '', phone: '' });
+  const leadId = searchParams.get('leadId');
+  const leadPrefillRef = useRef<LeadTravelerPrefill | null>(null);
+  const leadPrefillRequestRef = useRef<Promise<LeadTravelerPrefill | null> | null>(null);
   const [booking, setBooking] = useState(false);
   const [confirmedBooking, setConfirmedBooking] = useState<{ pnr?: string; status?: string } | null>(null);
 
@@ -130,6 +171,35 @@ export default function FlightSearch() {
   // A round trip arrives as one flat segment list; the outbound leg ends the
   // first time the journey reaches the searched destination.
   const turnPoint = searchContext?.tripType === 'roundTrip' ? searchContext.destination : undefined;
+
+  const loadLeadTravelerPrefill = useCallback(async () => {
+    if (!leadId) return null;
+    if (leadPrefillRef.current) return leadPrefillRef.current;
+    if (!leadPrefillRequestRef.current) {
+      leadPrefillRequestRef.current = leadAPI.getLead(leadId)
+        .then((response: any) => {
+          const lead = response?.data?.data ?? response?.data ?? response;
+          const name = String(lead?.name || '').trim();
+          const [firstName = '', ...lastNameParts] = name.split(/\s+/).filter(Boolean);
+          const prefill = {
+            name,
+            email: String(lead?.email || ''),
+            phone: String(lead?.phone || ''),
+            firstName,
+            lastName: lastNameParts.join(' '),
+          };
+          leadPrefillRef.current = prefill;
+          setContact({ name: prefill.name, email: prefill.email, phone: prefill.phone });
+          return prefill;
+        })
+        .catch(() => null);
+    }
+    return leadPrefillRequestRef.current;
+  }, [leadId]);
+
+  useEffect(() => {
+    if (leadId) void loadLeadTravelerPrefill();
+  }, [leadId, loadLeadTravelerPrefill]);
 
   const availableAirlines = useMemo(() => {
     const set = new Map<string, string>();
@@ -220,6 +290,10 @@ export default function FlightSearch() {
       toast.error('Origin, destination and departure date are required');
       return;
     }
+    if (!/^[A-Z]{3}$/.test(form.origin) || !/^[A-Z]{3}$/.test(form.destination)) {
+      toast.error('Select a valid airport for both From and To');
+      return;
+    }
     if (tripType === 'roundTrip' && !form.returnDate) {
       toast.error('Return date is required for round trips');
       return;
@@ -279,6 +353,19 @@ export default function FlightSearch() {
     }
   };
 
+  useEffect(() => {
+    const leadId = searchParams.get('leadId');
+    if (!leadId || !/^[A-Z]{3}$/.test(form.origin) || !/^[A-Z]{3}$/.test(form.destination) || !form.departureDate) return;
+    if (tripType === 'roundTrip' && !form.returnDate) return;
+
+    const key = [leadId, searchParams.get('dayNumber') || '', searchParams.get('flightType') || 'itinerary'].join('|');
+    if (autoSearchKey.current === key) return;
+    autoSearchKey.current = key;
+    void handleSearch();
+    // The handoff fields are the inputs; the handler intentionally uses their current render values.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, form.origin, form.destination, form.departureDate, form.returnDate, tripType]);
+
   const handleSwap = () => {
     setForm((f) => ({ ...f, origin: f.destination, destination: f.origin }));
   };
@@ -287,6 +374,7 @@ export default function FlightSearch() {
     async (offer: FlightOffer) => {
       setCheckoutLoading(true);
       try {
+        const leadPrefill = await loadLeadTravelerPrefill();
         const response = await flightAPI.getCheckoutData(offer.offerId);
         const data = response.data as DuffelCheckoutData;
         const refreshedOffer = normalizeCheckoutOffer(data, offer);
@@ -303,11 +391,22 @@ export default function FlightSearch() {
       // One traveler per searched passenger, not per current form value, and
       // carrying the provider's own passenger id so the offer can be booked.
       const ctx = searchContext;
-      const newTravelers = [
+        const newTravelers = [
         ...Array.from({ length: ctx?.adults ?? form.adults }, () => emptyTraveler('adult' as TravelerType)),
         ...Array.from({ length: ctx?.children ?? form.children }, () => emptyTraveler('child' as TravelerType)),
         ...Array.from({ length: ctx?.infants ?? form.infants }, () => emptyTraveler('infant' as TravelerType)),
         ].map((t, i) => ({ ...t, passengerId: data.offer.passengers[i]?.id }));
+        const firstAdultIndex = newTravelers.findIndex((traveler) => traveler.type === 'adult');
+        if (leadPrefill && firstAdultIndex >= 0) {
+          newTravelers[firstAdultIndex] = {
+            ...newTravelers[firstAdultIndex],
+            firstName: leadPrefill.firstName,
+            lastName: leadPrefill.lastName,
+            email: leadPrefill.email,
+            phone: leadPrefill.phone,
+          };
+          setContact({ name: leadPrefill.name, email: leadPrefill.email, phone: leadPrefill.phone });
+        }
         setTravelers(newTravelers);
         setStep('travelers');
       } catch (error) {
@@ -316,7 +415,7 @@ export default function FlightSearch() {
         setCheckoutLoading(false);
       }
     },
-    [form.adults, form.children, form.infants, searchContext]
+    [form.adults, form.children, form.infants, loadLeadTravelerPrefill, searchContext]
   );
 
   const selectUpsell = async (offerId: string) => {
@@ -417,7 +516,7 @@ export default function FlightSearch() {
         ...sanitizeTravelerForBooking(traveler),
         ...(traveler.type === 'adult' && infantPassengerIds[infantIndex] && { infantPassengerId: infantPassengerIds[infantIndex++] }),
       }));
-      const response = await flightAPI.book({
+      const bookingPayload = {
         offer: selectedOffer,
         tripType: searchContext?.tripType ?? tripType,
         travelers: bookedTravelers,
@@ -426,7 +525,17 @@ export default function FlightSearch() {
         ...(payment && { payment }),
         ...(expectedTotal != null && { expectedTotal }),
         ...(expectedCurrency && { expectedCurrency }),
-      });
+      };
+      const leadId = searchParams.get('leadId');
+      const response = leadId
+        ? await flightAPI.bookForLead({
+            ...bookingPayload,
+            leadId,
+            ...(searchParams.get('packageId') && { packageId: searchParams.get('packageId') }),
+            ...(paramNumber('dayNumber', 0) > 0 && { dayNumber: paramNumber('dayNumber', 0) }),
+            flightType: searchParams.get('flightType') || 'itinerary',
+          })
+        : await flightAPI.book(bookingPayload);
       setConfirmedBooking(response.data);
       setStep('confirmation');
       toast.success('Flight booked successfully');
@@ -822,6 +931,7 @@ export default function FlightSearch() {
                 statusCounts={statusCounts}
                 search={bookingSearch}
                 setSearch={setBookingSearch}
+                focusBookingId={searchParams.get('bookingId')}
                 onLoadBooking={loadBookingDetails}
                 onRequestCancellationQuote={requestCancellationQuote}
                 onCancel={cancelBooking}

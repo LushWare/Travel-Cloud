@@ -5,6 +5,7 @@ import {
   Users, Info, CheckCircle2, Building2, Phone, Bed, Plus, CreditCard,
 } from 'lucide-react';
 import HotelService from '../../../services/hotel.service';
+import { leadAPI } from '@/services/api';
 import toast from '@/lib/toast';
 import CountrySelect from '../../../components/CountrySelect';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../../../components/ui/dialog';
@@ -88,6 +89,14 @@ interface Guest {
   firstName: string;
   lastName: string;
   title: string;
+}
+
+interface LeadGuestPrefill {
+  name: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
 }
 
 interface HotelReview {
@@ -493,6 +502,8 @@ export default function HotelSelectionModal({
   const [guests, setGuests] = useState<Guest[]>([]);
   const [contact, setContact] = useState({ name: '', email: '', phone: '' });
   const [holder, setHolder] = useState({ firstName: '', lastName: '' });
+  const [leadGuestPrefill, setLeadGuestPrefill] = useState<LeadGuestPrefill | null>(null);
+  const leadId = String(leadContext?.leadId || '');
   const [bookingFor, setBookingFor] = useState<'self' | 'someone-else'>('self');
   const [travelingForWork, setTravelingForWork] = useState(false);
   const [specialRequests, setSpecialRequests] = useState('');
@@ -525,6 +536,53 @@ export default function HotelSelectionModal({
   const [reviewsError, setReviewsError] = useState(false);
   const [facilitiesExpanded, setFacilitiesExpanded] = useState(false);
   const initialHotelRequestRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!isOpen || !leadId) {
+      setLeadGuestPrefill(null);
+      return;
+    }
+
+    let active = true;
+    leadAPI.getLead(leadId)
+      .then((response: any) => {
+        const lead = response?.data?.data ?? response?.data ?? response;
+        const name = String(lead?.name || '').trim();
+        const [firstName = '', ...lastNameParts] = name.split(/\s+/).filter(Boolean);
+        if (active) {
+          setLeadGuestPrefill({
+            name,
+            firstName,
+            lastName: lastNameParts.join(' '),
+            email: String(lead?.email || ''),
+            phone: String(lead?.phone || ''),
+          });
+        }
+      })
+      .catch(() => {
+        if (active) setLeadGuestPrefill(null);
+      });
+
+    return () => { active = false; };
+  }, [isOpen, leadId]);
+
+  useEffect(() => {
+    if (bookingStep !== 'guests' || !leadGuestPrefill) return;
+    setGuests((current) => current.map((guest, index) => (
+      index === 0 && !guest.firstName && !guest.lastName
+        ? { ...guest, firstName: leadGuestPrefill.firstName, lastName: leadGuestPrefill.lastName }
+        : guest
+    )));
+    setContact((current) => ({
+      name: current.name || leadGuestPrefill.name,
+      email: current.email || leadGuestPrefill.email,
+      phone: current.phone || leadGuestPrefill.phone,
+    }));
+    setHolder((current) => ({
+      firstName: current.firstName || leadGuestPrefill.firstName,
+      lastName: current.lastName || leadGuestPrefill.lastName,
+    }));
+  }, [bookingStep, leadGuestPrefill]);
 
   useEffect(() => {
     let active = true;
@@ -741,11 +799,16 @@ export default function HotelSelectionModal({
     }
     setGuests(searchForm.occupancies.map((_, index) => ({
       occupancyNumber: index + 1,
-      firstName: '',
-      lastName: '',
+      firstName: index === 0 ? leadGuestPrefill?.firstName || '' : '',
+      lastName: index === 0 ? leadGuestPrefill?.lastName || '' : '',
       title: 'Mr',
     })));
-    setContact({ name: '', email: '', phone: '' });
+    setContact(leadGuestPrefill
+      ? { name: leadGuestPrefill.name, email: leadGuestPrefill.email, phone: leadGuestPrefill.phone }
+      : { name: '', email: '', phone: '' });
+    setHolder(leadGuestPrefill
+      ? { firstName: leadGuestPrefill.firstName, lastName: leadGuestPrefill.lastName }
+      : { firstName: '', lastName: '' });
     setBookingFor('self');
     setSpecialRequests('');
     setUberVoucherAmount(null);

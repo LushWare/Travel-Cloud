@@ -159,6 +159,7 @@ export interface FlightCancellationCredit {
 
 export interface FlightBookingRecord {
   id: string;
+  leadId?: string | null;
   pnr?: string;
   status: FlightBookingStatus | string;
   totalAmount?: number;

@@ -1,7 +1,8 @@
-import { createElement, Fragment, useState, useEffect, useRef, type FormEvent, type ReactNode } from 'react';
+import { createElement, Fragment, useState, useEffect, useMemo, useRef, type FormEvent, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { getCountryCodeFromDestination, getMappedCityFromDestination } from '@/features/itinerary/utils/destinationMapping';
 import {
-  Hotel, Search, ChevronRight, ChevronDown, Loader2, Ban, ListChecks, Star,
+  Hotel, Search, ChevronRight, ChevronDown, Loader2, Ban, ListChecks, Star, ExternalLink,
   MapPin, Building2, SlidersHorizontal, Eye, AlertTriangle, CheckCircle2,
   CalendarDays, Clock3, FileText, Users,
 } from 'lucide-react';
@@ -331,22 +332,39 @@ function HotelCard({ offer, onSelect }: { offer: HotelOffer; onSelect: (offer: H
 type Tab = 'search' | 'bookings';
 export default function HotelSearch() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const focusBookingId = searchParams.get('bookingId');
+  const requestedCity = searchParams.get('city') || '';
+  const requestedDestination = searchParams.get('destination') || '';
+  const requestedAddress = searchParams.get('address') || '';
+  const requestedCountry = searchParams.get('country') || '';
+  const mappedCountry = getCountryCodeFromDestination(`${requestedCity} ${requestedDestination} ${requestedAddress}`);
+  const initialCountry = /^[A-Z]{2}$/i.test(requestedCountry)
+    ? requestedCountry.toUpperCase()
+    : mappedCountry || '';
+  const initialCity = requestedCity
+    || getMappedCityFromDestination(`${requestedDestination} ${requestedAddress}`, initialCountry)
+    || '';
   const recommendationFocus = searchParams.get('focus') === 'recommendation';
   const linkedBookingIds = new Set((searchParams.get('ids') || '').split(',').filter(Boolean));
+  const bookingContext = useMemo(() => Object.fromEntries(
+    ['leadId', 'packageId', 'dayNumber']
+      .map((key) => [key, searchParams.get(key)])
+      .filter(([, value]) => value),
+  ), [searchParams]);
   const [activeTab, setActiveTab] = useState<Tab>(() => searchParams.get('tab') === 'bookings' ? 'bookings' : 'search');
 
   useEffect(() => {
     if (searchParams.get('tab') === 'bookings') setActiveTab('bookings');
   }, [searchParams]);
 
-  const [form, setForm] = useState({
-    city: '',
-    country: '',
-    checkin: todayStr(),
-    checkout: tomorrowStr(),
-    occupancies: [{ adults: 1, childAges: [] }] as HotelRoomOccupancy[],
+  const [form, setForm] = useState(() => ({
+    city: initialCity,
+    country: initialCountry,
+    checkin: searchParams.get('checkin') || todayStr(),
+    checkout: searchParams.get('checkout') || tomorrowStr(),
+    occupancies: [{ adults: Math.max(1, Number(searchParams.get('adults')) || 1), childAges: [] }] as HotelRoomOccupancy[],
     currency: 'USD',
-  });
+  }));
   const [searching, setSearching] = useState(false);
   const [countries, setCountries] = useState<HotelCountry[]>([]);
   const [countriesLoading, setCountriesLoading] = useState(true);
@@ -363,7 +381,7 @@ export default function HotelSearch() {
   const facilitiesRef = useRef<HTMLDivElement>(null);
   const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(false);
   const [filters, setFilters] = useState<HotelSearchFilters>({
-    hotelName: '', starRating: [], minRating: '', minReviewsCount: '', hotelTypeId: '', chainId: '',
+    hotelName: searchParams.get('hotelName') || '', starRating: [], minRating: '', minReviewsCount: '', hotelTypeId: '', chainId: '',
     facilities: [], strictFacilityFiltering: false, refundableRatesOnly: false, boardType: '', sortBy: '',
   });
   const [offers, setOffers] = useState<HotelOffer[]>([]);
@@ -387,6 +405,10 @@ export default function HotelSearch() {
   const [cancellationReason, setCancellationReason] = useState('');
   const [cancellationError, setCancellationError] = useState('');
   const [confirmingCancellation, setConfirmingCancellation] = useState(false);
+  const autoSearchStarted = useRef(false);
+  const autoOpenedBookingId = useRef<string | null>(null);
+  const selectedCountryName = countries.find((item) => item.code === form.country)?.name;
+  const destinationCountryDisplay = selectedCountryName || requestedCountry || requestedDestination || 'Not provided on lead';
 
   useEffect(() => {
     let active = true;
@@ -413,6 +435,22 @@ export default function HotelSearch() {
       .finally(() => { if (active) setCitiesLoading(false); });
     return () => { active = false; };
   }, [form.country]);
+
+  useEffect(() => {
+    const countryHint = requestedCountry || requestedDestination;
+    if (countriesLoading || form.country || !countryHint) return;
+    const mappedMatch = mappedCountry
+      ? countries.find((item) => item.code.toLowerCase() === mappedCountry.toLowerCase())
+      : undefined;
+    const locationText = `${requestedCountry} ${requestedDestination} ${requestedAddress}`.toLocaleLowerCase();
+    const namedMatches = countries.filter((item) => locationText.includes(item.name.toLocaleLowerCase()));
+    const namedMatch = namedMatches.length === 1 ? namedMatches[0] : undefined;
+    const matchedCountry = countries.find((item) =>
+      item.code.toLowerCase() === countryHint.toLowerCase()
+      || item.name.toLowerCase() === countryHint.toLowerCase(),
+    ) || mappedMatch || namedMatch;
+    if (matchedCountry) setForm((current) => ({ ...current, country: matchedCountry.code }));
+  }, [countries, countriesLoading, form.country, mappedCountry, requestedAddress, requestedCountry, requestedDestination]);
 
   const handleSearch = async (e?: FormEvent) => {
     e?.preventDefault();
@@ -477,6 +515,37 @@ export default function HotelSearch() {
     }
   };
 
+  useEffect(() => {
+    if (
+      !bookingContext.leadId
+      || autoSearchStarted.current
+      || countriesLoading
+      || citiesLoading
+      || !form.country
+      || !form.city
+      || cities.length === 0
+    ) return;
+
+    const locationHints = [form.city, requestedDestination, requestedAddress]
+      .filter(Boolean)
+      .map((value) => value.toLocaleLowerCase());
+    const matchedCity = cities.find((city) => locationHints.some((hint) => hint === city.toLocaleLowerCase()))
+      || cities.find((city) => locationHints.some((hint) => hint.includes(city.toLocaleLowerCase())));
+    if (!matchedCity) {
+      if (form.city) setForm((current) => ({ ...current, city: '' }));
+      return;
+    }
+    if (form.city !== matchedCity) {
+      setForm((current) => ({ ...current, city: matchedCity }));
+      return;
+    }
+
+    autoSearchStarted.current = true;
+    void handleSearch();
+    // The handler intentionally uses the resolved country/city values from this render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookingContext.leadId, countriesLoading, citiesLoading, cities, form.country, form.city, requestedDestination, requestedAddress]);
+
   const selectOffer = (offer: HotelOffer) => {
     setSelectedOffer(offer);
     setHotelModalOpen(true);
@@ -532,13 +601,21 @@ export default function HotelSearch() {
     setHotelProfileError('');
     try {
       const details = await loadBookingDetails(booking.id);
-      setSelectedBooking(details);
+      setSelectedBooking({ ...booking, ...details, leadId: details.leadId ?? booking.leadId });
     } catch (err) {
       setDetailsError((err as Error)?.message || 'Could not load booking details.');
     } finally {
       setLoadingDetails(false);
     }
   };
+
+  useEffect(() => {
+    if (activeTab !== 'bookings' || loadingBookings || !focusBookingId || autoOpenedBookingId.current === focusBookingId || selectedBooking) return;
+    const booking = bookings.find((item) => item.id === focusBookingId);
+    if (!booking) return;
+    autoOpenedBookingId.current = focusBookingId;
+    void openBookingDetails(booking);
+  }, [activeTab, bookings, focusBookingId, loadingBookings, selectedBooking]);
 
   const openHotelProfile = async () => {
     if (!selectedBooking?.hotelId || hotelProfile || loadingHotelProfile) return;
@@ -672,6 +749,11 @@ export default function HotelSearch() {
                       onChange={(code: string) => setForm({ ...form, country: code, city: '' })}
                       placeholder={countriesLoading ? 'Loading countries...' : countriesError ? 'Country list unavailable' : 'Select destination country...'}
                     />
+                    {bookingContext.leadId && (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Destination country: <span className="font-medium text-foreground">{destinationCountryDisplay}</span>
+                      </p>
+                    )}
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-muted-foreground mb-1">City</label>
@@ -941,6 +1023,7 @@ export default function HotelSearch() {
           initialOccupancies={form.occupancies}
           country={form.country}
           currency={form.currency}
+          leadContext={bookingContext}
           onBookHotel={() => { void fetchBookings(); }}
         />
       )}
@@ -968,6 +1051,7 @@ export default function HotelSearch() {
               <thead className="bg-muted/50 text-left text-xs font-medium text-muted-foreground uppercase">
                 <tr>
                   <th className="px-4 py-3">Hotel</th>
+                  <th className="px-4 py-3">Lead</th>
                   <th className="px-4 py-3">Check-in</th>
                   <th className="px-4 py-3">Check-out</th>
                   <th className="px-4 py-3">Guests</th>
@@ -980,6 +1064,17 @@ export default function HotelSearch() {
                 {visibleBookings.map((b) => (
                   <tr key={b.id} className="hover:bg-muted/30">
                     <td className="px-4 py-3 font-medium text-foreground">{b.hotelName || 'Unknown'}</td>
+                    <td className="px-4 py-3">
+                      {b.leadId ? (
+                        <a
+                          href={`/leads?ids=${encodeURIComponent(b.leadId)}&leadId=${encodeURIComponent(b.leadId)}&open=1`}
+                          className="inline-flex items-center gap-1 text-primary hover:underline"
+                          aria-label={`Open lead ${b.leadId}`}
+                        >
+                          {b.leadId.slice(0, 8)} <ExternalLink className="h-3 w-3" />
+                        </a>
+                      ) : <span className="text-muted-foreground">Unlinked</span>}
+                    </td>
                     <td className="px-4 py-3 text-muted-foreground">{fmtDate(b.checkin)}</td>
                     <td className="px-4 py-3 text-muted-foreground">{fmtDate(b.checkout)}</td>
                     <td className="px-4 py-3 text-muted-foreground">{b.guestInfo?.length || '-'}</td>
@@ -1033,6 +1128,15 @@ export default function HotelSearch() {
               Booking ID {selectedBooking?.liteapiBookingId || selectedBooking?.id}
               {selectedBooking?.holder ? ` · ${[selectedBooking.holder.firstName, selectedBooking.holder.lastName].filter(Boolean).join(' ')}` : ''}
             </DialogDescription>
+            {selectedBooking?.leadId && (
+              <a
+                href={`/leads?ids=${encodeURIComponent(selectedBooking.leadId)}&leadId=${encodeURIComponent(selectedBooking.leadId)}&open=1`}
+                className="inline-flex w-fit items-center gap-1 text-sm text-primary hover:underline"
+                aria-label={`Open lead ${selectedBooking.leadId}`}
+              >
+                <ExternalLink className="h-3.5 w-3.5" /> Lead {selectedBooking.leadId.slice(0, 8)}
+              </a>
+            )}
           </DialogHeader>
 
           {loadingDetails ? (

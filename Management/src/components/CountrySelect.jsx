@@ -59,7 +59,7 @@ export default function CountrySelect({
     if (!open) {
       setQuery(selected ? (selected.flag ? `${selected.flag} ${selected.name}` : selected.name) : '');
     }
-  }, [value, open]);
+  }, [value, open, selected]);
 
   const select = (country) => {
     onChange(country.code);
