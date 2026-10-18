@@ -64,9 +64,12 @@ module "gateway" {
   env                   = var.env
   company_slug          = var.company_slug
 
-  # Secret versions must exist before Cloud Run can create a service that
-  # references them via secret_key_ref.
-  depends_on = [google_secret_manager_secret_version.secrets]
+  # Cloud Run validates secret access when the revision is created, so the
+  # secret versions AND the per-service secretAccessor grants must exist first.
+  depends_on = [
+    google_secret_manager_secret_version.secrets,
+    google_secret_manager_secret_iam_member.service_secrets,
+  ]
 }
 
 module "auth_service" {
@@ -93,7 +96,12 @@ module "auth_service" {
   max_instances         = 10
   env                   = var.env
   company_slug          = var.company_slug
-  depends_on            = [google_secret_manager_secret_version.secrets]
+  # Cloud Run validates secret access when the revision is created, so the
+  # per-service secretAccessor grants must exist first, not just the secrets.
+  depends_on = [
+    google_secret_manager_secret_version.secrets,
+    google_secret_manager_secret_iam_member.service_secrets,
+  ]
 }
 
 module "user_service" {
@@ -118,7 +126,12 @@ module "user_service" {
   max_instances         = 10
   env                   = var.env
   company_slug          = var.company_slug
-  depends_on            = [google_secret_manager_secret_version.secrets]
+  # Cloud Run validates secret access when the revision is created, so the
+  # per-service secretAccessor grants must exist first, not just the secrets.
+  depends_on = [
+    google_secret_manager_secret_version.secrets,
+    google_secret_manager_secret_iam_member.service_secrets,
+  ]
 }
 
 module "package_service" {
@@ -145,7 +158,12 @@ module "package_service" {
   max_instances         = 10
   env                   = var.env
   company_slug          = var.company_slug
-  depends_on            = [google_secret_manager_secret_version.secrets]
+  # Cloud Run validates secret access when the revision is created, so the
+  # per-service secretAccessor grants must exist first, not just the secrets.
+  depends_on = [
+    google_secret_manager_secret_version.secrets,
+    google_secret_manager_secret_iam_member.service_secrets,
+  ]
 }
 
 module "lead_service" {
@@ -174,7 +192,12 @@ module "lead_service" {
   max_instances         = 10
   env                   = var.env
   company_slug          = var.company_slug
-  depends_on            = [google_secret_manager_secret_version.secrets]
+  # Cloud Run validates secret access when the revision is created, so the
+  # per-service secretAccessor grants must exist first, not just the secrets.
+  depends_on = [
+    google_secret_manager_secret_version.secrets,
+    google_secret_manager_secret_iam_member.service_secrets,
+  ]
 }
 
 module "booking_service" {
@@ -201,7 +224,12 @@ module "booking_service" {
   max_instances         = 10
   env                   = var.env
   company_slug          = var.company_slug
-  depends_on            = [google_secret_manager_secret_version.secrets]
+  # Cloud Run validates secret access when the revision is created, so the
+  # per-service secretAccessor grants must exist first, not just the secrets.
+  depends_on = [
+    google_secret_manager_secret_version.secrets,
+    google_secret_manager_secret_iam_member.service_secrets,
+  ]
 }
 
 module "billing_service" {
@@ -230,7 +258,12 @@ module "billing_service" {
   max_instances         = 10
   env                   = var.env
   company_slug          = var.company_slug
-  depends_on            = [google_secret_manager_secret_version.secrets]
+  # Cloud Run validates secret access when the revision is created, so the
+  # per-service secretAccessor grants must exist first, not just the secrets.
+  depends_on = [
+    google_secret_manager_secret_version.secrets,
+    google_secret_manager_secret_iam_member.service_secrets,
+  ]
 }
 
 module "career_service" {
@@ -255,7 +288,12 @@ module "career_service" {
   max_instances         = 10
   env                   = var.env
   company_slug          = var.company_slug
-  depends_on            = [google_secret_manager_secret_version.secrets]
+  # Cloud Run validates secret access when the revision is created, so the
+  # per-service secretAccessor grants must exist first, not just the secrets.
+  depends_on = [
+    google_secret_manager_secret_version.secrets,
+    google_secret_manager_secret_iam_member.service_secrets,
+  ]
 }
 
 module "flight_service" {
@@ -280,7 +318,12 @@ module "flight_service" {
   max_instances         = 10
   env                   = var.env
   company_slug          = var.company_slug
-  depends_on            = [google_secret_manager_secret_version.secrets]
+  # Cloud Run validates secret access when the revision is created, so the
+  # per-service secretAccessor grants must exist first, not just the secrets.
+  depends_on = [
+    google_secret_manager_secret_version.secrets,
+    google_secret_manager_secret_iam_member.service_secrets,
+  ]
 }
 
 module "analytics_service" {
@@ -305,7 +348,12 @@ module "analytics_service" {
   max_instances         = 10
   env                   = var.env
   company_slug          = var.company_slug
-  depends_on            = [google_secret_manager_secret_version.secrets]
+  # Cloud Run validates secret access when the revision is created, so the
+  # per-service secretAccessor grants must exist first, not just the secrets.
+  depends_on = [
+    google_secret_manager_secret_version.secrets,
+    google_secret_manager_secret_iam_member.service_secrets,
+  ]
 }
 
 module "assistant_service" {
@@ -350,7 +398,12 @@ module "assistant_service" {
   max_instances         = 10
   env                   = var.env
   company_slug          = var.company_slug
-  depends_on            = [google_secret_manager_secret_version.secrets]
+  # Cloud Run validates secret access when the revision is created, so the
+  # per-service secretAccessor grants must exist first, not just the secrets.
+  depends_on = [
+    google_secret_manager_secret_version.secrets,
+    google_secret_manager_secret_iam_member.service_secrets,
+  ]
 }
 
 module "notification_service" {
@@ -377,7 +430,12 @@ module "notification_service" {
   max_instances         = 10
   env                   = var.env
   company_slug          = var.company_slug
-  depends_on            = [google_secret_manager_secret_version.secrets]
+  # Cloud Run validates secret access when the revision is created, so the
+  # per-service secretAccessor grants must exist first, not just the secrets.
+  depends_on = [
+    google_secret_manager_secret_version.secrets,
+    google_secret_manager_secret_iam_member.service_secrets,
+  ]
 }
 module "voice_service" {
   source = "./modules/cloud-run-service"
@@ -410,5 +468,10 @@ module "voice_service" {
   max_instances         = 10
   env                   = var.env
   company_slug          = var.company_slug
-  depends_on            = [google_secret_manager_secret_version.secrets]
+  # Cloud Run validates secret access when the revision is created, so the
+  # per-service secretAccessor grants must exist first, not just the secrets.
+  depends_on = [
+    google_secret_manager_secret_version.secrets,
+    google_secret_manager_secret_iam_member.service_secrets,
+  ]
 }
