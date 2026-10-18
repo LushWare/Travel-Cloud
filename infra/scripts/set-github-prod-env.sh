@@ -57,8 +57,15 @@ set_var() { run gh variable set "$1" --repo "$REPO" --env "$ENVIRONMENT" --body 
 set_var GCP_PROJECT_ID  "$PROJECT_ID"
 set_var GCP_REGION      "$REGION"
 set_var GCP_FIREBASE_SA "$(sa firebase-hosting-deployer)"
-# Cloud Run's deterministic URL form: known before the service exists.
-set_var GATEWAY_URL     "https://prod-gateway-${PROJECT_NUMBER}.${REGION}.run.app/api/v1"
+# The frontends are built against this. API_DOMAIN is the public custom domain
+# (see api_domain in terraform.tfvars); fall back to Cloud Run's deterministic
+# URL for an environment that has no custom domain yet.
+API_DOMAIN="${API_DOMAIN:-api.lushtravelcloud.com}"
+if [[ -n "$API_DOMAIN" ]]; then
+  set_var GATEWAY_URL "https://${API_DOMAIN}/api/v1"
+else
+  set_var GATEWAY_URL "https://prod-gateway-${PROJECT_NUMBER}.${REGION}.run.app/api/v1"
+fi
 
 echo "==> Secrets"
 set_secret() { # name, then value on stdin
