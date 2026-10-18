@@ -448,7 +448,8 @@ const NewLeadDialog = ({ isOpen, onClose, salesReps, onSuccess }: NewLeadDialogP
                     <SelectTrigger className="w-full"><SelectValue placeholder="Select Source" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="Website_Form">🌐 Website Form</SelectItem>
-                      <SelectItem value="Social_Media">📱 Social Media</SelectItem>
+                      <SelectItem value="Facebook">Facebook</SelectItem>
+                      <SelectItem value="Instagram">Instagram</SelectItem>
                       <SelectItem value="Phone_Call">📞 Phone Call</SelectItem>
                       <SelectItem value="Referral">🤝 Referral</SelectItem>
                       <SelectItem value="Email">📧 Email</SelectItem>

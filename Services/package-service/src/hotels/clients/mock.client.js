@@ -20,19 +20,39 @@ export class MockHotelClient {
    * @param {import('./interface.js').HotelSearchParams} params
    * @returns {Promise<import('./interface.js').HotelOffer[]>}
    */
-  async searchHotels({ latitude = 6.9271, longitude = 79.8612, radius = 10, radiusUnit = 'km', checkin, checkout, occupancies = [{ adults: 1 }], limit = 20 }) {
+  async searchHotels({ latitude = 6.9271, longitude = 79.8612, radius = 10, radiusUnit = 'km', checkin, checkout, occupancies = [{ adults: 1 }], limit = 20, hotelIds }) {
     if (!checkin || !checkout) {
       throw new Error('checkin and checkout are required');
     }
 
-    const totalGuests = occupancies.reduce((s, o) => s + (o.adults || 0) + (o.children || 0), 0);
+    const totalGuests = occupancies.reduce((sum, occupancy) =>
+      sum + (occupancy.adults || 0) + (Array.isArray(occupancy.children) ? occupancy.children.length : occupancy.children || 0), 0);
     const factor = totalGuests > 1 ? totalGuests * 0.8 : 1;
 
-    return this.hotels.map((h, i) => {
+    const offers = this.hotels.map((h, i) => {
       const distKm = 0.3 + i * 1.7;
       const latOffset = (Math.random() - 0.5) * 0.02;
       const lngOffset = (Math.random() - 0.5) * 0.02;
       const basePrice = 80 + i * 45;
+
+      const cheapestRate = {
+        roomType: h.roomTypes[0],
+        boardType: i % 2 === 0 ? 'Bed & Breakfast' : 'Room Only',
+        currency: 'USD',
+        totalAmount: Math.round(basePrice * factor * 100) / 100,
+        taxes: Math.round(basePrice * factor * 0.12 * 100) / 100,
+        refundable: i % 3 !== 0,
+        offerId: `MOCK-OFFER-${i + 1}`,
+      };
+      const rates = [
+        cheapestRate,
+        {
+          ...cheapestRate,
+          roomType: h.roomTypes[1],
+          totalAmount: Math.round((basePrice + 45) * factor * 100) / 100,
+          offerId: `MOCK-OFFER-${i + 1}-2`,
+        },
+      ];
 
       return {
         hotelId: `MOCK-HOTEL-${i + 1}`,
@@ -43,17 +63,12 @@ export class MockHotelClient {
         distance: parseFloat(distKm.toFixed(1)),
         latitude: parseFloat((latitude + latOffset).toFixed(4)),
         longitude: parseFloat((longitude + lngOffset).toFixed(4)),
-        cheapestRate: {
-          roomType: h.roomTypes[0],
-          boardType: i % 2 === 0 ? 'Bed & Breakfast' : 'Room Only',
-          currency: 'USD',
-          totalAmount: Math.round(basePrice * factor * 100) / 100,
-          taxes: Math.round(basePrice * factor * 0.12 * 100) / 100,
-          refundable: i % 3 !== 0,
-          offerId: `MOCK-OFFER-${i + 1}`,
-        },
+        cheapestRate,
+        rates,
       };
     });
+
+    return hotelIds?.length ? offers.filter((offer) => hotelIds.includes(offer.hotelId)) : offers;
   }
 
   /**
@@ -80,8 +95,45 @@ export class MockHotelClient {
       checkoutTime: '12:00',
       description: `${h.name} offers luxurious accommodation in the heart of the city with world-class amenities and exceptional service.`,
       policies: ['No smoking', 'Pets not allowed', 'Credit card required at check-in'],
+      rooms: h.roomTypes.map((name, roomId) => ({
+        roomId,
+        name,
+        maxOccupancy: 2,
+        bedTypes: [{ quantity: 1, bedType: roomId === 0 ? 'Queen bed' : 'King bed' }],
+        amenities: ['Air conditioning', 'Private bathroom', 'Wi-Fi'],
+      })),
       latitude: 6.9271 + idx * 0.005,
       longitude: 79.8612 + idx * 0.003,
+    };
+  }
+
+  async getHotelReviews() {
+    return { reviews: [], total: 0, sentimentAnalysis: null };
+  }
+
+  async getCities(countryCode) {
+    return countryCode === 'LK' ? ['Colombo', 'Kandy', 'Galle', 'Negombo'] : [];
+  }
+
+  async getCountries() {
+    return [
+      { code: 'AE', name: 'United Arab Emirates' },
+      { code: 'FR', name: 'France' },
+      { code: 'GB', name: 'United Kingdom' },
+      { code: 'LK', name: 'Sri Lanka' },
+      { code: 'US', name: 'United States' },
+    ];
+  }
+
+  async getEsimPackages() {
+    return [];
+  }
+
+  async getHotelFilterOptions() {
+    return {
+      facilities: [{ id: 1, name: 'Free WiFi' }, { id: 2, name: 'Pool' }, { id: 3, name: 'Restaurant' }],
+      hotelTypes: [{ id: 201, name: 'Hotels' }, { id: 204, name: 'Resorts' }],
+      chains: [],
     };
   }
 

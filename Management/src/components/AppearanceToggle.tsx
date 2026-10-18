@@ -18,7 +18,7 @@ const AppearanceToggle = ({ collapsed = false }: AppearanceToggleProps) => {
     <div
       role="radiogroup"
       aria-label="Appearance"
-      className={`flex ${collapsed ? "flex-col" : "flex-row"} gap-1 p-1 rounded-lg bg-sidebar-accent`}
+      className={`flex ${collapsed ? "flex-col items-center gap-1 p-0" : "flex-row gap-1 p-1 bg-sidebar-accent"} rounded-lg`}
     >
       {OPTIONS.map(({ value, icon: Icon, label }) => {
         const active = theme === value;
@@ -31,13 +31,13 @@ const AppearanceToggle = ({ collapsed = false }: AppearanceToggleProps) => {
             aria-label={label}
             title={label}
             onClick={() => setTheme(value)}
-            className={`${collapsed ? "w-8 h-8" : "flex-1 h-8"} flex items-center justify-center rounded-md transition-colors duration-150 ${
+            className={`${collapsed ? "h-9 w-9" : "flex-1 h-8"} flex items-center justify-center rounded-lg transition-colors duration-150 ${
               active
                 ? "bg-sidebar-primary text-sidebar-primary-foreground"
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >
-            <Icon className="w-4 h-4" />
+            <Icon className={collapsed ? "h-[18px] w-[18px]" : "w-4 h-4"} />
           </button>
         );
       })}

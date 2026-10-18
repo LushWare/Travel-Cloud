@@ -7,14 +7,9 @@
  */
 
 import { ItineraryGeneration as ItineraryGenerationContainer } from '../features/itinerary';
-import PageCopilot from '../features/copilot/PageCopilot';
 
 const ItineraryGeneration = () => {
-  return (
-    <PageCopilot pageKey="packages" scopeLabel="Packages">
-      <ItineraryGenerationContainer />
-    </PageCopilot>
-  );
+  return <ItineraryGenerationContainer />;
 };
 
 export default ItineraryGeneration;

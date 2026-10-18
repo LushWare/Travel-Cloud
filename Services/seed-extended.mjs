@@ -283,7 +283,7 @@ async function seedLeads() {
     },
     {
       id: N.lead6, name: 'Priya Nair', email: 'priya.nair@gmail.com', phone: '+919876012345', city: 'Bangalore',
-      source: 'social_media', platform: 'Social_Media', fromCountry: 'India', destinationCountry: 'Sri Lanka',
+      source: 'facebook', platform: 'Facebook', fromCountry: 'India', destinationCountry: 'Sri Lanka',
       destination: 'Sri Lanka', travelDate: new Date('2025-08-20'), endDate: new Date('2025-08-24'),
       primarySelectionId: SEL.lead6,
       packageSelections: { create: [{ id: SEL.lead6, packageId: E.pkg1, packageName: 'Sri Lanka Heritage Explorer', isManual: false }] },
@@ -369,7 +369,7 @@ async function seedLeads() {
     },
     {
       id: N.lead12, name: 'Amara Osei', email: 'amara.osei@yahoo.com', phone: '+233244123456', city: 'Accra',
-      source: 'social_media', platform: 'Social_Media', fromCountry: 'Ghana', destinationCountry: 'Maldives',
+      source: 'facebook', platform: 'Facebook', fromCountry: 'Ghana', destinationCountry: 'Maldives',
       destination: 'Maldives', travelDate: new Date('2025-12-25'), endDate: new Date('2025-12-31'),
       primarySelectionId: SEL.lead12,
       packageSelections: { create: [{ id: SEL.lead12, packageId: N.pkg5, packageName: 'Bali Honeymoon Bliss', isManual: false }] },

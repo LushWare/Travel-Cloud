@@ -9,6 +9,8 @@
 export interface FlightSegmentLike {
   origin?: string;
   destination?: string;
+  originTerminal?: string | null;
+  destinationTerminal?: string | null;
   departureAt?: string;
   arrivalAt?: string;
   durationMinutes?: number;

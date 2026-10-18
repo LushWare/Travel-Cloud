@@ -21,6 +21,7 @@ export interface StatCardProps {
   subtitle?: string;
   trend?: string;
   trendDirection?: 'up' | 'down';
+  trailingIcon?: LucideIcon;
   color?: StatCardColor;
   loading?: boolean;
   className?: string;
@@ -34,6 +35,7 @@ export function StatCard({
   subtitle,
   trend,
   trendDirection = 'up',
+  trailingIcon: TrailingIcon,
   color = 'primary',
   loading = false,
   className,
@@ -78,8 +80,11 @@ export function StatCard({
             </div>
           ) : null}
         </div>
-        <div className={cn('flex size-11 shrink-0 items-center justify-center rounded-lg', colorClasses[color])}>
-          <Icon className="size-5" />
+        <div className="flex shrink-0 items-center gap-2">
+          <div className={cn('flex size-11 items-center justify-center rounded-lg', colorClasses[color])}>
+            <Icon className="size-5" />
+          </div>
+          {TrailingIcon ? <TrailingIcon className="size-4 text-muted-foreground" aria-hidden="true" /> : null}
         </div>
       </CardContent>
     </Card>

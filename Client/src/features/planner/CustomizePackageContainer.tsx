@@ -479,89 +479,51 @@ export default function CustomizePackageContainer() {
           onDismiss={() => setRegenToast(null)}
         />
       )}
-      <div className="max-w-6xl mx-auto px-3 sm:px-4 md:px-6 py-6 sm:py-8 md:py-10">
-        <button
-          type="button"
-          onClick={() => navigate(-1)}
-          className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-900 transition mb-4 sm:mb-6 text-sm sm:text-base"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Back to package
-        </button>
+      <section className="relative isolate flex min-h-[24rem] flex-col justify-end overflow-hidden bg-brand-dark-900 sm:min-h-[27rem] lg:min-h-[30rem]">
+        <img
+          src={heroImage}
+          alt={pkg.title}
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-transparent to-black/40" />
+        <div className="absolute inset-x-0 top-24 z-10 mx-auto w-full max-w-[1450px] px-4 sm:px-6 lg:px-8">
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            className="inline-flex items-center gap-2 rounded-lg border border-white/25 bg-black/20 px-4 py-2.5 text-sm font-medium text-white backdrop-blur-sm transition-colors hover:bg-white/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to package
+          </button>
+        </div>
+        <div className="relative z-10 mx-auto w-full max-w-6xl px-4 pb-10 pt-42 sm:px-6 sm:pb-14 lg:px-8 lg:pb-16">
+          <div className="mb-3 flex items-center gap-2 text-sm text-white/90 sm:mb-4">
+            <Sparkles className="h-4 w-4 text-brand-accent-300 sm:h-5 sm:w-5" />
+            <span className="font-semibold">Tailored Journey Request</span>
+          </div>
+          <h1 className="mb-2 max-w-5xl font-display text-4xl font-semibold leading-tight text-white sm:text-5xl lg:text-6xl">
+            {pkg.title}
+          </h1>
+          <p className="mb-6 w-full break-words text-sm text-white/85 sm:mb-8 sm:text-base lg:text-lg">
+            {pkg.destination?.name || pkg.destinationRaw}
+            {pkg.destination?.country && `, ${pkg.destination.country}`}
+          </p>
 
-        {/* Package Info Header - Full Width */}
-        <div className="bg-white rounded-3xl shadow-lg border border-gray-200 overflow-hidden mb-6 sm:mb-8">
-          <div className="relative h-48 sm:h-64 md:h-80">
-            <img
-              src={heroImage}
-              alt={pkg.title}
-              className="absolute inset-0 w-full h-full object-cover"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/50 to-black/30" />
-            <div className="absolute inset-0 flex flex-col justify-end p-4 sm:p-6 md:p-8 lg:p-12">
-              <div className="flex items-center gap-2 text-xs sm:text-sm text-white/90 mb-2 sm:mb-3">
-                <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-brand-400" />
-                <span className="font-semibold">Tailored Journey Request</span>
-              </div>
-              <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-white mb-1 sm:mb-3 line-clamp-2 sm:line-clamp-none">{pkg.title}</h1>
-              <p className="text-white/90 text-xs sm:text-sm md:text-base lg:text-lg mb-3 sm:mb-6 w-full break-words">
-                {pkg.destination?.name || pkg.destinationRaw}
-                {pkg.destination?.country && `, ${pkg.destination.country}`}
-              </p>
-
-              <div className="flex flex-wrap items-center gap-3 sm:gap-4 lg:gap-6 mt-2 sm:mt-4">
-                <div className="bg-white/20 backdrop-blur-sm rounded-xl px-4 sm:px-6 py-2 sm:py-3 border border-white/30">
-                  <p className="text-xs text-white/80 uppercase tracking-wide mb-0.5 sm:mb-1">Duration</p>
-                  <p className="text-xl sm:text-2xl font-bold text-white">{pluralize(pkg.duration_days, 'Day')}</p>
-                </div>
-                <div className="bg-white/20 backdrop-blur-sm rounded-xl px-4 sm:px-6 py-2 sm:py-3 border border-white/30">
-                  <p className="text-xs text-white/80 uppercase tracking-wide mb-0.5 sm:mb-1">From</p>
-                  <p className="text-xl sm:text-2xl font-bold text-white">{formatCurrency(pkg.price_from)}</p>
-                </div>
-              </div>
+          <div className="flex flex-wrap items-center gap-3 sm:gap-4">
+            <div className="rounded-lg border border-white/25 bg-white/10 px-3.5 py-2 backdrop-blur-sm sm:px-4 sm:py-2.5">
+              <p className="mb-0.5 text-xs uppercase tracking-wide text-white/75 sm:mb-1">Duration</p>
+              <p className="text-lg font-semibold text-white sm:text-xl">{pluralize(pkg.duration_days, 'Day')}</p>
+            </div>
+            <div className="rounded-lg border border-white/25 bg-white/10 px-3.5 py-2 backdrop-blur-sm sm:px-4 sm:py-2.5">
+              <p className="mb-0.5 text-xs uppercase tracking-wide text-white/75 sm:mb-1">From</p>
+              <p className="text-lg font-semibold text-white sm:text-xl">{formatCurrency(pkg.price_from)}</p>
             </div>
           </div>
         </div>
+      </section>
 
-        {/* What Happens Next - Full Width Info Card */}
-        <div className="bg-gradient-to-r from-brand-500 to-brand-accent-600 rounded-2xl p-4 sm:p-6 md:p-8 mb-6 sm:mb-8 text-white shadow-xl">
-          <div className="flex flex-col sm:flex-row items-start gap-3 sm:gap-4">
-            <div className="flex-shrink-0 w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center flex-shrink-0">
-              <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-            </div>
-            <div className="flex-1">
-              <h3 className="text-lg sm:text-xl font-bold mb-2 sm:mb-3">What happens next?</h3>
-              <ul className="space-y-1.5 sm:space-y-2 text-brand-50 text-sm sm:text-base">
-                <li className="flex items-start gap-2">
-                  <svg className="w-4 h-4 sm:w-5 sm:h-5 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                  </svg>
-                  <span>Your request reaches our lead management instantly.</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <svg className="w-4 h-4 sm:w-5 sm:h-5 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                  </svg>
-                  <span>A customized package is created for our sales team to refine.</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <svg className="w-4 h-4 sm:w-5 sm:h-5 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                  </svg>
-                  <span>Expect a personalised proposal within 24 hours.</span>
-                </li>
-              </ul>
-            </div>
-          </div>
-        </div>
-
-        {/* Step-by-Step Form - Full Width. No overflow-hidden here — nothing
-            inside touches this card's edge (every nested block has its own
-            rounded corners within the form's own padding), and this card
-            hosts the Locations/Stops field's LocationSelector dropdown,
-            which would otherwise risk being clipped near the bottom edge. */}
+      <div className="max-w-6xl mx-auto px-3 sm:px-4 md:px-6 py-6 sm:py-8 md:py-10">       
         <div className="bg-white rounded-2xl shadow-lg border border-gray-200">
           <form onSubmit={handleSubmit} noValidate className="p-4 sm:p-6 lg:p-8">
                 {/* Progress Indicator */}

@@ -12,8 +12,7 @@ const SIGNAL_TIMEOUT_MS = 12_000;
 const MANAGEMENT_ROLES = new Set(['admin', 'superAdmin', 'salesRep']);
 
 function notificationsEnabled() {
-  return process.env.MANAGEMENT_COPILOT_ENABLED === 'true'
-    && process.env.MANAGEMENT_NOTIFICATIONS_ENABLED === 'true';
+  return process.env.MANAGEMENT_NOTIFICATIONS_ENABLED === 'true';
 }
 
 function notFound(res) {

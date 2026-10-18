@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Users, UserCheck, UserX, AlertCircle } from 'lucide-react';
 import { UserTableHeader, Pagination, UserFormDialog, ConfirmationDialog, FormGroup } from '../Common';
 import { StatCard } from '@/components/shared/StatCard';
@@ -26,6 +27,9 @@ const EMPTY_FORM: WebsiteUserFormData = {
 };
 
 const WebsiteUsersManagement = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const recordIds = searchParams.get('ids') || undefined;
+  const recommendationFocus = searchParams.get('focus') === 'recommendation';
   const {
     users,
     loading,
@@ -37,7 +41,7 @@ const WebsiteUsersManagement = () => {
     searchUsers,
     changePage,
     clearError,
-  } = useWebsiteUsers();
+  } = useWebsiteUsers(recordIds);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
@@ -49,6 +53,14 @@ const WebsiteUsersManagement = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [formData, setFormData] = useState<WebsiteUserFormData>(EMPTY_FORM);
+
+  useEffect(() => {
+    if (!recordIds || !recommendationFocus || loading) return;
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById('recommendation-target')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [loading, recommendationFocus, recordIds]);
 
   // Calculate stats from all users
   const stats = {
@@ -216,6 +228,15 @@ const WebsiteUsersManagement = () => {
         </div>
       </div>
 
+      {recordIds && (
+        <div className="flex items-center justify-between gap-3 rounded-md border border-primary/30 bg-primary/5 px-3 py-2">
+          <p className="text-sm text-foreground">
+            Showing unverified customer accounts <span className="font-mono tabular-nums">({pagination.totalUsers})</span>
+          </p>
+          <Button variant="ghost" size="sm" onClick={() => setSearchParams({ tab: 'website-users' })}>Clear filter</Button>
+        </div>
+      )}
+
       {/* Table Section */}
       <UserTableHeader
         searchTerm={searchTerm}
@@ -232,22 +253,24 @@ const WebsiteUsersManagement = () => {
         </div>
       ) : (
         <>
-          <WebsiteUsersTable
-            users={filteredUsers}
-            onEdit={openEditDialog}
-            onDelete={handleDeleteUser}
-            onToggleStatus={handleToggleStatus}
-            loading={loading}
-          />
+          <div id="recommendation-target" className="scroll-mt-20 space-y-4">
+            <WebsiteUsersTable
+              users={filteredUsers}
+              onEdit={openEditDialog}
+              onDelete={handleDeleteUser}
+              onToggleStatus={handleToggleStatus}
+              loading={loading}
+            />
 
-          <Pagination
-            currentPage={pagination.currentPage}
-            totalPages={pagination.totalPages}
-            onPageChange={changePage}
-            itemsPerPage={pagination.usersPerPage}
-            totalItems={pagination.totalUsers}
-            disabled={loading}
-          />
+            <Pagination
+              currentPage={pagination.currentPage}
+              totalPages={pagination.totalPages}
+              onPageChange={changePage}
+              itemsPerPage={pagination.usersPerPage}
+              totalItems={pagination.totalUsers}
+              disabled={loading}
+            />
+          </div>
         </>
       )}
 

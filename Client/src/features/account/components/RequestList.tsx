@@ -69,7 +69,7 @@ const getStatusColor = (status?: string) => {
 
 const getStatusBadge = (status?: string) => {
   return (
-    <span className={`px-3 py-1.5 rounded-full text-xs font-semibold ${getStatusColor(status)}`}>
+    <span className={`rounded-full px-3 py-1 text-xs font-semibold ${getStatusColor(status)}`}>
       {status ? status.charAt(0).toUpperCase() + status.slice(1) : 'Pending'}
     </span>
   );
@@ -82,7 +82,7 @@ export default function RequestList({ activeTab, items, onExplorePackages, onVie
         <div className="mb-6">
           <Calendar className="w-20 h-20 text-gray-300 mx-auto" />
         </div>
-        <h3 className="text-2xl font-bold text-gray-900 mb-3">
+        <h3 className="mb-3 font-serif text-2xl font-semibold text-gray-900">
           {activeTab === 'bookings' && 'No Regular Bookings'}
           {activeTab === 'customized' && 'No Customized Packages'}
           {activeTab === 'manual' && 'No Trip Plans'}
@@ -94,7 +94,7 @@ export default function RequestList({ activeTab, items, onExplorePackages, onVie
         </p>
         <button
           onClick={onExplorePackages}
-          className="inline-flex items-center gap-2 px-8 py-4 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-bold text-lg transition-colors"
+          className="inline-flex min-h-12 min-w-64 items-center justify-center gap-2 rounded-xl bg-brand-600 px-8 py-4 font-sans font-semibold text-white transition-colors hover:bg-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
         >
           Explore Packages
           <ArrowRight className="w-5 h-5" />
@@ -104,13 +104,13 @@ export default function RequestList({ activeTab, items, onExplorePackages, onVie
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+    <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3 lg:gap-8">
       {items.map((item) => (
         <div
           key={item._id || item.id}
           className="group bg-white rounded-2xl overflow-hidden border border-gray-200 hover:border-gray-300 transition-colors duration-300"
         >
-          <div className="relative h-64 overflow-hidden bg-gray-200">
+          <div className="relative h-44 overflow-hidden bg-gray-200 sm:h-52 lg:h-56">
             {(() => {
               const imageUrl =
                 activeTab === 'bookings'
@@ -143,20 +143,20 @@ export default function RequestList({ activeTab, items, onExplorePackages, onVie
               <p className="text-xs text-gray-600 font-semibold">
                 {activeTab === 'bookings' ? 'Total Amount' : activeTab === 'customized' ? 'Price per Person' : 'Duration'}
               </p>
-              <p className="text-2xl font-black text-brand-600">
+              <p className="text-xl font-bold text-brand-600">
                 {activeTab === 'bookings' && formatCurrency(item.totalAmount)}
                 {activeTab === 'customized' && formatCurrency(item.price)}
                 {activeTab === 'manual' && pluralize(item.days?.length || 0, 'Day')}
               </p>
             </div>
           </div>
-          <div className="p-6">
-            <h3 className="text-xl font-bold text-gray-900 mb-2 line-clamp-2 transition-colors duration-300 group-hover:text-brand-600">
+          <div className="p-4 sm:p-5">
+            <h3 className="mb-1 line-clamp-2 font-serif text-lg font-semibold text-gray-900 transition-colors duration-300 group-hover:text-brand-600 sm:text-xl">
               {activeTab === 'bookings' && (item.packageName || 'Package')}
               {activeTab === 'customized' && (item.name || 'Customized Package')}
               {activeTab === 'manual' && (item.lead?.name || 'Trip Plan')}
             </h3>
-            <div className="flex items-center gap-2 text-gray-600 mb-4">
+            <div className="mb-3 flex items-center gap-2 text-gray-600">
               <MapPin className="w-4 h-4 text-brand-500 flex-shrink-0" />
               <span className="line-clamp-1">
                 {activeTab === 'bookings' && (item.packageDestination || 'N/A')}
@@ -164,7 +164,7 @@ export default function RequestList({ activeTab, items, onExplorePackages, onVie
                 {activeTab === 'manual' && (item.lead?.destination || 'N/A')}
               </span>
             </div>
-            <div className="grid grid-cols-2 gap-3 mb-6 py-4 border-t border-b border-gray-200">
+            <div className="mb-4 grid grid-cols-2 gap-2 border-y border-gray-200 py-3">
               <div>
                 <p className="text-xs text-gray-500 uppercase font-semibold mb-1">
                   {activeTab === 'bookings' ? 'Travel Date' : activeTab === 'customized' ? 'Duration' : 'Days'}
@@ -199,8 +199,8 @@ export default function RequestList({ activeTab, items, onExplorePackages, onVie
                 </div>
               </div>
             </div>
-            <div className="mb-4">
-              <p className="text-xs text-gray-500 uppercase font-semibold mb-2">
+            <div className="mb-3">
+              <p className="mb-1 text-xs font-semibold uppercase text-gray-500">
                 {activeTab === 'bookings' ? 'Payment Status' : 'Request Status'}
               </p>
               <div className="flex items-center gap-2">
@@ -225,7 +225,7 @@ export default function RequestList({ activeTab, items, onExplorePackages, onVie
                 </span>
               </div>
             </div>
-            <div className="flex items-center gap-2 text-gray-600 text-sm mb-6">
+            <div className="mb-4 flex items-center gap-2 text-sm text-gray-600">
               <Clock className="w-4 h-4 text-brand-500" />
               <span>
                 {activeTab === 'bookings' && 'Booked on'} {(activeTab === 'customized' || activeTab === 'manual') && 'Created on'}{' '}
@@ -246,7 +246,7 @@ export default function RequestList({ activeTab, items, onExplorePackages, onVie
                 onClick={() => {
                   onViewDetails(item.packageId);
                 }}
-                className="w-full px-4 py-3 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-bold transition-colors flex items-center justify-center gap-2"
+                className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-brand-600 px-5 py-3 font-sans font-semibold text-white transition-colors hover:bg-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
               >
                 View Details
                 <ArrowRight className="w-4 h-4" />

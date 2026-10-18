@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { LEAD_COPILOT_FIELDS } from '@travel-crm/contracts';
+import { LEAD_RECORD_FIELDS } from '@travel-crm/contracts';
 import { domainAuthHeader } from '../utils/cloudRunAuth.js';
 import { ROUTE_PARAM_RULES } from '../ai/routeParams.js';
 import { serializeToolResult } from '../ai/prompts/managementAnswer.v2.js';
@@ -62,9 +62,8 @@ const DEFAULT_LIST_LIMIT = 50;
 const LIST_RESULT_BYTE_BUDGET = 64_000;
 const RECORD_RESULT_BYTE_BUDGET = 8_000;
 
-// The lead field allowlist is shared with the record page adapter
-// (`LEAD_COPILOT_FIELDS`), so a tool cannot widen what the briefing exposes.
-const LEAD_PROJECTION = [...LEAD_COPILOT_FIELDS];
+// The lead field allowlist keeps tool output bounded to CRM record facts.
+const LEAD_PROJECTION = [...LEAD_RECORD_FIELDS];
 
 // Billing fields that answer "what is overdue and what is still outstanding".
 // Drawn from the descriptor's invoice allowlist; `overdue` is DERIVED below and
@@ -303,7 +302,7 @@ function byDueDateAscending(left, right) {
 // ─── Cross-site reads ─────────────────────────────────────────────────────
 // These are what let a question be answered from any page rather than only the
 // one the operator is standing on. Each calls a route that already exists, under
-// the caller's forwarded identity, and each is gated in `ManagementToolAccess`
+// the caller's forwarded identity, and each is gated in `ASSISTANT_TOOL_ACCESS`
 // by the same roles that route's own guard requires.
 //
 // The analytics payloads are aggregates the service has ALREADY computed, which
@@ -465,7 +464,7 @@ const searchPackagesTool = {
 // ─── Public catalogue reads ───────────────────────────────────────────────
 // These three back the public-site assistant, which has no user identity at
 // all. The routes behind them are public (package-service forces `isActive`
-// when no user is present), so they take no role in `ManagementToolAccess` and
+// when no user is present), so they take no role in `ASSISTANT_TOOL_ACCESS` and
 // no management role can reach them; the public turn passes its own allowlist
 // to `executeTool`. They live here so the outbound call still gets the per-
 // target Cloud Run ID token and the result is still bounded by declaration.

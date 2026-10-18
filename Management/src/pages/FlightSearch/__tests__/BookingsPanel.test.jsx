@@ -24,7 +24,7 @@ function renderPanel(bookings) {
       loading={false}
       statusFilter="all"
       setStatusFilter={vi.fn()}
-      statusCounts={{ all: bookings.length, confirmed: 0, pending: 0, cancelled: 0 }}
+      statusCounts={{ all: bookings.length, confirmed: 0, pending: 0, cancelled: 0, failed: 0 }}
       search=""
       setSearch={vi.fn()}
       cancelDialog={null}

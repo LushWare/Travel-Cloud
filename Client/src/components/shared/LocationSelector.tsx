@@ -107,7 +107,7 @@ const LocationSelector = ({ locations = [], onChange, destination = '' }: Locati
       <button
         type="button"
         onClick={() => setShowSelector(!showSelector)}
-        className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-400 to-blue-500 text-white rounded-xl transition-all text-sm font-semibold shadow-md"
+        className="inline-flex items-center gap-2 px-4 py-2 bg-[#16a34a] hover:bg-[#15803d] text-white rounded-xl transition-colors text-sm font-semibold shadow-md"
       >
         <Plus size={16} />
         {showSelector ? 'Hide Location Selector' : 'Add Locations'}
@@ -136,7 +136,7 @@ const LocationSelector = ({ locations = [], onChange, destination = '' }: Locati
                 type="button"
                 onClick={handleAddCustomLocation}
                 disabled={!customLocation.trim()}
-                className="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed text-sm font-medium"
+                className="inline-flex items-center gap-2 px-4 py-2.5 bg-[#16a34a] hover:bg-[#15803d] text-white rounded-xl transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed text-sm font-medium"
               >
                 <Plus size={14} />
                 Add

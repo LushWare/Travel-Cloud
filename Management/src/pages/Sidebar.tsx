@@ -27,7 +27,6 @@ const deriveInitials = (name: string): string => {
 interface OrgBranding {
   companyName?: string;
   companyShortName?: string;
-  logoUrl?: string;
 }
 
 interface NavItem {
@@ -60,10 +59,7 @@ const Sidebar = () => {
   const [isMobile, setIsMobile] = useState(false);
   const [orgBranding, setOrgBranding] = useState<OrgBranding | null>(null);
 
-  // Org-configured company name for the sidebar header, falling back to the
-  // static config/branding.js defaults while the fetch is in flight or if it
-  // fails. The icon is not org-configured: it ships with the app (see
-  // getSidebarInfo), so the rail never waits on or depends on a remote logo.
+  // Load organization branding for initials while keeping the sidebar label app-branded.
   useEffect(() => {
     let cancelled = false;
     adminAPI.getOrganizationBranding()
@@ -78,7 +74,7 @@ const Sidebar = () => {
 
   const fallbackInfo = getSidebarInfo();
   const brandInfo = {
-    name: orgBranding?.companyName || fallbackInfo.name,
+    name: 'Travel Cloud',
     // Prefer an explicit short name; otherwise derive initials from the real
     // org-configured company name rather than falling through to the static
     // placeholder default in config/branding.js.
@@ -155,6 +151,7 @@ const Sidebar = () => {
     { icon: Hotel, label: "Hotels", path: "/hotels", requiredPermission: null, allowedRoles: ["salesRep", "admin", "superAdmin"] },
     { icon: DollarSign, label: "Billing", path: "/billing", requiredPermission: "manage_billing" },
     { icon: BarChart3, label: "Analytics", path: "/analytics", requiredPermission: "view_reports" },
+    { icon: Sparkles, label: "AI Insights", path: "/ai-insights", requiredPermission: null, allowedRoles: ["salesRep", "admin", "superAdmin"] },
     { icon: User, label: "Users", path: "/users", requiredPermission: null, requiresAnyPermission: ["manage_users", "manage_sales_reps", "manage_vendors", "manage_admins"] },
     {
       icon: Briefcase,
@@ -207,13 +204,6 @@ const Sidebar = () => {
     }
   };
 
-  const formatGreeting = () => {
-    const hour = currentTime.getHours();
-    if (hour < 12) return "Good Morning";
-    if (hour < 17) return "Good Afternoon";
-    return "Good Evening";
-  };
-
   // Toggle for mobile
   const toggleMobile = useCallback(() => setMobileOpen(prev => !prev), []);
 
@@ -234,25 +224,26 @@ const Sidebar = () => {
       <div className="h-full w-full flex flex-col relative overflow-hidden bg-sidebar border-r border-sidebar-border">
 
         {/* Header / Brand */}
-        <div className="p-3 border-b border-sidebar-border relative z-10">
-          <div className={`flex px-4 ${isExpanded ? 'items-center gap-2' : 'flex-col items-center gap-2'}`}>
+        <div className={`${isExpanded ? 'p-3' : 'p-2'} border-b border-sidebar-border relative z-10`}>
+          <div className={`flex px-2 ${isExpanded ? 'items-center gap-2' : 'flex-col items-center gap-3'}`}>
             <button
               type="button"
               onClick={openOrgSettings}
-              title={canEditOrgSettings ? 'Organization Settings' : brandInfo.name}
-              className={
-                isExpanded && brandInfo.logoUrl
-                  ? `h-11 w-auto min-w-0 max-w-full px-1 rounded-lg flex items-center justify-center transition-colors duration-200 overflow-hidden ${canEditOrgSettings ? 'cursor-pointer hover:bg-sidebar-accent' : 'cursor-default'}`
-                  : `${isExpanded ? 'w-11 h-11' : 'w-10 h-10'} rounded-lg flex items-center justify-center font-bold text-sidebar-primary-foreground bg-sidebar-primary transition-colors duration-200 flex-shrink-0 overflow-hidden ${canEditOrgSettings ? 'cursor-pointer hover:bg-sidebar-primary/90' : 'cursor-default'}`
-              }
+              title={canEditOrgSettings ? 'Organization Settings' : 'Company logo'}
+              className={`flex min-w-0 items-center overflow-hidden rounded-lg transition-colors duration-200 ${isExpanded ? 'h-10 flex-1 justify-start gap-2 px-1' : 'h-10 w-10 justify-center'} ${canEditOrgSettings ? 'cursor-pointer hover:bg-sidebar-accent' : 'cursor-default'}`}
               disabled={!canEditOrgSettings}
             >
-              {isExpanded && brandInfo.logoUrl ? (
-                <img src={brandInfo.logoUrl} alt={brandInfo.name} className="h-full w-auto max-w-full object-contain" />
+              {brandInfo.logoUrl ? (
+                <img src={brandInfo.logoUrl} alt={brandInfo.name} className="h-9 w-9 shrink-0 object-contain" />
               ) : (
-                <span className={`${isExpanded ? 'text-base' : 'text-sm'} font-heading font-extrabold tracking-tight`}>
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary font-heading text-sm font-extrabold text-sidebar-primary-foreground">
                   {brandInfo.shortName.substring(0, 3)}
                 </span>
+              )}
+              {isExpanded && (
+                <h1 className="min-w-0 flex-1 truncate text-left font-heading text-sm font-semibold text-sidebar-foreground">
+                  {brandInfo.name}
+                </h1>
               )}
             </button>
             {/* Close button on mobile */}
@@ -270,37 +261,16 @@ const Sidebar = () => {
                 onClick={toggleSidebar}
                 title={sidebarOpen ? "Collapse sidebar (Ctrl+B)" : "Expand sidebar (Ctrl+B)"}
                 aria-label={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
-                className={`w-8 h-8 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-sidebar-accent hover:text-primary transition-colors duration-150 flex-shrink-0 ${isExpanded ? 'ml-auto' : ''}`}
+                className={`${isExpanded ? 'h-8 w-8' : 'h-10 w-10'} flex items-center justify-center rounded-lg text-muted-foreground hover:bg-sidebar-accent hover:text-primary transition-colors duration-150 flex-shrink-0 ${isExpanded ? 'ml-auto' : ''}`}
               >
-                {sidebarOpen ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeftOpen className="w-4 h-4" />}
+                {sidebarOpen ? <PanelLeftClose className={isExpanded ? 'h-4 w-4' : 'h-5 w-5'} /> : <PanelLeftOpen className={isExpanded ? 'h-4 w-4' : 'h-5 w-5'} />}
               </button>
             )}
           </div>
-          {/* Company name gets its own row under the logo, and wraps rather than
-              truncating: the header must not force the sidebar wider than the
-              longest nav label. */}
-          {isExpanded && (
-            <button
-              type="button"
-              onClick={openOrgSettings}
-              disabled={!canEditOrgSettings}
-              className={`mt-2.5 block w-full px-4 text-left ${canEditOrgSettings ? 'cursor-pointer group/brand' : 'cursor-default'}`}
-            >
-              <h1 className={`font-heading text-sm font-bold leading-snug text-sidebar-foreground ${canEditOrgSettings ? 'group-hover/brand:text-sidebar-primary' : ''}`}>
-                {brandInfo.name}
-              </h1>
-            </button>
-          )}
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 p-3 space-y-1 overflow-y-auto relative z-10">
-          <div className={`${isExpanded ? 'px-3' : 'px-1'} mb-4`}>
-            {isExpanded && (
-              <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Main Menu</p>
-            )}
-          </div>
-
+        <nav className={`flex-1 overflow-y-auto relative z-10 ${isExpanded ? 'p-3 space-y-1' : 'p-2 space-y-0.5'}`}>
           {accessibleItems.map((item) => {
             const active = isActive(item.path);
 
@@ -312,16 +282,17 @@ const Sidebar = () => {
                   if (isMobile) setMobileOpen(false);
                 }}
                 title={item.label}
-                className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg transition-colors duration-150 text-left group relative overflow-hidden ${active
+                aria-label={item.label}
+                className={`flex items-center rounded-lg transition-colors duration-150 group relative overflow-hidden ${isExpanded ? 'w-full gap-3 px-4 py-2.5 text-left' : 'mx-auto h-9 w-9 justify-center p-0'} ${active
                   ? 'bg-sidebar-primary text-sidebar-primary-foreground'
                   : 'text-sidebar-foreground hover:bg-sidebar-accent'
                   }`}
               >
-                <item.icon className={`w-5 h-5 flex-shrink-0 ${active ? 'text-sidebar-primary-foreground' : 'text-muted-foreground'}`} />
+                <item.icon className={`${isExpanded ? 'h-5 w-5' : 'h-[18px] w-[18px]'} flex-shrink-0 ${active ? 'text-sidebar-primary-foreground' : 'text-muted-foreground'}`} />
 
                 {isExpanded && (
                   <>
-                    <span className={`text-sm font-medium flex-1 ${active ? 'text-sidebar-primary-foreground' : ''}`}>
+                    <span className={`text-[13px] font-medium flex-1 ${active ? 'text-sidebar-primary-foreground' : ''}`}>
                       {item.label}
                     </span>
                     <ChevronRight className={`absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 transition-all duration-200 group-hover:translate-x-1 ${active ? 'text-sidebar-primary-foreground/70 opacity-100' : 'text-muted-foreground opacity-0 group-hover:opacity-100'}`} />
@@ -332,17 +303,24 @@ const Sidebar = () => {
           })}
         </nav>
 
+        {!isExpanded && !isMobile && (
+          <div className="border-t border-sidebar-border px-2 py-2">
+            <button
+              type="button"
+              onClick={toggleSidebar}
+              title="Expand sidebar"
+              aria-label="Expand sidebar from navigation"
+              className="mx-auto flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-primary"
+            >
+              <PanelLeftOpen className="h-5 w-5" />
+            </button>
+          </div>
+        )}
+
         {/* User Profile Section */}
         {isExpanded && user && (
           <div className="p-3 border-t border-sidebar-border relative z-10">
             <div className="rounded-lg bg-sidebar-accent p-2">
-              {/* Greeting is its own box inside the card. The identity row below
-                  keeps the same inner gutter, so the greeting text, the avatar and
-                  the nav icons all sit on the rail's 28px content x (the well's
-                  1px border shifts its text by a pixel). */}
-              <div className="rounded-md border border-sidebar-border/60 bg-sidebar px-2 py-1.5">
-                <p className="text-sm text-muted-foreground">{formatGreeting()}</p>
-              </div>
               <div className="mt-2 flex items-center gap-2 px-2">
                 <div className="w-10 h-10 rounded-lg flex items-center justify-center text-sidebar-primary-foreground bg-sidebar-primary font-semibold flex-shrink-0">
                   {user.name?.charAt(0)?.toUpperCase() || 'U'}
@@ -353,9 +331,6 @@ const Sidebar = () => {
                   <p className="text-sm font-semibold text-sidebar-foreground truncate">{user.name}</p>
                   <div className="mt-1 flex items-center gap-1">
                     {user.role === 'superAdmin' && <Sparkles className="w-4 h-4 flex-shrink-0 text-sidebar-primary" />}
-                    <Badge variant="secondary">
-                      {user.role === 'superAdmin' ? 'Super Admin' : user.role === 'admin' ? 'Admin' : 'Sales Rep'}
-                    </Badge>
                   </div>
                 </div>
               </div>
@@ -364,8 +339,8 @@ const Sidebar = () => {
         )}
 
         {/* Footer Actions */}
-        <div className="p-3 space-y-3 relative z-10">
-          <div>
+        <div className={`relative z-10 ${isExpanded ? 'p-3 space-y-3' : 'flex flex-col items-center gap-1 p-2'}`}>
+          <div className={isExpanded ? undefined : 'w-9'}>
             {isExpanded && (
               <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold mb-2 px-1">Appearance</p>
             )}
@@ -376,9 +351,10 @@ const Sidebar = () => {
             disabled={isLoggingOut}
             variant="destructive"
             title={isLoggingOut ? "Signing out..." : "Sign Out"}
-            className="w-full justify-start gap-3 px-4 h-10"
+            aria-label={isLoggingOut ? "Signing out..." : "Sign Out"}
+            className={isExpanded ? 'h-10 w-full justify-start gap-3 px-4' : 'h-9 w-9 justify-center p-0'}
           >
-            <LogOut className="w-4 h-4" />
+            <LogOut className={isExpanded ? 'h-4 w-4' : 'h-[18px] w-[18px]'} />
             {isExpanded && <span>{isLoggingOut ? "Signing out..." : "Sign Out"}</span>}
           </Button>
         </div>

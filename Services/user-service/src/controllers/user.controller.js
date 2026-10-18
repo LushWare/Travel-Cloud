@@ -49,10 +49,11 @@ export const updateCurrentUserProfile = asyncHandler(async (req, res) => {
 });
 
 export const getAllUsers = asyncHandler(async (req, res) => {
-  const { page = 1, limit = 10, role, search, isActive } = parseOrThrow(listUsersQuerySchema, req.query);
+  const { page = 1, limit = 10, role, search, isActive, ids } = parseOrThrow(listUsersQuerySchema, req.query);
   const where = {};
   if (role) where.role = role;
   if (isActive !== undefined) where.isActive = isActive === 'true';
+  if (ids) where.id = { in: ids.split(',') };
   if (search) {
     where.OR = [
       { name: { contains: search, mode: 'insensitive' } },

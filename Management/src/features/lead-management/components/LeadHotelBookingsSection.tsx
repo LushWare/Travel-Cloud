@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Building2, Plus, Loader2, Ban, AlertCircle, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
-import { toast } from '@/lib/toast';
+import { Building2, Loader2, AlertCircle, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
+import { getCountryCodeFromDestination, getMappedCityFromDestination } from '@/features/itinerary/utils/destinationMapping';
 import HotelService from '../../../services/hotel.service';
-import { HotelSelectionModal } from '../../shared';
 import { deriveItemState, ITEM_STATE_LABELS, ITEM_STATE_COLORS } from '../utils/bookingState';
 import { Button } from '@/components/ui/button';
 import { apiErrorMessage } from '@/lib/apiErrorMessage';
@@ -17,29 +16,67 @@ function fmtMoney(amount: number | null | undefined, currency: string | undefine
   return new Intl.NumberFormat(undefined, { style: 'currency', currency: currency || 'USD' }).format(amount);
 }
 
+function sameHotelStay(left: any, right: any) {
+  const leftAccommodation = left.accommodation || {};
+  const rightAccommodation = right.accommodation || {};
+  const leftId = leftAccommodation.hotelId;
+  const rightId = rightAccommodation.hotelId;
+  if (leftId && rightId) return String(leftId) === String(rightId);
+
+  const leftName = String(leftAccommodation.name || '').trim().toLocaleLowerCase();
+  const rightName = String(rightAccommodation.name || '').trim().toLocaleLowerCase();
+  const leftLocation = String(leftAccommodation.address || leftAccommodation.city || '').trim().toLocaleLowerCase();
+  const rightLocation = String(rightAccommodation.address || rightAccommodation.city || '').trim().toLocaleLowerCase();
+  return Boolean(leftName && leftName === rightName && (!leftLocation || !rightLocation || leftLocation === rightLocation));
+}
+
+function groupHotelStays(days: any[]) {
+  const stays: Array<{ startDay: any; endDay: any }> = [];
+  const orderedDays = days
+    .filter((day) => day?.accommodation?.name)
+    .sort((left, right) => left.dayNumber - right.dayNumber);
+
+  orderedDays.forEach((day) => {
+    const currentStay = stays[stays.length - 1];
+    if (
+      currentStay
+      && day.dayNumber === currentStay.endDay.dayNumber + 1
+      && sameHotelStay(currentStay.endDay, day)
+    ) {
+      currentStay.endDay = day;
+      return;
+    }
+    stays.push({ startDay: day, endDay: day });
+  });
+
+  return stays;
+}
+
 interface LeadHotelBookingsSectionProps {
   leadId?: string;
+  packageId?: string;
   leadStatus?: string;
   itineraryDays?: any[];
   travelDate?: string;
-  endDate?: string;
-  onUpdateDay?: (dayNumber: number, patch: any) => void;
+  destination?: string;
+  country?: string;
+  travelers?: number;
 }
 
 export default function LeadHotelBookingsSection({
   leadId,
+  packageId,
   leadStatus,
   itineraryDays = [],
   travelDate,
-  endDate,
-  onUpdateDay,
+  destination = '',
+  country = '',
+  travelers = 1,
 }: LeadHotelBookingsSectionProps) {
   const [bookings, setBookings] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [showHotelModal, setShowHotelModal] = useState(false);
-  const [hotelModalDay, setHotelModalDay] = useState<number | null>(null);
   const [expanded, setExpanded] = useState(true);
 
   const fetchBookings = async () => {
@@ -58,39 +95,50 @@ export default function LeadHotelBookingsSection({
 
   useEffect(() => {
     if (leadId) fetchBookings();
+    const refreshWhenActive = () => fetchBookings();
+    window.addEventListener('focus', refreshWhenActive);
+    return () => window.removeEventListener('focus', refreshWhenActive);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leadId]);
 
-  const handleCancelBooking = async (bookingId: string, reason: string) => {
-    try {
-      await HotelService.cancelBooking(bookingId, reason || 'Cancelled by agent');
-      toast.success('Booking cancelled');
-      fetchBookings();
-    } catch (err: any) {
-      toast.error(apiErrorMessage(err));
-    }
+  const hotelSearchHref = (stay: { startDay: any; endDay: any }) => {
+    const accommodation = stay.startDay.accommodation || {};
+    const endAccommodation = stay.endDay.accommodation || {};
+    const params = new URLSearchParams();
+    const locationText = [accommodation.city, accommodation.location, accommodation.address, destination, country]
+      .filter((value) => typeof value === 'string' && value.trim())
+      .join(', ');
+    const countryValue = accommodation.countryCode || accommodation.country || country;
+    const countryCode = /^[A-Z]{2}$/i.test(countryValue)
+      ? countryValue.toUpperCase()
+      : getCountryCodeFromDestination(locationText) || countryValue;
+    const city = accommodation.city
+      || getMappedCityFromDestination(locationText, countryCode)
+      || accommodation.location;
+    if (city) params.set('city', city);
+    if (countryCode) params.set('country', countryCode);
+    if (destination) params.set('destination', destination);
+    if (accommodation.address) params.set('address', accommodation.address);
+    const dateAtDay = (offset: number) => {
+      if (!travelDate) return '';
+      const date = new Date(`${travelDate.slice(0, 10)}T00:00:00.000Z`);
+      date.setUTCDate(date.getUTCDate() + offset);
+      return date.toISOString().slice(0, 10);
+    };
+    params.set('checkin', accommodation.checkin || dateAtDay(stay.startDay.dayNumber - 1));
+    params.set('checkout', endAccommodation.checkout || dateAtDay(stay.endDay.dayNumber));
+    params.set('adults', String(Math.max(1, travelers)));
+    if (leadId) params.set('leadId', leadId);
+    if (packageId) params.set('packageId', packageId);
+    params.set('dayNumber', String(stay.startDay.dayNumber));
+    if (accommodation.name) params.set('hotelName', accommodation.name);
+    return `/hotels?${params.toString()}`;
   };
 
-  const handleBookHotel = (bookingData: any) => {
-    const dayNumber = hotelModalDay;
-    if (dayNumber && onUpdateDay) {
-      const day = itineraryDays.find((d) => d.dayNumber === dayNumber);
-      onUpdateDay(dayNumber, {
-        accommodation: {
-          ...(day?.accommodation || {}),
-          bookingIds: [...(day?.accommodation?.bookingIds || []), bookingData.id],
-          checkin: bookingData.checkin,
-          checkout: bookingData.checkout,
-          totalAmount: bookingData.totalAmount,
-          currency: bookingData.currency,
-        },
-      });
-    }
-    fetchBookings();
-  };
+  const hotelBookingHref = (bookingId: string) =>
+    `/hotels?tab=bookings&ids=${encodeURIComponent(bookingId)}&bookingId=${encodeURIComponent(bookingId)}&focus=recommendation`;
 
-  // Days with accommodation data (hotelId set)
-  const hotelDays = itineraryDays.filter((d) => d.accommodation?.name);
+  const hotelStays = groupHotelStays(itineraryDays);
 
   if (loading) {
     return (
@@ -127,22 +175,30 @@ export default function LeadHotelBookingsSection({
             </div>
           )}
 
-          {hotelDays.length > 0 ? (
+          {hotelStays.length > 0 ? (
             <div className="space-y-2">
               <div className="text-xs font-semibold text-muted-foreground uppercase mb-2">Itinerary Hotels</div>
-              {hotelDays.map((day) => {
-                const dayBooking = bookings.find((b) => b.dayNumber === day.dayNumber);
+              {hotelStays.map((stay) => {
+                const stayBookings = bookings.filter((booking) =>
+                  booking.dayNumber >= stay.startDay.dayNumber
+                  && booking.dayNumber <= stay.endDay.dayNumber
+                  && (booking.packageId || null) === (packageId || null));
+                const dayBooking = stayBookings.find((booking) => booking.status !== 'cancelled' && booking.status !== 'failed')
+                  || stayBookings[0];
                 const booked = !!dayBooking && dayBooking.status !== 'cancelled' && dayBooking.status !== 'failed';
                 const failed = !!dayBooking && dayBooking.status === 'failed';
                 const itemState = deriveItemState(leadStatus ?? '', booked, failed);
                 const stateLabel = ITEM_STATE_LABELS[itemState];
                 const stateColor = ITEM_STATE_COLORS[itemState];
+                const dayLabel = stay.startDay.dayNumber === stay.endDay.dayNumber
+                  ? `Day ${stay.startDay.dayNumber}`
+                  : `Days ${stay.startDay.dayNumber}-${stay.endDay.dayNumber}`;
                 return (
-                  <div key={day.dayNumber} className="bg-card rounded-xl border border-border p-3">
+                  <div key={stay.startDay.dayNumber} className="bg-card rounded-xl border border-border p-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-sm font-semibold text-foreground">Day {day.dayNumber}</span>
-                        <span className="text-sm text-muted-foreground">{day.accommodation?.name}</span>
+                        <span className="text-sm font-semibold text-foreground">{dayLabel}</span>
+                        <span className="text-sm text-muted-foreground">{stay.startDay.accommodation?.name}</span>
                         <span className={`px-1.5 py-0.5 text-xs rounded-full border ${stateColor}`}>
                           {stateLabel}
                         </span>
@@ -152,20 +208,26 @@ export default function LeadHotelBookingsSection({
                           <Building2 className="w-3.5 h-3.5" /> Select Hotel
                         </Button>
                       ) : itemState === 'READY_TO_BOOK' ? (
-                        <Button
-                          type="button"
-                          size="sm"
-                          onClick={() => {
-                            setHotelModalDay(day.dayNumber);
-                            setShowHotelModal(true);
-                          }}
+                        <a
+                          href={hotelSearchHref(stay)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex h-8 items-center gap-1 rounded-md border border-border px-2.5 text-xs font-medium text-foreground hover:bg-muted"
                         >
-                          <Plus className="w-3.5 h-3.5" /> Book Now
-                        </Button>
+                          <ExternalLink className="h-3.5 w-3.5" /> Search &amp; book
+                        </a>
                       ) : itemState === 'BOOKED' ? (
                         <div className="flex items-center gap-2 text-xs text-muted-foreground">
                           {dayBooking.pnrCode && (
-                            <span className="font-mono font-medium text-foreground">{dayBooking.pnrCode}</span>
+                            <a
+                              href={hotelBookingHref(dayBooking.id)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              aria-label={`Open hotel booking ${dayBooking.pnrCode}`}
+                              className="inline-flex items-center gap-1 font-mono font-medium text-primary hover:underline"
+                            >
+                              {dayBooking.pnrCode} <ExternalLink className="h-3 w-3" />
+                            </a>
                           )}
                           <span className="capitalize">{dayBooking.status}</span>
                           {dayBooking.supplierPortalUrl && (
@@ -175,16 +237,14 @@ export default function LeadHotelBookingsSection({
                             </a>
                           )}
                           {dayBooking.status !== 'cancelled' && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const reason = prompt('Reason for cancellation:');
-                                if (reason !== null) handleCancelBooking(dayBooking.id, reason);
-                              }}
+                            <a
+                              href={hotelBookingHref(dayBooking.id)}
+                              target="_blank"
+                              rel="noopener noreferrer"
                               className="flex items-center gap-1 text-destructive hover:text-destructive/80"
                             >
-                              <Ban className="w-3 h-3" /> Cancel
-                            </button>
+                              <ExternalLink className="w-3 h-3" /> Cancel / manage
+                            </a>
                           )}
                         </div>
                       ) : itemState === 'FAILED' && (
@@ -194,18 +254,15 @@ export default function LeadHotelBookingsSection({
                             type="button"
                             size="sm"
                             variant="destructive"
-                            onClick={() => {
-                              setHotelModalDay(day.dayNumber);
-                              setShowHotelModal(true);
-                            }}
+                            onClick={() => window.open(hotelSearchHref(stay), '_blank', 'noopener,noreferrer')}
                           >
-                            <AlertCircle className="w-3.5 h-3.5" /> Resolve
+                            <ExternalLink className="w-3.5 h-3.5" /> Search again
                           </Button>
                         </div>
                       )}
                     </div>
-                    {day.accommodation?.address && (
-                      <div className="mt-1 text-xs text-muted-foreground">{day.accommodation.address}</div>
+                    {stay.startDay.accommodation?.address && (
+                      <div className="mt-1 text-xs text-muted-foreground">{stay.startDay.accommodation.address}</div>
                     )}
                     {booked && (
                       <div className="mt-1 text-xs text-muted-foreground">
@@ -226,25 +283,12 @@ export default function LeadHotelBookingsSection({
             <div className="text-center py-6 text-muted-foreground">
               <Building2 className="w-8 h-8 mx-auto mb-2 opacity-50" />
               <p className="text-sm">No hotels in this itinerary</p>
-              <p className="text-xs mt-1">Use the itinerary editor to search and select hotels</p>
+              <p className="text-xs mt-1">Add hotel details to the itinerary to start a booking</p>
             </div>
           )}
         </div>
       )}
 
-      {/* Hotel Booking Modal */}
-      {showHotelModal && (
-        <HotelSelectionModal
-          isOpen={showHotelModal}
-          onClose={() => { setShowHotelModal(false); setHotelModalDay(null); }}
-          mode="search"
-          initialCheckin={travelDate ? itineraryDays.find((d) => d.dayNumber === hotelModalDay)?.accommodation?.checkin || travelDate : undefined}
-          initialCheckout={endDate || undefined}
-          travelers={1}
-          leadContext={leadId ? { leadId, dayNumber: hotelModalDay } : {}}
-          onBookHotel={handleBookHotel}
-        />
-      )}
     </div>
   );
 }

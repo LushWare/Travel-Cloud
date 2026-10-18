@@ -20,6 +20,7 @@ import { Tabs, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import { Button } from '../../components/ui/button';
 import { StatCard, type StatCardColor } from '../../components/shared/StatCard';
 import PageHeader from '../../components/PageHeader';
+import RecommendationStrip from '@/features/recommendations/RecommendationStrip';
 
 // Shared theming for recharts, which takes literal CSS color strings rather
 // than Tailwind classes — referencing the same CSS custom properties that
@@ -222,15 +223,14 @@ const RevenueSummaryCards = ({ data }: { data: any }) => {
       <StatCard
         icon={Eye}
         label="Outstanding"
-        value={formatCompact(data.stats.totalOutstanding)}
-        subtitle={`${data.stats.pendingInvoices} invoices pending`}
+        value={formatCompact(data.stats.currentOutstanding ?? data.stats.totalOutstanding)}
         color="warning"
       />
       <StatCard
         icon={DollarSign}
-        label="Potential Revenue"
+        label="Draft Pipeline"
         value={formatCompact(data.stats.totalPotentialRevenue)}
-        subtitle="Available to collect"
+        subtitle="Draft invoices not yet sent"
         color="success"
       />
     </div>
@@ -249,15 +249,15 @@ const UserAnalyticsPanel = ({ data }: { data: any }) => {
       <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-4 sm:mb-6">
         <div className="text-center p-3 sm:p-4 bg-muted rounded-lg">
           <p className="text-xl sm:text-3xl font-mono font-semibold tabular-nums text-foreground">{userStats.totalUsers || 0}</p>
-          <p className="text-xs text-muted-foreground mt-1">Total Users</p>
+          <p className="text-xs text-muted-foreground mt-1">New Users</p>
         </div>
         <div className="text-center p-3 sm:p-4 bg-success/10 rounded-lg">
           <p className="text-xl sm:text-3xl font-mono font-semibold tabular-nums text-success">{userStats.activeUsers || 0}</p>
-          <p className="text-xs text-muted-foreground mt-1">Active</p>
+          <p className="text-xs text-muted-foreground mt-1">Active New Users</p>
         </div>
         <div className="text-center p-3 sm:p-4 bg-destructive/10 rounded-lg">
           <p className="text-xl sm:text-3xl font-mono font-semibold tabular-nums text-destructive">{userStats.inactiveUsers || 0}</p>
-          <p className="text-xs text-muted-foreground mt-1">Inactive</p>
+          <p className="text-xs text-muted-foreground mt-1">Inactive New Users</p>
         </div>
       </div>
 
@@ -329,8 +329,8 @@ const SalesRepDashboard = ({ data }: { data: any }) => {
 interface Metric {
   title: string;
   value: string | number;
+  subtitle?: string;
   trend: string | null;
-  description: string;
   icon: LucideIcon;
   color: StatCardColor;
 }
@@ -406,21 +406,21 @@ const DashboardContainer = () => {
   const trendDirection = (trend: string | null): 'up' | 'down' => (trend?.startsWith('-') ? 'down' : 'up');
 
   const metrics: Metric[] = [
-    { title: 'Total Leads', value: leadStats.totalLeads || '0', trend: trendBadge(leadData?.trend, 'new'), description: 'All leads in pipeline', icon: Activity, color: 'primary' },
-    { title: 'Active Packages', value: packageStats.totalItineraries || '0', trend: null, description: 'Available packages', icon: Briefcase, color: 'muted' },
+    { title: 'Total Leads', value: leadStats.allTimeTotalLeads || '0', trend: null, icon: Activity, color: 'primary' },
+    { title: 'Active Packages', value: packageStats.totalItineraries || '0', trend: null, icon: Briefcase, color: 'muted' },
   ];
 
   if (billingData) {
     metrics.push(
-      { title: 'Monthly Revenue', value: formatCompact(billingStats.totalRevenue), trend: trendBadge(billingData?.revenueTrend, 'revenue'), description: 'Paid invoices', icon: DollarSign, color: 'success' },
-      { title: 'Outstanding', value: formatCompact(billingStats.totalOutstanding), trend: trendBadge(billingData?.outstandingTrend, 'outstanding'), description: 'Pending payments', icon: Eye, color: 'warning' },
+      { title: 'Collected Revenue', value: formatCompact(billingStats.totalRevenue), trend: trendBadge(billingData?.revenueTrend, 'revenue'), icon: DollarSign, color: 'success' },
+      { title: 'Outstanding', value: formatCompact(billingStats.currentOutstanding ?? billingStats.totalOutstanding), trend: null, icon: Eye, color: 'warning' },
     );
   }
 
   if (userData && !isSalesRep) {
     metrics.push(
-      { title: 'Total Users', value: userStats.totalUsers || '0', trend: trendBadge(userData?.trendData, 'totalNewUsers'), description: 'Registered users', icon: Users, color: 'muted' },
-      { title: 'Active Users', value: userStats.activeUsers || '0', trend: trendBadge(userData?.trendData, 'activeUsers'), description: 'Active this period', icon: TrendingUp, color: 'success' },
+      { title: 'Total Users', value: userStats.allTimeTotalUsers ?? userStats.totalUsers ?? 0, trend: null, icon: Users, color: 'muted' },
+      { title: 'Active Users', value: userStats.activeUsers || '0', trend: trendBadge(userData?.trendData, 'activeUsers'), icon: TrendingUp, color: 'success' },
     );
   }
 
@@ -465,13 +465,14 @@ const DashboardContainer = () => {
               icon={metric.icon}
               label={metric.title}
               value={metric.value}
-              subtitle={metric.description}
-              trend={metric.trend ?? undefined}
+              subtitle={metric.subtitle}
               trendDirection={trendDirection(metric.trend)}
               color={metric.color}
             />
           ))}
         </div>
+
+        <RecommendationStrip module="dashboard" />
 
         {/* Charts Row 1 - Lead Funnel (wide) + Package Distribution */}
         <div className="grid grid-cols-1 xl:grid-cols-5 gap-4 sm:gap-6">
@@ -503,7 +504,7 @@ const DashboardContainer = () => {
 
         {/* Charts Row 3 - User Analytics (for admins) */}
         {canViewUsers && (
-          <ChartPanel title="User Analytics" subtitle="Platform user metrics and distribution" icon={Users} height={320}>
+          <ChartPanel title="User Analytics" subtitle="Accounts registered in selected period" icon={Users} height={320}>
             <UserAnalyticsPanel data={userData} />
           </ChartPanel>
         )}

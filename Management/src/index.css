@@ -384,3 +384,41 @@ code {
     transition: none;
   }
 }
+
+#liteapi-payment-element .lp-submit-button-wrapper {
+  display: flex;
+  justify-content: center;
+  margin: 1.25rem 0 0.25rem;
+}
+
+#liteapi-payment-element .lp-submit-button {
+  display: inline-flex;
+  min-width: 12rem;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  padding: 0 1.5rem;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 150ms ease, opacity 150ms ease;
+}
+
+#liteapi-payment-element .lp-submit-button:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--primary) 88%, black);
+}
+
+#liteapi-payment-element .lp-submit-button:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+#liteapi-payment-element .lp-submit-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}

@@ -1,31 +1,15 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- title/description: static defaults, matching src/config/branding.ts's
-         fallbacks. src/config/branding.ts's applyBranding() overwrites these from
-         VITE_COMPANY_NAME/VITE_META_DESCRIPTION at runtime when those
-         are actually set. Previously these were %VITE_X%() index.html placeholders,
-         but Vite has no fallback for an unset one -- it ships the literal unresolved
-         "%VITE_X%" string into production HTML instead (reproduced: a build without
-         VITE_COMPANY_NAME set, exactly CI's current Client build step, shipped
-         <title>%VITE_COMPANY_NAME%</title> verbatim). -->
-    <title>LUSH Ware</title>
-    <meta name="description" content="LUSH Ware — sustainable, expertly curated journeys around the world." />
-    <!-- The tab/app icon is delivered with the app rather than derived from
-         VITE_LOGO_PATH: that path can be unset or point anywhere, and the
-         1200x1200 master (logo.png) reads as an empty square at icon sizes
-         because its artwork is a strip through the middle. public/icon.png is
-         generated from that artwork: the LUSH/WARE lockup, 432px wide, centred
-         on the light brand-50 (#F0F7F3) rounded tile, 512x512. -->
-    <link rel="icon" type="image/png" href="/icon.png" />
+    <title>LushTravelCloud</title>
+    <meta
+      name="description"
+      content="Lush Travel Cloud — sustainable, expertly curated journeys around the world."
+    />
+    <link rel="icon" type="image/png" href="/favicon.ico" />
     <link rel="apple-touch-icon" href="/icon.png" />
-
-    <!-- Fonts: self-hosted via @fontsource-variable/{fraunces,inter} (Phase 8,
-         see src/index.css) -- no runtime Google Fonts stylesheet, no
-         render-blocking cross-origin request, no external-host dependency. -->
-
   </head>
   <body>
     <div id="root"></div>

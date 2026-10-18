@@ -1,4 +1,3 @@
-import PageCopilot from '@/features/copilot/PageCopilot';
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from '@/lib/toast';
@@ -30,6 +29,7 @@ import DocumentDetailDialog from './DocumentDetailDialog';
 import { getDocumentNumber, getDocumentAmount, getDocumentDate, matchesSearch, formatDate } from './helpers';
 import type { BillingDocument, DocumentType, ViewMode, Quotation, Invoice, Receipt, Voucher, PaymentHistoryRecord } from './types';
 import PageHeader from '@/components/PageHeader';
+import RecommendationStrip from '@/features/recommendations/RecommendationStrip';
 
 // api.js is untyped legacy JS - every one of these clients shares the same
 // ApiService.fetch() foundation (typed `Promise<any>` at the source, Phase
@@ -104,6 +104,7 @@ export default function BillingInvoicing() {
   });
   const [selected, setSelected] = useState<BillingDocument | null>(null);
   const idsParam = searchParams.get('ids');
+  const recommendationFocus = searchParams.get('focus') === 'recommendation';
   const documentId = searchParams.get('documentId') || searchParams.get('invoiceId');
 
   const [documents, setDocuments] = useState<Record<DocumentType, BillingDocument[]>>({
@@ -113,6 +114,7 @@ export default function BillingInvoicing() {
     voucher: [],
     'payment-history': [],
   });
+  const [invoiceOutstanding, setInvoiceOutstanding] = useState<number | null>(null);
   const [loading, setLoading] = useState<Record<DocumentType, boolean>>({
     quotation: false,
     invoice: false,
@@ -143,6 +145,16 @@ export default function BillingInvoicing() {
       } else {
         toast.error(`Failed to fetch ${FETCH_ERROR_LABEL[type]}`);
       }
+      if (type === 'invoice') {
+        try {
+          const statsResponse = await invoiceAPI.getStats();
+          if (statsResponse.success) {
+            setInvoiceOutstanding(Number(statsResponse.data?.totalOutstanding) || 0);
+          }
+        } catch (statsError) {
+          console.error('Error fetching invoice stats:', statsError);
+        }
+      }
     } catch (error) {
       console.error(`Error fetching ${type}:`, error);
       toast.error(`Failed to fetch ${FETCH_ERROR_LABEL[type]}`);
@@ -162,6 +174,14 @@ export default function BillingInvoicing() {
     fetchDocuments(activeTab);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- refetch only the active tab on date/tab/id change
   }, [startDate, endDate, activeTab, idsParam]);
+
+  useEffect(() => {
+    if (!idsParam || !recommendationFocus || loading[activeTab]) return;
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById('recommendation-target')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [idsParam, recommendationFocus, activeTab, loading]);
 
   useEffect(() => {
     const requested = searchParams.get('tab');
@@ -231,7 +251,7 @@ export default function BillingInvoicing() {
   const currentTab = TAB_META.find((t) => t.id === activeTab)!;
 
   const totalRevenue = (documents.invoice as Invoice[]).reduce((sum, inv) => sum + (inv.paidAmount || 0), 0);
-  const totalOutstanding = (documents.invoice as Invoice[]).reduce((sum, inv) => sum + (inv.outstandingAmount || 0), 0);
+  const totalOutstanding = invoiceOutstanding ?? (documents.invoice as Invoice[]).reduce((sum, inv) => sum + (inv.outstandingAmount || 0), 0);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps -- handleDownload/handleSend are stable per render, only activeTab actually varies column shape
   const columns = useMemo<DataTableColumn<BillingDocument>[]>(() => {
@@ -342,7 +362,6 @@ export default function BillingInvoicing() {
   }, [activeTab]);
 
   return (
-    <PageCopilot pageKey="billing" scopeLabel="Billing">
       <div className="min-h-screen bg-background">
       <PageHeader
         title="Billing"
@@ -353,16 +372,17 @@ export default function BillingInvoicing() {
           </Button>
         ) : undefined}
       />
+      <RecommendationStrip module="billing" />
       {/* Mobile figures + horizontal tabs. The title row moved into PageHeader,
           so this block is no longer sticky — there is one sticky bar. */}
       <div className="border-b border-border bg-card md:hidden">
         <div className="flex gap-2 px-4 py-2">
-          <div className="flex-1 rounded-lg border border-success/20 bg-success/10 px-3 py-1.5">
-            <p className="font-mono text-sm font-bold tabular-nums text-success">{formatCurrency(totalRevenue)}</p>
+          <div className="min-w-0 flex-1 rounded-lg border border-success/20 bg-success/10 px-3 py-1.5">
+            <p className="whitespace-nowrap font-mono text-sm font-bold tabular-nums text-success">{formatCurrency(totalRevenue)}</p>
             <p className="text-xs uppercase text-success/70">Revenue</p>
           </div>
-          <div className="flex-1 rounded-lg border border-warning/20 bg-warning/10 px-3 py-1.5">
-            <p className="font-mono text-sm font-bold tabular-nums text-warning">{formatCurrency(totalOutstanding)}</p>
+          <div className="min-w-0 flex-1 rounded-lg border border-warning/20 bg-warning/10 px-3 py-1.5">
+            <p className="whitespace-nowrap font-mono text-sm font-bold tabular-nums text-warning">{formatCurrency(totalOutstanding)}</p>
             <p className="text-xs uppercase text-warning/70">Outstanding</p>
           </div>
         </div>
@@ -373,7 +393,9 @@ export default function BillingInvoicing() {
                 <TabsTrigger key={tab.id} value={tab.id} className="gap-1.5">
                   <tab.icon className="h-3.5 w-3.5" />
                   {tab.shortLabel}
-                  <span className="rounded-full bg-muted px-1.5 py-0.5 text-xs">{documents[tab.id].length}</span>
+                  <span className="rounded-full bg-muted px-1.5 py-0.5 text-xs">
+                    {idsParam && tab.id !== activeTab ? '—' : documents[tab.id].length}
+                  </span>
                 </TabsTrigger>
               ))}
             </TabsList>
@@ -385,14 +407,14 @@ export default function BillingInvoicing() {
         {/* Left Sidebar - Desktop only */}
         <aside className="sticky top-0 hidden h-screen w-72 flex-col overflow-y-auto border-r border-border bg-card pb-4 md:flex">
           <div className="border-b border-border p-6">
-            <div className="grid grid-cols-2 gap-2">
-              <div className="rounded-lg border border-success/20 bg-success/10 p-3">
-                <p className="font-mono text-lg font-bold tabular-nums text-success">{formatCurrency(totalRevenue)}</p>
-                <p className="text-xs uppercase tracking-wider text-success/70">Revenue</p>
+            <div className="grid grid-cols-1 gap-2">
+              <div className="flex min-w-0 items-center justify-between gap-3 rounded-lg border border-success/20 bg-success/10 px-3 py-2.5">
+                <p className="text-xs font-semibold uppercase tracking-wider text-success/70">Revenue</p>
+                <p className="shrink-0 whitespace-nowrap font-mono text-base font-bold tabular-nums text-success">{formatCurrency(totalRevenue)}</p>
               </div>
-              <div className="rounded-lg border border-warning/20 bg-warning/10 p-3">
-                <p className="font-mono text-lg font-bold tabular-nums text-warning">{formatCurrency(totalOutstanding)}</p>
-                <p className="text-xs uppercase tracking-wider text-warning/70">Outstanding</p>
+              <div className="flex min-w-0 items-center justify-between gap-3 rounded-lg border border-warning/20 bg-warning/10 px-3 py-2.5">
+                <p className="text-xs font-semibold uppercase tracking-wider text-warning/70">Outstanding</p>
+                <p className="shrink-0 whitespace-nowrap font-mono text-base font-bold tabular-nums text-warning">{formatCurrency(totalOutstanding)}</p>
               </div>
             </div>
           </div>
@@ -415,7 +437,9 @@ export default function BillingInvoicing() {
                   </div>
                   <div className="flex-1">
                     <p className="text-sm font-medium">{tab.shortLabel}</p>
-                    <p className={`text-xs ${isActive ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>{documents[tab.id].length} items</p>
+                    <p className={`text-xs ${isActive ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
+                      {idsParam && tab.id !== activeTab ? 'Not loaded' : `${documents[tab.id].length} items`}
+                    </p>
                   </div>
                 </button>
               );
@@ -441,10 +465,10 @@ export default function BillingInvoicing() {
             {idsParam && (
               <div className="mb-3 flex min-h-11 items-center justify-between gap-3 rounded-lg border border-border bg-background px-3 py-2">
                 <p className="text-sm text-foreground">
-                  Showing <span className="font-mono tabular-nums">{documents[activeTab].length}</span> selected documents
+                  Active filter: linked {currentTab.label.toLowerCase()} <span className="font-mono tabular-nums">({documents[activeTab].length})</span>
                 </p>
                 <Button variant="ghost" size="xs" onClick={() => setSearchParams({ tab: activeTab })}>
-                  Show all
+                  Clear filter
                 </Button>
               </div>
             )}
@@ -506,7 +530,7 @@ export default function BillingInvoicing() {
             )}
           </div>
 
-          <div className="p-4 sm:p-6 lg:p-8">
+          <div id="recommendation-target" className="scroll-mt-20 p-4 sm:p-6 lg:p-8">
             {loading[activeTab] ? (
               <LoadingSpinner />
             ) : filtered.length === 0 ? (
@@ -554,6 +578,5 @@ export default function BillingInvoicing() {
         }
       />
       </div>
-    </PageCopilot>
   );
 }

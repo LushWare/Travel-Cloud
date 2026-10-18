@@ -17,7 +17,10 @@ const fixture = {
     stats: { totalRevenue: 50000, totalOutstanding: 12000, totalPotentialRevenue: 8000, pendingInvoices: 6 },
     revenueTrend: [{ label: 'Jul 2026', revenue: 20000, target: 18000 }, { label: 'Aug 2026', revenue: 50000, target: 20000 }],
     outstandingTrend: [{ label: 'Aug 2026', outstanding: 12000, potentialRevenue: 8000 }],
-    paymentStatusDistribution: [{ name: 'Paid', status: 'paid', totalAmount: 50000 }],
+    paymentStatusDistribution: [
+      { name: 'Paid', status: 'paid', totalAmount: 50000.12 },
+      { name: 'Cancelled', status: 'cancelled', totalAmount: 6933.14 },
+    ],
     invoiceCategoryBreakdown: [{ name: 'Invoice', revenue: 50000, invoices: 6 }],
   },
 };
@@ -31,6 +34,7 @@ describe('BillingAnalytics', () => {
 
     await waitFor(() => expect(screen.getAllByText(/\$?12(\.\d+)?K/i).length).toBeGreaterThan(0));
     expect(screen.getAllByText('6').length).toBeGreaterThan(0);
+    expect(screen.getByText('56933.26')).toBeInTheDocument();
   });
 
   it('shows "No data available" for revenue trend when the response has no history', async () => {

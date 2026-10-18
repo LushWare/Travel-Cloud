@@ -29,7 +29,10 @@ export const getLeadAnalyticsOverview = asyncHandler(async (req, res) => {
 
   const [statsResult, trendResult, statusResult, categoryResult, countryResult, destinationResult, budgetResult] = await Promise.all([
     pool.query(
-      `SELECT ${FUNNEL_STATS_SQL} FROM crm_leads."Lead"
+      `SELECT ${FUNNEL_STATS_SQL},
+        (SELECT COUNT(*) FROM crm_leads."Lead"
+         WHERE "createdAt" <= CURRENT_TIMESTAMP AND ($3::text IS NULL OR "assignedToId" = $3)) AS all_time_total
+       FROM crm_leads."Lead"
        WHERE "createdAt" BETWEEN $1 AND $2 AND ($3::text IS NULL OR "assignedToId" = $3)`,
       [start, end, repId]
     ),
@@ -93,6 +96,7 @@ export const getLeadAnalyticsOverview = asyncHandler(async (req, res) => {
     data: {
       stats: {
         totalLeads: Number(s.total),
+        allTimeTotalLeads: Number(s.all_time_total),
         new: Number(s.new),
         contacted: Number(s.contacted),
         interested: Number(s.interested),
@@ -127,7 +131,17 @@ export const getBillingAnalyticsOverview = asyncHandler(async (req, res) => {
         COALESCE(SUM(i."paidAmount") FILTER (WHERE i.status != 'cancelled'), 0) AS collected,
         COALESCE(SUM(i."outstandingAmount") FILTER (WHERE i.status NOT IN ('cancelled','draft')), 0) AS outstanding,
         COALESCE(SUM(i."totalAmount") FILTER (WHERE i.status = 'draft'), 0) AS pipeline,
-        COUNT(*) FILTER (WHERE i.status IN ('sent','viewed','overdue','partial')) AS pending_invoices
+        COUNT(*) FILTER (WHERE i.status IN ('sent','viewed','overdue','partial')) AS pending_invoices,
+        (SELECT COALESCE(SUM(all_i."outstandingAmount"), 0)
+         FROM crm_billing."Invoice" all_i
+         JOIN crm_leads."Lead" all_l ON all_l.id = all_i."leadId"
+         WHERE all_i.status IN ('sent','viewed','overdue','partial')
+           AND ($3::text IS NULL OR all_l."assignedToId" = $3)) AS current_outstanding,
+        (SELECT COUNT(*)
+         FROM crm_billing."Invoice" all_i
+         JOIN crm_leads."Lead" all_l ON all_l.id = all_i."leadId"
+         WHERE all_i.status IN ('sent','viewed','overdue','partial')
+           AND ($3::text IS NULL OR all_l."assignedToId" = $3)) AS current_pending_invoices
        FROM crm_billing."Invoice" i
        JOIN crm_leads."Lead" l ON l.id = i."leadId"
        WHERE i."createdAt" BETWEEN $1 AND $2 AND ($3::text IS NULL OR l."assignedToId" = $3)`,
@@ -143,7 +157,7 @@ export const getBillingAnalyticsOverview = asyncHandler(async (req, res) => {
     ),
     pool.query(
       `SELECT DATE_TRUNC($3, i."createdAt") AS bucket,
-        COALESCE(SUM(i."outstandingAmount") FILTER (WHERE i.status NOT IN ('cancelled','draft')), 0) AS outstanding,
+        COALESCE(SUM(i."outstandingAmount") FILTER (WHERE i.status IN ('sent','viewed','overdue','partial')), 0) AS outstanding,
         COALESCE(SUM(i."totalAmount") FILTER (WHERE i.status = 'draft'), 0) AS potential_revenue
        FROM crm_billing."Invoice" i
        JOIN crm_leads."Lead" l ON l.id = i."leadId"
@@ -178,6 +192,8 @@ export const getBillingAnalyticsOverview = asyncHandler(async (req, res) => {
       stats: {
         totalRevenue: Number(s.collected),
         totalOutstanding: Number(s.outstanding),
+        currentOutstanding: Number(s.current_outstanding),
+        currentPendingInvoices: Number(s.current_pending_invoices),
         // "Potential Revenue" = drafted/pipeline invoices not yet sent — distinct
         // from Outstanding (already-billed, still-unpaid amounts).
         totalPotentialRevenue: Number(s.pipeline),
@@ -294,7 +310,8 @@ export const getUserAnalyticsOverview = asyncHandler(async (req, res) => {
     pool.query(
       `SELECT COUNT(*) AS total,
         COUNT(*) FILTER (WHERE "isActive" = true) AS active,
-        COUNT(*) FILTER (WHERE "isEmailVerified" = true) AS verified
+        COUNT(*) FILTER (WHERE "isEmailVerified" = true) AS verified,
+        (SELECT COUNT(*) FROM crm_users."User" WHERE "createdAt" <= CURRENT_TIMESTAMP) AS all_time_total
        FROM crm_users."User" WHERE "createdAt" BETWEEN $1 AND $2`,
       [start, end]
     ),
@@ -326,6 +343,7 @@ export const getUserAnalyticsOverview = asyncHandler(async (req, res) => {
     data: {
       stats: {
         totalUsers: total,
+        allTimeTotalUsers: Number(s.all_time_total),
         activeUsers: active,
         inactiveUsers: total - active,
         verifiedUsers: Number(s.verified),

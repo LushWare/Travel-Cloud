@@ -1,0 +1,281 @@
+import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { MemoryRouter, useLocation } from 'react-router-dom';
+
+const { mockFetchRecommendations, mockUpdateRecommendation } = vi.hoisted(() => ({
+  mockFetchRecommendations: vi.fn(),
+  mockUpdateRecommendation: vi.fn(),
+}));
+
+vi.mock('@/services/recommendationsAPI', () => ({
+  fetchRecommendations: mockFetchRecommendations,
+  updateRecommendation: mockUpdateRecommendation,
+}));
+
+import RecommendationStrip from './RecommendationStrip';
+import type { BusinessRecommendation } from '@/services/recommendationsAPI';
+
+const recommendation = (overrides: Partial<BusinessRecommendation> = {}): BusinessRecommendation => ({
+  id: '2bc21408-e8bd-47db-9d89-c19147c327fd',
+  key: 'unconverted-quotes',
+  module: 'leads',
+  category: 'pipeline',
+  priority: 'high',
+  title: 'Follow up on pending quotes',
+  summary: 'Several quotes have not converted.',
+  aiExplanation: 'These quotes remain open and need staff review.',
+  evidence: [{ label: 'Open quotes', value: 4 }],
+  relatedRecordIds: ['lead-42'],
+  action: { label: 'Open leads', module: 'leads' },
+  viewerStatus: 'new',
+  sourceAsOf: '2026-10-12T00:00:00.000Z',
+  ...overrides,
+});
+
+function CurrentLocation() {
+  const location = useLocation();
+  return <output data-testid="current-location">{location.pathname}{location.search}</output>;
+}
+
+function renderStrip(items: BusinessRecommendation[], initialEntry = '/leads') {
+  mockFetchRecommendations.mockResolvedValue({
+    scope: 'agency',
+    sourceAsOf: '2026-10-12T00:00:00.000Z',
+    counts: {
+      active: items.filter(({ viewerStatus }) => !['reviewed', 'completed', 'dismissed'].includes(viewerStatus)).length,
+      reviewed: items.filter(({ viewerStatus }) => viewerStatus === 'reviewed').length,
+    },
+    recommendations: items,
+  });
+  return render(
+    <MemoryRouter initialEntries={[initialEntry]}>
+      <RecommendationStrip module="leads" />
+      <CurrentLocation />
+    </MemoryRouter>,
+  );
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  mockUpdateRecommendation.mockResolvedValue(undefined);
+});
+
+describe('RecommendationStrip', () => {
+  it('expands recommendations, shows evidence, and records a review', async () => {
+    const user = userEvent.setup();
+    const first = recommendation();
+    const items = [
+      first,
+      ...Array.from({ length: 5 }, (_, index) => recommendation({
+        id: `dbd211de-2de1-46cd-b687-41836c896b3${index}`,
+        key: `recommendation-${index}`,
+        title: `Recommendation ${index + 2}`,
+        priority: 'medium',
+      })),
+    ];
+    renderStrip(items);
+
+    expect(screen.getByRole('region', { name: 'AI recommendations' })).toHaveClass('bg-card');
+    await screen.findByText(first.title);
+    expect(screen.getByText('Recommendation 4')).toBeInTheDocument();
+    expect(screen.queryByText('Recommendation 5')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /More/ }));
+    expect(screen.getByText('Recommendation 5')).toBeInTheDocument();
+    expect(screen.getByText('Recommendation 6')).toBeInTheDocument();
+
+    await user.click(screen.getByText(first.title));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText(first.summary)).toBeInTheDocument();
+    expect(within(dialog).getByText('Open quotes')).toBeInTheDocument();
+    expect(within(dialog).getByText('4')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Mark reviewed' }));
+    await waitFor(() => expect(mockUpdateRecommendation).toHaveBeenCalledWith(first.id, 'reviewed'));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.queryByText(first.title)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Active (5)' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Reviewed (1)' })).toBeInTheDocument();
+  });
+
+  it('filters to reviewed recommendations and shows their status badge', async () => {
+    const user = userEvent.setup();
+    const activeItem = recommendation();
+    const reviewedItem = recommendation({
+      id: 'dbd211de-2de1-46cd-b687-41836c896b30',
+      key: 'reviewed-recommendation',
+      title: 'Reviewed recommendation',
+      viewerStatus: 'reviewed',
+    });
+    mockFetchRecommendations
+      .mockResolvedValueOnce({ scope: 'agency', counts: { active: 1, reviewed: 0 }, recommendations: [activeItem] })
+      .mockResolvedValueOnce({ scope: 'agency', counts: { active: 0, reviewed: 1 }, recommendations: [reviewedItem] });
+
+    render(
+      <MemoryRouter initialEntries={['/leads']}>
+        <RecommendationStrip module="leads" />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText(activeItem.title)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Reviewed (0)' }));
+
+    await waitFor(() => expect(mockFetchRecommendations).toHaveBeenLastCalledWith(
+      expect.objectContaining({ module: 'leads', mode: 'ai', status: 'reviewed' }),
+    ));
+    expect(await screen.findByText(reviewedItem.title)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Reviewed (1)' })).toBeInTheDocument();
+    expect(screen.getByText('Reviewed', { exact: true })).toBeInTheDocument();
+    expect(screen.queryByText(activeItem.title)).not.toBeInTheDocument();
+  });
+
+  it('keeps the verified summary primary and formats timestamp evidence', async () => {
+    const user = userEvent.setup();
+    const departure = '2026-10-14T06:30:00.000Z';
+    const item = recommendation({
+      summary: '1 upcoming flight booking is not ticketed.',
+      evidence: [{ label: 'Nearest departure', value: departure }],
+    });
+    renderStrip([item]);
+
+    await user.click(await screen.findByText(item.title));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText(item.summary)).toBeInTheDocument();
+    expect(within(dialog).getByText('Nearest departure')).toBeInTheDocument();
+    expect(within(dialog).queryByText(departure)).not.toBeInTheDocument();
+    expect(within(dialog).getByText(new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(departure)))).toBeInTheDocument();
+  });
+
+  it('switches to rule-based recommendations and requests the selected mode', async () => {
+    const user = userEvent.setup();
+    const item = recommendation();
+    renderStrip([item]);
+
+    await screen.findByText(item.title);
+    await user.click(screen.getByRole('button', { name: 'Switch to rule-based' }));
+
+    await waitFor(() => expect(mockFetchRecommendations).toHaveBeenLastCalledWith(
+      expect.objectContaining({ module: 'leads', mode: 'rules' }),
+    ));
+    expect(screen.getByRole('heading', { name: 'Rule-based recommendations' })).toBeInTheDocument();
+  });
+
+  it('defaults back to AI when the recommendation section is remounted', async () => {
+    const user = userEvent.setup();
+    const item = recommendation();
+    const firstRender = renderStrip([item]);
+
+    await screen.findByText(item.title);
+    await user.click(screen.getByRole('button', { name: 'Switch to rule-based' }));
+    await waitFor(() => expect(mockFetchRecommendations).toHaveBeenLastCalledWith(
+      expect.objectContaining({ module: 'leads', mode: 'rules' }),
+    ));
+
+    firstRender.unmount();
+    renderStrip([item]);
+
+    await waitFor(() => expect(mockFetchRecommendations).toHaveBeenLastCalledWith(
+      expect.objectContaining({ module: 'leads', mode: 'ai' }),
+    ));
+    expect(screen.getByRole('heading', { name: 'AI Recommendations' })).toBeInTheDocument();
+  });
+
+  it('shows AI failure and keeps the rule-based switch available', async () => {
+    const user = userEvent.setup();
+    const item = recommendation();
+    mockFetchRecommendations
+      .mockRejectedValueOnce(new Error('AI recommendations could not be generated. Retry or switch to rule-based recommendations.'))
+      .mockResolvedValueOnce({
+        scope: 'agency',
+        sourceAsOf: item.sourceAsOf,
+        counts: { active: 1, reviewed: 0 },
+        recommendations: [item],
+      });
+
+    render(
+      <MemoryRouter initialEntries={['/leads']}>
+        <RecommendationStrip module="leads" />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText(/AI recommendations could not be generated/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Switch to rule-based' }));
+    expect(await screen.findByText(item.title)).toBeInTheDocument();
+    expect(mockFetchRecommendations).toHaveBeenLastCalledWith(expect.objectContaining({ mode: 'rules' }));
+  });
+
+  it('opens the related lead workflow from the recommendation action', async () => {
+    const user = userEvent.setup();
+    const item = recommendation({ action: { label: 'Review lead', module: 'leads' } });
+    renderStrip([item]);
+
+    await user.click(await screen.findByText(item.title));
+    await user.click(screen.getByRole('button', { name: 'Review lead' }));
+
+    expect(screen.getByTestId('current-location')).toHaveTextContent('/leads?ids=lead-42&focus=recommendation');
+  });
+
+  it('opens billing on the requested document tab filtered to linked records', async () => {
+    const user = userEvent.setup();
+    const item = recommendation({
+      module: 'billing',
+      relatedRecordIds: ['invoice-7'],
+      action: { label: 'Review invoices', module: 'billing', tab: 'invoice' },
+    });
+    renderStrip([item], '/billing');
+
+    await user.click(await screen.findByText(item.title));
+    await user.click(screen.getByRole('button', { name: 'Review invoices' }));
+
+    expect(screen.getByTestId('current-location')).toHaveTextContent('/billing?tab=invoice&ids=invoice-7&focus=recommendation');
+  });
+
+  it('opens Website Users filtered to the linked customer IDs', async () => {
+    const user = userEvent.setup();
+    const item = recommendation({
+      module: 'users',
+      relatedRecordIds: ['customer-7', 'customer-8'],
+      action: { label: 'Review customers', module: 'users', tab: 'website-users' },
+    });
+    renderStrip([item], '/users');
+
+    await user.click(await screen.findByText(item.title));
+    await user.click(screen.getByRole('button', { name: 'Review customers' }));
+
+    expect(screen.getByTestId('current-location')).toHaveTextContent(
+      '/users?tab=website-users&ids=customer-7%2Ccustomer-8&focus=recommendation',
+    );
+  });
+
+  it('opens the Career page for an AI-generated Career recommendation', async () => {
+    const user = userEvent.setup();
+    const item = recommendation({
+      module: 'career',
+      action: { label: 'Review Career applications', module: 'career' },
+      relatedRecordIds: [],
+    });
+    renderStrip([item], '/ai-insights');
+
+    await user.click(await screen.findByText(item.title));
+    await user.click(screen.getByRole('button', { name: 'Review Career applications' }));
+
+    expect(screen.getByTestId('current-location')).toHaveTextContent('/career');
+  });
+
+  it('opens Packages filtered to linked package IDs', async () => {
+    const user = userEvent.setup();
+    const item = recommendation({
+      module: 'packages',
+      relatedRecordIds: ['4a958671-d29b-465c-b68c-e855472133f9'],
+      action: { label: 'Review packages', module: 'packages' },
+    });
+    renderStrip([item], '/ai-insights');
+
+    await user.click(await screen.findByText(item.title));
+    await user.click(screen.getByRole('button', { name: 'Review packages' }));
+
+    expect(screen.getByTestId('current-location')).toHaveTextContent(
+      '/packages?ids=4a958671-d29b-465c-b68c-e855472133f9&focus=recommendation',
+    );
+  });
+});

@@ -7,7 +7,6 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 
-import PageCopilot from '../features/copilot/PageCopilot';
 import PageHeader from '../components/PageHeader';
 
 interface SettingsForm {
@@ -272,7 +271,6 @@ const OrganizationSettings = () => {
   }
 
   return (
-    <PageCopilot pageKey="settings" scopeLabel="Settings">
       <div className="h-full overflow-auto bg-background">
       <PageHeader
         title="Organization Settings"
@@ -466,7 +464,6 @@ const OrganizationSettings = () => {
         </Section>
       </div>
       </div>
-    </PageCopilot>
   );
 };
 

@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ArrowRight, Bot, Loader2, Send, User, X } from 'lucide-react';
+import { ArrowRight, Bot, Loader2, Plus, Send, Trash2, User, X } from 'lucide-react';
 import { useAssistantChat } from '../hooks/useAssistantChat';
 import type { AssistantTurnData } from '../hooks/useAssistantChat';
 import type { AssistantTurnMessageT } from '../../../services/api/assistantTurn';
@@ -9,6 +9,7 @@ import { ASSISTANT_PANEL_BOTTOM_OFFSET_PX } from '../../../config/floatingAction
 import { isAssistantExcludedPath } from '../../../config/assistantRoutes';
 import { Badge } from '../../../components/ui/badge';
 import { formatCurrency } from '../../../lib/currency';
+import useLenisScrollContainment from '../../../lib/useLenisScrollContainment';
 import { setAssistantLauncherOpen, useAssistantLauncherOpen } from '../../../components/shared/floating-actions/assistantLauncherState';
 import { useAssistantDialogHost } from '../capabilities/AssistantCapabilityProvider';
 
@@ -45,7 +46,7 @@ const GREETING =
   "Hi! I can help you find a package, build a custom trip with AI, or answer questions about LushWare. What are you planning?";
 
 const PANEL_CLASS =
-  'pointer-events-auto w-80 max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-floating';
+  'pointer-events-auto flex h-[min(28rem,calc(100dvh-8rem))] w-[21rem] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-floating';
 const CHIP_CLASS =
   'inline-flex items-center gap-1.5 rounded-full border border-brand-200 bg-white px-3 py-1.5 text-xs font-semibold text-brand-700 shadow-sm transition-colors hover:bg-brand-50';
 const SEND_BUTTON_CLASS =
@@ -333,6 +334,8 @@ export default function AssistantWidget() {
   const isOpen = useAssistantLauncherOpen();
   const dialogHost = useAssistantDialogHost();
   const panelRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const { scrollRef: transcriptRef, handleWheelCapture: handleTranscriptWheelCapture } = useLenisScrollContainment();
   const returnFocusTo = useRef<Element | null>(null);
   const [input, setInput] = useState('');
   const openedEventFired = useRef(false);
@@ -411,17 +414,43 @@ export default function AssistantWidget() {
   useEffect(() => {
     if (isOpen) {
       returnFocusTo.current = document.activeElement;
-      panelRef.current?.focus();
       return;
     }
     const target = returnFocusTo.current;
     if (target instanceof HTMLElement) target.focus();
   }, [isOpen]);
 
+  useEffect(() => {
+    if (isOpen && !chat.isSending) inputRef.current?.focus();
+  }, [isOpen, chat.isSending]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      if (panelRef.current && !panelRef.current.contains(event.target as Node)) {
+        setAssistantLauncherOpen(false);
+      }
+    };
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => document.removeEventListener('pointerdown', handlePointerDown);
+  }, [isOpen]);
+
   if (isAssistantExcludedPath(location.pathname)) return null;
   if (!isOpen) return null;
 
   const handleClose = () => setAssistantLauncherOpen(false);
+
+  const handleClearChat = () => {
+    chat.clearChat();
+    setInput('');
+    inputRef.current?.focus();
+  };
+
+  const handleNewChat = () => {
+    chat.startNewChat();
+    setInput('');
+    inputRef.current?.focus();
+  };
 
   const handleSend = () => {
     const text = input;
@@ -449,9 +478,19 @@ export default function AssistantWidget() {
             <Bot className="w-5 h-5 shrink-0" />
             <div className="min-w-0">
               <p className="text-sm font-semibold leading-tight">Travel Assistant</p>
-              <p className="text-xs text-white/80 leading-tight">Travel help, planning &amp; policies</p>
+              <p className="text-xs text-white/80 leading-tight">Travel help & planning</p>
             </div>
           </div>
+          <button
+            type="button"
+            onClick={handleNewChat}
+            disabled={chat.isSending}
+            aria-label="Start a new chat"
+            className="inline-flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs font-semibold transition-colors hover:bg-white/15 disabled:opacity-50"
+          >
+            <Plus className="h-4 w-4" />
+            <span>New chat</span>
+          </button>
           <button
             type="button"
             onClick={handleClose}
@@ -462,7 +501,11 @@ export default function AssistantWidget() {
           </button>
         </div>
 
-        <div className="max-h-80 overflow-y-auto space-y-3 bg-gray-50 p-4">
+        <div
+          ref={transcriptRef}
+          onWheelCapture={handleTranscriptWheelCapture}
+          className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-gray-50 p-4"
+        >
           <div className="flex items-start gap-2">
             <Bot className="w-5 h-5 text-brand-600 mt-0.5 shrink-0" />
             <p className="text-sm bg-white rounded-xl px-3 py-2 shadow-sm">{GREETING}</p>
@@ -493,6 +536,7 @@ export default function AssistantWidget() {
 
         <div className="flex gap-2 border-t border-gray-200 bg-white p-3">
           <input
+            ref={inputRef}
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -509,6 +553,18 @@ export default function AssistantWidget() {
           />
           <button type="button" onClick={handleSend} disabled={chat.isSending || !input.trim()} aria-label="Send message" className={SEND_BUTTON_CLASS}>
             <Send className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="flex justify-end border-t border-gray-100 bg-white px-3 py-2">
+          <button
+            type="button"
+            onClick={handleClearChat}
+            disabled={chat.isSending}
+            aria-label="Clear chat"
+            className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg px-2 text-xs font-semibold text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            <span>Clear chat</span>
           </button>
         </div>
       </div>

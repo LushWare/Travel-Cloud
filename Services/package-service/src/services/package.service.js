@@ -1,7 +1,10 @@
 import slugify from 'slugify';
 import { PackageCategory } from '@prisma/client';
+import { z } from 'zod';
 import prisma from '../db/client.js';
 import { calculateBasePrice, computeMargin } from '../../../shared/pricing-engine/src/index.js';
+
+const packageIdFilterSchema = z.string().min(1).max(255).regex(/^[a-zA-Z0-9_-]+$/);
 
 // ── Include helpers ───────────────────────────────────────────
 
@@ -528,6 +531,17 @@ export async function resolveDestinationRaws(slug) {
 
 export function assembleWhere(query) {
   const where = {};
+
+  if (query.ids !== undefined) {
+    const rawIds = Array.isArray(query.ids) ? query.ids.join(',') : query.ids;
+    const parsedIds = z.string().max(5000).safeParse(rawIds);
+    const ids = parsedIds.success
+      ? [...new Set(parsedIds.data.split(',').filter(Boolean))]
+        .slice(0, 50)
+        .filter((id) => packageIdFilterSchema.safeParse(id).success)
+      : [];
+    where.id = { in: ids };
+  }
 
   // Express query strings arrive as strings ("true"/"false"), but Prisma
   // expects real booleans — coerce both representations.

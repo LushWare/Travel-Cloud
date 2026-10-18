@@ -1,0 +1,59 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+  schemas   = ["crm_recommendations"]
+}
+
+model Recommendation {
+  id                String                     @id @default(uuid())
+  scopeKey          String
+  key               String
+  kind              String                     @default("recommendation")
+  module            String
+  category          String
+  priority          String
+  title             String
+  summary           String
+  aiExplanation     String?
+  evidence          Json
+  relatedRecordIds  Json
+  action            Json
+  sourceAsOf        DateTime
+  active            Boolean                    @default(true)
+  createdAt         DateTime                   @default(now())
+  updatedAt         DateTime                   @updatedAt
+  feedback          RecommendationFeedback[]
+
+  @@unique([scopeKey, key])
+  @@index([scopeKey, module, active])
+  @@schema("crm_recommendations")
+}
+
+model RecommendationFeedback {
+  recommendationId String
+  actorId          String
+  status           String
+  reason           String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  recommendation   Recommendation @relation(fields: [recommendationId], references: [id], onDelete: Cascade)
+
+  @@id([recommendationId, actorId])
+  @@index([actorId, status])
+  @@schema("crm_recommendations")
+}
+
+model RecommendationRun {
+  scopeKey   String   @id
+  sourceAsOf DateTime?
+  lastRunAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@schema("crm_recommendations")
+}

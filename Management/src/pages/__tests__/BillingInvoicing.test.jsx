@@ -122,6 +122,6 @@ describe('BillingInvoicing notification deep links', () => {
       page: 1,
     })));
     expect(screen.getAllByText('Invoices').length).toBeGreaterThan(0);
-    expect(screen.getByText(/selected documents/)).toBeInTheDocument();
+    expect(screen.getByText(/Active filter: linked invoices/)).toBeInTheDocument();
   });
 });

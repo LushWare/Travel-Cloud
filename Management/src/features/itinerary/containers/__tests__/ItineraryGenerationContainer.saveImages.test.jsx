@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
 
 // Regression coverage for root cause #2 (see plan): handleSaveEditPackage used
 // to filter `images` by `!img.isTemp && img.url && img.public_id` before
@@ -86,7 +87,11 @@ describe('ItineraryGenerationContainer — edit-save image payload', () => {
   });
 
   it('includes every DB-loaded image (no public_id) in the update payload, not just newly uploaded ones', async () => {
-    render(<ItineraryGenerationContainer />);
+    render(
+      <MemoryRouter>
+        <ItineraryGenerationContainer />
+      </MemoryRouter>,
+    );
 
     const editButton = await screen.findByRole('button', { name: /^Edit$/i });
     await userEvent.click(editButton);
@@ -102,5 +107,128 @@ describe('ItineraryGenerationContainer — edit-save image payload', () => {
       { url: 'https://cdn/a.jpg', publicId: 'p-a', altText: null },
       { url: 'https://cdn/b.jpg', publicId: 'p-b', altText: null },
     ]);
+  });
+});
+
+describe('ItineraryGenerationContainer — recommendation deep links', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockApiService.getPackageStats.mockResolvedValue({ success: true, data: { total: 1, active: 1, featured: 0, avgRating: 0 } });
+    mockApiService.getPackages.mockResolvedValue({ success: true, data: [persistedPackage] });
+    mockApiService.getPackagesProtected.mockResolvedValue({ success: true, data: [persistedPackage] });
+  });
+
+  it('requests only linked package IDs and replaces unrelated status tabs with the active filter', async () => {
+    render(
+      <MemoryRouter initialEntries={['/packages?ids=pkg-1&focus=recommendation']}>
+        <ItineraryGenerationContainer />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(mockApiService.getPackagesProtected).toHaveBeenCalledWith(expect.objectContaining({
+      ids: 'pkg-1',
+      page: 1,
+    })));
+    expect(await screen.findByText(/Active filter: linked packages/)).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /All Packages/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Clear filter' })).toBeInTheDocument();
+  });
+});
+
+describe('ItineraryGenerationContainer — package pagination', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockApiService.getPackageStats.mockResolvedValue({ success: true, data: { total: 13, active: 13, featured: 0, avgRating: 0 } });
+    mockApiService.getPackagesProtected
+      .mockResolvedValueOnce({
+        success: true,
+        data: Array.from({ length: 12 }, (_, index) => ({
+          ...persistedPackage,
+          id: `pkg-${index + 1}`,
+          title: `Package ${index + 1}`,
+        })),
+        pagination: { page: 1, limit: 12, total: 13, totalPages: 2 },
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        data: [{ ...persistedPackage, id: 'pkg-13', title: 'Package 13' }],
+        pagination: { page: 2, limit: 12, total: 13, totalPages: 2 },
+      });
+    mockApiService.getPackagesProtected.mockResolvedValue({ success: true, data: [] });
+  });
+
+  it('renders 12 packages per page and requests the next page when selected', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+
+    render(
+      <MemoryRouter>
+        <ItineraryGenerationContainer />
+      </MemoryRouter>,
+    );
+
+    const nextPage = await screen.findByRole('button', { name: '2' });
+    expect(screen.getByText('13 packages found')).toBeInTheDocument();
+
+    await user.click(nextPage);
+
+    await waitFor(() => expect(mockApiService.getPackagesProtected).toHaveBeenCalledWith({
+      page: 2,
+      limit: 12,
+      draftsLast: true,
+    }));
+    expect(await screen.findByText('Package 13')).toBeInTheDocument();
+    vi.restoreAllMocks();
+  });
+});
+
+describe('ItineraryGenerationContainer — draft filtering', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockApiService.getPackageStats.mockResolvedValue({ success: true, data: { total: 15, active: 9, featured: 4, avgRating: 0 } });
+    mockApiService.getPackages.mockResolvedValue({
+      success: true,
+      data: [],
+      pagination: { page: 1, limit: 12, total: 6, totalPages: 1 },
+    });
+    mockApiService.getPackagesProtected.mockResolvedValue({ success: true, data: [] });
+  });
+
+  it('requests only inactive packages when Drafts is selected', async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <ItineraryGenerationContainer />
+      </MemoryRouter>,
+    );
+
+    const draftsTab = await screen.findByRole('tab', { name: 'Drafts 6' });
+    expect(screen.queryByRole('tab', { name: /Featured/i })).not.toBeInTheDocument();
+
+    await user.click(draftsTab);
+
+    await waitFor(() => expect(mockApiService.getPackagesProtected).toHaveBeenLastCalledWith({
+      page: 1,
+      limit: 12,
+      isActive: false,
+    }));
+  });
+
+  it('requests both active and inactive packages when All Packages is selected', async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <ItineraryGenerationContainer />
+      </MemoryRouter>,
+    );
+
+    await user.click(await screen.findByRole('tab', { name: 'Drafts 6' }));
+    await user.click(screen.getByRole('tab', { name: 'All Packages 15' }));
+
+    await waitFor(() => expect(mockApiService.getPackagesProtected).toHaveBeenLastCalledWith({
+      page: 1,
+      limit: 12,
+      draftsLast: true,
+    }));
   });
 });

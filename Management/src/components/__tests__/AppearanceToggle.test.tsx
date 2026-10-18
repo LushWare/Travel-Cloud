@@ -58,10 +58,13 @@ describe('AppearanceToggle', () => {
     expect(window.localStorage.getItem('management-theme')).toBe('dark');
   });
 
-  it('lays the options out vertically when collapsed', () => {
+  it('stacks the options vertically in nav-sized icon buttons when collapsed', () => {
     renderToggle({ collapsed: true });
 
-    expect(screen.getByRole('radiogroup')).toHaveClass('flex-col');
+    expect(screen.getByRole('radiogroup')).toHaveClass('flex-col', 'items-center');
+    for (const label of ['System', 'Light', 'Dark']) {
+      expect(screen.getByRole('radio', { name: label })).toHaveClass('h-9', 'w-9');
+    }
   });
 
   it('lays the options out horizontally when not collapsed', () => {

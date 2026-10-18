@@ -47,4 +47,8 @@ export const listUsersQuerySchema = z.object({
   role: z.enum(USER_ROLES).optional(),
   search: z.string().trim().max(255).optional(),
   isActive: z.enum(['true', 'false']).optional(),
+  ids: z.string().max(12899).refine((value) => {
+    const ids = value.split(',');
+    return ids.length <= 100 && ids.every((id) => id.length > 0 && id.length <= 128 && !/[\s\u0000-\u001f\u007f]/.test(id));
+  }, 'ids must contain at most 100 valid record IDs').optional(),
 });

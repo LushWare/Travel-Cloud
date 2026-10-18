@@ -16,6 +16,7 @@ import DestinationSelector from '../../itinerary/components/DestinationSelector'
 import { createDefaultDay } from '../../itinerary/types/index.js';
 import { reconcileFlightsForSave } from '../../itinerary/utils/flightSync';
 import LeadFlightBookingsSection from './LeadFlightBookingsSection';
+import LeadHotelBookingsSection from './LeadHotelBookingsSection';
 import LeadStatusBadge from './LeadStatusBadge';
 import PricingSection from './PricingSection';
 import { toEditorDays } from '../utils/toEditorDays';
@@ -29,6 +30,8 @@ import { FormDialogHeader, FormDialogBody, FormDialogSection, FormDialogFooter }
 import { apiErrorMessage } from '@/lib/apiErrorMessage';
 import LeadAiCallsTab from './LeadAiCallsTab';
 import { isAiHandled } from './AiLeadBadges';
+import { COUNTRY_BY_CODE } from '@/data/countries';
+import { formatPhoneToE164 } from '@/features/user-management/utils/phoneUtils';
 
 // A lead can hold many packages at once, plus at most one manual
 // (from-scratch) itinerary slot — this sentinel is the "add" picker's third
@@ -57,6 +60,23 @@ function mapSelection(raw: any) {
     },
     dirty: false,
   };
+}
+
+function normalizePhoneInputValue(value: string, countryCode?: string | null) {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+
+  const compact = trimmed.replace(/[\s().-]/g, '');
+  if (/^\+[1-9]\d{7,14}$/.test(compact)) return compact;
+
+  const selectedCountry = countryCode || 'LK';
+  const callingCode = COUNTRY_BY_CODE[selectedCountry]?.phoneCode.replace(/\D/g, '');
+  const digits = compact.replace(/\D/g, '');
+  if (callingCode && digits.startsWith(callingCode) && digits.length >= 8 && digits.length <= 15) {
+    return `+${digits}`;
+  }
+
+  return formatPhoneToE164(trimmed, selectedCountry)?.e164 || '';
 }
 
 // ── Module-level components (prevents remounting on re-render) ──
@@ -124,6 +144,8 @@ const EditLeadDialog = ({ isOpen, onClose, lead, salesReps, onSuccess, initialSe
   // has been edited locally and needs saving.
   const [selections, setSelections] = useState<any[]>([]);
   const [activeSelectionId, setActiveSelectionId] = useState<string | null>(null);
+  const [selectionLeadId, setSelectionLeadId] = useState<string | null>(null);
+  const selectionLoadRequestRef = useRef(0);
   const [addingPackage, setAddingPackage] = useState(false);
   const [refreshingSelectionId, setRefreshingSelectionId] = useState<string | null>(null);
   // Bumped whenever a transfer flight is added/edited/removed — those persist
@@ -147,7 +169,10 @@ const EditLeadDialog = ({ isOpen, onClose, lead, salesReps, onSuccess, initialSe
   const snapshotRef = useRef<any>(null);
 
   const isLocked = isLeadFieldLocked(lead?.lifecycleStatus);
-  const activeSelection = selections.find((s) => s.id === activeSelectionId) || null;
+  const currentLeadId = lead ? String(lead._id || lead.id || '') : '';
+  const activeSelection = selectionLeadId === currentLeadId
+    ? selections.find((s) => s.id === activeSelectionId) || null
+    : null;
 
   // Day-linked flight preferences live in day.flights[] but only day.transports[]
   // feeds cost lines — reconcile flights into a priced transport row (real price
@@ -194,13 +219,20 @@ const EditLeadDialog = ({ isOpen, onClose, lead, salesReps, onSuccess, initialSe
   };
 
   useEffect(() => {
-    if (lead) {
-      loadLeadIntoForm();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lead, salesReps]);
+    const requestId = ++selectionLoadRequestRef.current;
+    setSelections([]);
+    setActiveSelectionId(null);
+    setSelectionLeadId(null);
 
-  const loadLeadIntoForm = async () => {
+    if (lead) void loadLeadIntoForm(requestId);
+
+    return () => {
+      if (selectionLoadRequestRef.current === requestId) selectionLoadRequestRef.current += 1;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lead]);
+
+  const loadLeadIntoForm = async (requestId: number) => {
     const leadId = lead._id || lead.id;
     const assignedToId = lead.assignedTo?._id || lead.assignedTo || lead.assignedTo?.id || '';
     const salesRepName = lead.salesRep || lead.adviser || '';
@@ -215,7 +247,9 @@ const EditLeadDialog = ({ isOpen, onClose, lead, salesReps, onSuccess, initialSe
       salesRep: salesRepName,
       assignedTo: assignedToId || (salesRepName ? '__name_only' : ''),
       destination: lead.destination || '',
-      platform: lead.platform || '',
+      platform: ['Social_Media', 'Social Media', 'social_media', 'social-media'].includes(lead.platform)
+        ? 'Facebook'
+        : lead.platform || '',
       travelDate: lead.travelDate ? new Date(lead.travelDate).toISOString().split('T')[0] : '',
       endDate: lead.endDate ? new Date(lead.endDate).toISOString().split('T')[0] : '',
       lifecycleStatus: lead.lifecycleStatus || 'NEW',
@@ -227,12 +261,14 @@ const EditLeadDialog = ({ isOpen, onClose, lead, salesReps, onSuccess, initialSe
     if (!leadId) {
       setSelections([]);
       setActiveSelectionId(null);
+      setSelectionLeadId(null);
       snapshotRef.current = { formData: nextFormData, remarks: lead.remarks || [], selections: [] };
       return;
     }
 
     try {
       const selRes = await leadAPI.getPackageSelections(leadId);
+      if (selectionLoadRequestRef.current !== requestId) return;
       const rawSelections = selRes?.data?.data || selRes?.data || [];
       const nextSelections = rawSelections.map(mapSelection);
       const preferredSelectionId = nextSelections.some((s: any) => s.id === initialSelectionId)
@@ -240,6 +276,7 @@ const EditLeadDialog = ({ isOpen, onClose, lead, salesReps, onSuccess, initialSe
         : nextSelections[0]?.id ?? null;
       setSelections(nextSelections);
       setActiveSelectionId(preferredSelectionId);
+      setSelectionLeadId(String(leadId));
 
       snapshotRef.current = {
         formData: nextFormData,
@@ -248,9 +285,11 @@ const EditLeadDialog = ({ isOpen, onClose, lead, salesReps, onSuccess, initialSe
         activeSelectionId: preferredSelectionId,
       };
     } catch (error) {
+      if (selectionLoadRequestRef.current !== requestId) return;
       console.error('Error loading lead package selections:', error);
       setSelections([]);
       setActiveSelectionId(null);
+      setSelectionLeadId(String(leadId));
       snapshotRef.current = { formData: nextFormData, remarks: lead.remarks || [], selections: [] };
     }
   };
@@ -474,7 +513,7 @@ const EditLeadDialog = ({ isOpen, onClose, lead, salesReps, onSuccess, initialSe
                     defaultCountry="LK"
                     countrySelectComponent={PhoneCountrySelect}
                     initialValueFormat="national"
-                    value={formData.phone}
+                    value={normalizePhoneInputValue(formData.phone, lead?.fromCountry)}
                     onChange={(value) => {
                       const next = value || '';
                       setFormData((prev: any) => ({
@@ -514,7 +553,7 @@ const EditLeadDialog = ({ isOpen, onClose, lead, salesReps, onSuccess, initialSe
                     defaultCountry="LK"
                     countrySelectComponent={PhoneCountrySelect}
                     initialValueFormat="national"
-                    value={formData.whatsapp}
+                    value={normalizePhoneInputValue(formData.whatsapp, lead?.fromCountry)}
                     onChange={(value) => setFormData({ ...formData, whatsapp: value || '' })}
                     className="phone-input-wrapper"
                     placeholder="Enter WhatsApp number"
@@ -602,12 +641,13 @@ const EditLeadDialog = ({ isOpen, onClose, lead, salesReps, onSuccess, initialSe
                   <p className="mt-1 text-xs text-muted-foreground">Auto-filled from the primary package total</p>
                 </EditInputField>
 
-                <EditInputField label="Platform / Source" icon={Globe}>
+                <EditInputField label="Lead Source" icon={Globe}>
                   <Select value={formData.platform} onValueChange={(v) => setFormData({ ...formData, platform: String(v) })}>
                     <SelectTrigger className="w-full"><SelectValue placeholder="Select Platform" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="Website_Form">🌐 Website Form</SelectItem>
-                      <SelectItem value="Social_Media">📱 Social Media</SelectItem>
+                      <SelectItem value="Facebook">Facebook</SelectItem>
+                      <SelectItem value="Instagram">Instagram</SelectItem>
                       <SelectItem value="Phone_Call">📞 Phone Call</SelectItem>
                       <SelectItem value="Referral">🤝 Referral</SelectItem>
                       <SelectItem value="Email">📧 Email</SelectItem>
@@ -1026,10 +1066,17 @@ const EditLeadDialog = ({ isOpen, onClose, lead, salesReps, onSuccess, initialSe
                 <>
                   <LeadFlightBookingsSection
                     leadId={lead._id || lead.id}
+                    packageId={activeSelection.packageId || undefined}
                     selectionId={activeSelection.id}
                     leadStatus={lead.lifecycleStatus}
+                    origin={formData.city || ''}
+                    destination={activeSelection.destinationOverride || formData.destination || lead.destination || ''}
+                    originCountry={lead.fromCountry || ''}
+                    destinationCountry={lead.destinationCountry || ''}
                     itineraryDays={activeSelection.itineraryDays}
                     travelDate={formData.travelDate}
+                    endDate={formData.endDate}
+                    travelers={Number(formData.numberOfTravelers) || 1}
                     onUpdateDay={(dayNumber: number, updates: any) => {
                       updateActiveSelection({
                         itineraryDays: (activeSelection.itineraryDays || []).filter(Boolean).map((day: any) =>
@@ -1038,6 +1085,17 @@ const EditLeadDialog = ({ isOpen, onClose, lead, salesReps, onSuccess, initialSe
                       });
                     }}
                     onFlightsChanged={() => setPricingRefreshToken((t) => t + 1)}
+                  />
+
+                  <LeadHotelBookingsSection
+                    leadId={lead._id || lead.id}
+                    packageId={activeSelection.packageId || undefined}
+                    leadStatus={lead.lifecycleStatus}
+                    itineraryDays={activeSelection.itineraryDays}
+                    travelDate={formData.travelDate}
+                    destination={activeSelection.destinationOverride || lead.destination || ''}
+                    country={lead.country || ''}
+                    travelers={Number(formData.numberOfTravelers) || 1}
                   />
 
                   <div className="bg-card rounded-xl border border-border p-4">

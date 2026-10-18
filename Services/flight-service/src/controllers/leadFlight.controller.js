@@ -42,7 +42,7 @@ async function findOrCreateCustomer({ name, email, phone }) {
 // ── controllers ──────────────────────────────────────────────────────────
 
 export const bookForLead = asyncHandler(async (req, res) => {
-  const { offer, tripType, travelers, contact, leadId, packageId, customizedPackageId, dayNumber, flightType } = req.body;
+  const { offer, tripType, travelers, contact, services = [], payment, expectedTotal, expectedCurrency, leadId, packageId, customizedPackageId, dayNumber, flightType } = req.body;
 
   const customer = await findOrCreateCustomer(contact);
 
@@ -50,8 +50,10 @@ export const bookForLead = asyncHandler(async (req, res) => {
     offerId: offer.offerId,
     travelers,
     contact,
-    totalAmount: offer.fareTotal,
-    currency: offer.currency,
+    services,
+    payment,
+    totalAmount: expectedTotal ?? offer.fareTotal,
+    currency: expectedCurrency || offer.currency,
   });
 
   const booking = await prisma.flightBooking.create({
@@ -63,11 +65,11 @@ export const bookForLead = asyncHandler(async (req, res) => {
       tripType: tripType || ((offer.legCount ?? 1) > 1 ? 'roundTrip' : 'oneWay'),
       cabinClass: offer.cabinClass || 'Economy',
       currency: offer.currency || 'USD',
-      baseFare: offer.baseFare,
-      taxes: offer.taxes,
-      totalAmount: offer.fareTotal,
-      status: order.status === 'confirmed' ? 'confirmed' : 'pending',
-      searchSnapshot: offer,
+      baseFare: order.baseFare ?? offer.baseFare,
+      taxes: order.taxes ?? offer.taxes,
+      totalAmount: order.totalAmount ?? offer.fareTotal,
+      status: order.status || 'pending',
+      searchSnapshot: { ...offer, selectedServices: services },
       ticketingDeadline: order.ticketingDeadline ? new Date(order.ticketingDeadline) : undefined,
       bookedAt: new Date(),
       leadId: leadId || undefined,

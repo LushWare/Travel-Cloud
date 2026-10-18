@@ -22,6 +22,8 @@
  * @property {number} [adults] - default 1
  * @property {number} [children] - default 0
  * @property {number} [infants] - default 0
+ * @property {number[]} [childAges] - passenger ages, required for accurate child fares
+ * @property {number[]} [infantAges] - passenger ages, required for accurate infant fares
  * @property {string} [cabinClass] - Economy, Premium Economy, Business, First
  * @property {string} [tripType] - oneWay, roundTrip
  */

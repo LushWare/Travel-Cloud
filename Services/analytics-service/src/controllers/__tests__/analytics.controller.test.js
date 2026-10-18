@@ -28,7 +28,7 @@ describe('getLeadAnalyticsOverview', () => {
 
   it('returns real funnel-stage counts and distributions, not the raw column values', async () => {
     mockPool.query
-      .mockResolvedValueOnce(rows([{ total: '10', new: '3', contacted: '7', interested: '4', quoted: '2', converted: '2' }]))
+      .mockResolvedValueOnce(rows([{ total: '10', all_time_total: '42', new: '3', contacted: '7', interested: '4', quoted: '2', converted: '2' }]))
       .mockResolvedValueOnce(rows([{ bucket: '2026-08-01T00:00:00Z', new: '3', contacted: '7', interested: '4', converted: '2' }]))
       .mockResolvedValueOnce(rows([{ name: 'NEW', value: '3' }]))
       .mockResolvedValueOnce(rows([{ name: 'Website Form', value: '5' }]))
@@ -42,7 +42,7 @@ describe('getLeadAnalyticsOverview', () => {
     await getLeadAnalyticsOverview(req, res, vi.fn());
 
     const data = res.json.mock.calls[0][0].data;
-    expect(data.stats).toEqual({ totalLeads: 10, new: 3, contacted: 7, interested: 4, quoted: 2, converted: 2 });
+    expect(data.stats).toEqual({ totalLeads: 10, allTimeTotalLeads: 42, new: 3, contacted: 7, interested: 4, quoted: 2, converted: 2 });
     expect(data.trend[0]).toMatchObject({ new: 3, contacted: 7, interested: 4, converted: 2 });
     expect(data.statusDistribution).toEqual([{ name: 'NEW', value: 3 }]);
     expect(data.categoryDistribution).toEqual([{ name: 'Website Form', value: 5 }]);
@@ -55,7 +55,7 @@ describe('getLeadAnalyticsOverview', () => {
 
   it('returns zero stats without throwing when there are no leads in the window', async () => {
     mockPool.query
-      .mockResolvedValueOnce(rows([{ total: '0', new: '0', contacted: '0', interested: '0', quoted: '0', converted: '0' }]))
+      .mockResolvedValueOnce(rows([{ total: '0', all_time_total: '0', new: '0', contacted: '0', interested: '0', quoted: '0', converted: '0' }]))
       .mockResolvedValueOnce(rows([]))
       .mockResolvedValueOnce(rows([]))
       .mockResolvedValueOnce(rows([]))
@@ -67,12 +67,13 @@ describe('getLeadAnalyticsOverview', () => {
     await getLeadAnalyticsOverview(adminReq(), res, vi.fn());
 
     expect(res.json.mock.calls[0][0].data.stats.totalLeads).toBe(0);
+    expect(res.json.mock.calls[0][0].data.stats.allTimeTotalLeads).toBe(0);
     expect(res.json.mock.calls[0][0].data.priceRangeDistribution).toEqual([]);
   });
 
   it('passes the caller\'s id as the ownership filter param when role is salesRep', async () => {
     mockPool.query
-      .mockResolvedValueOnce(rows([{ total: '0', new: '0', contacted: '0', interested: '0', quoted: '0', converted: '0' }]))
+      .mockResolvedValueOnce(rows([{ total: '0', all_time_total: '0', new: '0', contacted: '0', interested: '0', quoted: '0', converted: '0' }]))
       .mockResolvedValueOnce(rows([]))
       .mockResolvedValueOnce(rows([]))
       .mockResolvedValueOnce(rows([]))
@@ -91,7 +92,7 @@ describe('getLeadAnalyticsOverview', () => {
 
   it('passes null for admin, returning company-wide data', async () => {
     mockPool.query
-      .mockResolvedValueOnce(rows([{ total: '0', new: '0', contacted: '0', interested: '0', quoted: '0', converted: '0' }]))
+      .mockResolvedValueOnce(rows([{ total: '0', all_time_total: '0', new: '0', contacted: '0', interested: '0', quoted: '0', converted: '0' }]))
       .mockResolvedValueOnce(rows([]))
       .mockResolvedValueOnce(rows([]))
       .mockResolvedValueOnce(rows([]))
@@ -110,7 +111,7 @@ describe('getBillingAnalyticsOverview', () => {
 
   it('derives totalPotentialRevenue from draft-status invoices, distinct from outstanding', async () => {
     mockPool.query
-      .mockResolvedValueOnce(rows([{ collected: '5000', outstanding: '1200', pipeline: '3000', pending_invoices: '4' }]))
+      .mockResolvedValueOnce(rows([{ collected: '5000', outstanding: '1200', pipeline: '3000', pending_invoices: '4', current_outstanding: '3800', current_pending_invoices: '8' }]))
       .mockResolvedValueOnce(rows([{ bucket: '2026-08-01', revenue: '5000' }]))
       .mockResolvedValueOnce(rows([{ bucket: '2026-08-01', outstanding: '1200', potential_revenue: '3000' }]))
       .mockResolvedValueOnce(rows([{ status: 'paid', count: '5', total: '5000' }]))
@@ -120,14 +121,15 @@ describe('getBillingAnalyticsOverview', () => {
     await getBillingAnalyticsOverview(adminReq(), res, vi.fn());
 
     const data = res.json.mock.calls[0][0].data;
-    expect(data.stats).toEqual({ totalRevenue: 5000, totalOutstanding: 1200, totalPotentialRevenue: 3000, pendingInvoices: 4 });
+    expect(data.stats).toEqual({ totalRevenue: 5000, totalOutstanding: 1200, currentOutstanding: 3800, currentPendingInvoices: 8, totalPotentialRevenue: 3000, pendingInvoices: 4 });
+    expect(mockPool.query.mock.calls[0][0]).toContain("all_i.status IN ('sent','viewed','overdue','partial')");
     expect(data.paymentStatusDistribution[0]).toEqual({ name: 'Paid', status: 'paid', totalAmount: 5000 });
     expect(data.invoiceCategoryBreakdown[0].name).toBe('Invoice');
   });
 
   it('passes the caller\'s id as the ownership filter param (via the Invoice→Lead join) when role is salesRep', async () => {
     mockPool.query
-      .mockResolvedValueOnce(rows([{ collected: '0', outstanding: '0', pipeline: '0', pending_invoices: '0' }]))
+      .mockResolvedValueOnce(rows([{ collected: '0', outstanding: '0', pipeline: '0', pending_invoices: '0', current_outstanding: '0', current_pending_invoices: '0' }]))
       .mockResolvedValueOnce(rows([]))
       .mockResolvedValueOnce(rows([]))
       .mockResolvedValueOnce(rows([]))
@@ -142,7 +144,7 @@ describe('getBillingAnalyticsOverview', () => {
 
   it('uses the first bucket\'s own revenue as its target so there is no fabricated growth', async () => {
     mockPool.query
-      .mockResolvedValueOnce(rows([{ collected: '0', outstanding: '0', pipeline: '0', pending_invoices: '0' }]))
+      .mockResolvedValueOnce(rows([{ collected: '0', outstanding: '0', pipeline: '0', pending_invoices: '0', current_outstanding: '0', current_pending_invoices: '0' }]))
       .mockResolvedValueOnce(rows([{ bucket: '2026-06-01', revenue: '1000' }, { bucket: '2026-07-01', revenue: '1500' }]))
       .mockResolvedValueOnce(rows([]))
       .mockResolvedValueOnce(rows([]))
@@ -160,7 +162,7 @@ describe('getBillingAnalyticsOverview', () => {
 describe('getPackageAnalyticsOverview', () => {
   beforeEach(() => mockPool.query.mockReset());
 
-  it('reports inquiries/conversions from the Lead→LeadPackageSelection→Package join', async () => {
+  it('reports in-range inquiries/conversions for active packages only', async () => {
     mockPool.query
       .mockResolvedValueOnce(rows([{ total: '12' }]))
       .mockResolvedValueOnce(rows([{ total_inquiries: '8', total_conversions: '3' }]))
@@ -176,6 +178,16 @@ describe('getPackageAnalyticsOverview', () => {
     expect(data.mostInquired).toEqual([{ name: 'Bali Escape', inquiries: 5, conversions: 2 }]);
     expect(data.trend[0]).toMatchObject({ inquiries: 8, conversions: 3 });
     expect(data.trend[0]).toHaveProperty('month');
+
+    const queries = mockPool.query.mock.calls.map(([sql]) => sql);
+    expect(queries[1]).toContain('JOIN crm_packages."Package" p ON p.id = lps."packageId" AND p."is_active" = true');
+    expect(queries[2]).toContain('COUNT(DISTINCT l.id) AS inquiries');
+    expect(queries[2]).toContain('l."createdAt" BETWEEN $1 AND $2');
+    expect(queries[2]).toContain('WHERE p."is_active" = true');
+    expect(queries[3]).toContain('COUNT(DISTINCT l.id) AS inquiries');
+    expect(queries[3]).toContain('l."createdAt" BETWEEN $1 AND $2');
+    expect(queries[3]).toContain('WHERE p."is_active" = true');
+    expect(queries[4]).toContain('JOIN crm_packages."Package" p ON p.id = lps."packageId" AND p."is_active" = true');
   });
 });
 
@@ -184,7 +196,7 @@ describe('getUserAnalyticsOverview', () => {
 
   it('derives inactiveUsers and conversionRate from the raw counts', async () => {
     mockPool.query
-      .mockResolvedValueOnce(rows([{ total: '20', active: '15', verified: '10' }]))
+      .mockResolvedValueOnce(rows([{ total: '20', active: '15', verified: '10', all_time_total: '100' }]))
       .mockResolvedValueOnce(rows([{ count: '4' }]))
       .mockResolvedValueOnce(rows([{ bucket: '2026-08-01', total_new_users: '20', active_users: '15', admin_users: '2' }]))
       .mockResolvedValueOnce(rows([{ role: 'customer', count: '15' }, { role: 'admin', count: '5' }]));
@@ -193,14 +205,14 @@ describe('getUserAnalyticsOverview', () => {
     await getUserAnalyticsOverview({ query: {} }, res, vi.fn());
 
     const data = res.json.mock.calls[0][0].data;
-    expect(data.stats).toEqual({ totalUsers: 20, activeUsers: 15, inactiveUsers: 5, verifiedUsers: 10, usersWithBookings: 4, conversionRate: 20 });
+    expect(data.stats).toEqual({ totalUsers: 20, allTimeTotalUsers: 100, activeUsers: 15, inactiveUsers: 5, verifiedUsers: 10, usersWithBookings: 4, conversionRate: 20 });
     expect(data.userStatusDistribution).toEqual([{ name: 'Active', value: 15 }, { name: 'Inactive', value: 5 }]);
     expect(data.topRoles).toEqual([{ role: 'customer', count: 15 }, { role: 'admin', count: 5 }]);
   });
 
   it('returns a 0 conversionRate instead of dividing by zero when there are no users', async () => {
     mockPool.query
-      .mockResolvedValueOnce(rows([{ total: '0', active: '0', verified: '0' }]))
+      .mockResolvedValueOnce(rows([{ total: '0', active: '0', verified: '0', all_time_total: '0' }]))
       .mockResolvedValueOnce(rows([{ count: '0' }]))
       .mockResolvedValueOnce(rows([]))
       .mockResolvedValueOnce(rows([]));

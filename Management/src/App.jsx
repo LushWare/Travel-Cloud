@@ -6,10 +6,12 @@ import LeadManagement from "./pages/LeadManagement";
 import ItineraryGeneration from "./pages/ItineraryGeneration";
 import FlightSearch from "./pages/FlightSearch";
 import HotelSearch from "./pages/HotelSearch";
+import HotelPaymentReturn from "./pages/HotelPaymentReturn";
 import BillingInvoicing from "./pages/BillingInvoicing";
 import UserManagement from "./pages/UserManagement";
 import CareerManagement from "./pages/CareerManagement";
 import OrganizationSettings from "./pages/OrganizationSettings";
+import AIInsights from "./pages/AIInsights";
 import Login from "./pages/Login";
 import SalesRepLogin from "./pages/SalesRepLogin";
 import SalesRepLoginOTP from "./pages/SalesRepLoginOTP";
@@ -76,7 +78,9 @@ function AppContent() {
                   <Route path="/packages" element={<ItineraryGeneration />} />
                   <Route path="/flights" element={<FlightSearch />} />
                   <Route path="/hotels" element={<HotelSearch />} />
+                  <Route path="/hotel-payment" element={<HotelPaymentReturn />} />
                   <Route path="/billing" element={<BillingInvoicing />} />
+                  <Route path="/ai-insights" element={<AIInsights />} />
                   <Route
                     path="/users"
                     element={

@@ -43,6 +43,7 @@ import { deferred } from '../../test/deferred';
 import { getSidebarInfo, getLoginBranding } from '../../config/branding';
 
 const STORAGE_KEY = 'management-sidebar-open';
+const SIDEBAR_BRAND_NAME = 'Travel Cloud';
 // Values resolved from the real config (env-driven), so assertions stay valid
 // if the company name/logo is re-branded again.
 const FALLBACK = getSidebarInfo();
@@ -86,6 +87,7 @@ describe('Sidebar collapse state', () => {
     await user.click(screen.getByTitle('Dashboard'));
 
     expect(container.firstChild).toHaveClass('w-56');
+    expect(screen.getByText('Dashboard')).toHaveClass('text-[13px]');
   });
 
   it('collapses when Ctrl+B is pressed, and expands again on a second press', () => {
@@ -129,11 +131,11 @@ describe('Sidebar brand header', () => {
 
     render(<Sidebar />);
 
-    expect(screen.getByRole('heading', { name: FALLBACK.name })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: SIDEBAR_BRAND_NAME })).toBeInTheDocument();
     expect(document.querySelector('img')).toHaveAttribute('src', FALLBACK.logoUrl);
   });
 
-  it('uses the org-configured name but keeps the app-delivered icon once branding resolves', async () => {
+  it('keeps the sidebar name fixed when organization branding resolves', async () => {
     mockGetOrganizationBranding.mockResolvedValue({
       status: 'success',
       data: {
@@ -147,60 +149,37 @@ describe('Sidebar brand header', () => {
 
     const { container } = render(<Sidebar />);
 
-    expect(await screen.findByRole('heading', { name: 'Acme Travel Group' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: SIDEBAR_BRAND_NAME })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Acme Travel Group' })).not.toBeInTheDocument();
     // The icon ships with the app: an org logo URL is never rendered, so the
     // rail cannot break on a remote asset that is missing or unreachable.
     expect(container.querySelector('img')).toHaveAttribute('src', FALLBACK.logoUrl);
-    expect(container.querySelector('img')).toHaveAttribute('alt', 'Acme Travel Group');
+    expect(container.querySelector('img')).toHaveAttribute('alt', SIDEBAR_BRAND_NAME);
   });
 
-  it('derives collapsed-rail initials from the org short name, then the org name', async () => {
+  it('shows only the app logo when the sidebar is collapsed', async () => {
     window.localStorage.setItem(STORAGE_KEY, 'false');
-
     mockGetOrganizationBranding.mockResolvedValue({
       status: 'success',
       data: { branding: { companyName: 'Zenith Holidays', companyShortName: 'XZ' } },
     });
-    const explicit = render(<Sidebar />);
-    expect(await screen.findByText('XZ')).toBeInTheDocument();
-    explicit.unmount();
 
-    // The monogram is whatever the org configured, not a fixed 2-character slice.
-    mockGetOrganizationBranding.mockResolvedValue({
-      status: 'success',
-      data: { branding: { companyName: 'Zenith Holidays', companyShortName: 'ABC' } },
-    });
-    const threeChar = render(<Sidebar />);
-    expect(await screen.findByText('ABC')).toBeInTheDocument();
-    threeChar.unmount();
+    const { container } = render(<Sidebar />);
 
-    // No explicit short name: first letters of the first two words.
-    mockGetOrganizationBranding.mockResolvedValue({
-      status: 'success',
-      data: { branding: { companyName: 'Zenith Holidays' } },
-    });
-    const derived = render(<Sidebar />);
-    expect(await screen.findByText('ZH')).toBeInTheDocument();
-    derived.unmount();
-
-    // Single-word org name: first two letters.
-    mockGetOrganizationBranding.mockResolvedValue({
-      status: 'success',
-      data: { branding: { companyName: 'Zenith' } },
-    });
-    render(<Sidebar />);
-    expect(await screen.findByText('ZE')).toBeInTheDocument();
+    expect(await screen.findByRole('img', { name: SIDEBAR_BRAND_NAME })).toHaveAttribute('src', FALLBACK.logoUrl);
+    expect(container.querySelector('h1')).toBeNull();
+    expect(screen.queryByText('XZ')).not.toBeInTheDocument();
   });
 
   it('keeps the static fallback when branding is rejected, unsuccessful, or settles after unmount', async () => {
     mockGetOrganizationBranding.mockRejectedValue(new Error('network down'));
     const rejected = render(<Sidebar />);
-    expect(await screen.findByRole('heading', { name: FALLBACK.name })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: SIDEBAR_BRAND_NAME })).toBeInTheDocument();
     rejected.unmount();
 
     mockGetOrganizationBranding.mockResolvedValue({ status: 'error' });
     const unsuccessful = render(<Sidebar />);
-    expect(await screen.findByRole('heading', { name: FALLBACK.name })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: SIDEBAR_BRAND_NAME })).toBeInTheDocument();
     unsuccessful.unmount();
 
     type BrandingResponse = { status: string; data: { branding: { companyName: string } } };
@@ -215,7 +194,7 @@ describe('Sidebar brand header', () => {
     expect(screen.queryByText('Late Org')).not.toBeInTheDocument();
   });
 
-  it('regression: renders the company name but never a tagline in the rail', async () => {
+  it('regression: renders the fixed sidebar name but never a tagline in the rail', async () => {
     mockGetOrganizationBranding.mockResolvedValue({
       status: 'success',
       data: { branding: { companyName: 'Acme Travel Group', tagline: 'Acme, forever' } },
@@ -223,8 +202,8 @@ describe('Sidebar brand header', () => {
 
     render(<Sidebar />);
 
-    const heading = await screen.findByRole('heading', { name: 'Acme Travel Group' });
-    expect(heading.textContent).toBe('Acme Travel Group');
+    const heading = await screen.findByRole('heading', { name: SIDEBAR_BRAND_NAME });
+    expect(heading.textContent).toBe(SIDEBAR_BRAND_NAME);
     // Neither the org-supplied tagline nor the static config tagline is shown.
     expect(screen.queryByText('Acme, forever')).not.toBeInTheDocument();
     expect(screen.queryByText(getLoginBranding().tagline)).toBeNull();
@@ -237,7 +216,7 @@ describe('Sidebar brand header', () => {
     const user = userEvent.setup();
     render(<Sidebar />);
 
-    const heading = await screen.findByRole('heading', { name: FALLBACK.name });
+    const heading = await screen.findByRole('heading', { name: SIDEBAR_BRAND_NAME });
     expect(screen.getByTitle('Organization Settings')).toBeEnabled();
 
     await user.click(heading);
@@ -251,8 +230,8 @@ describe('Sidebar brand header', () => {
     setUser({ name: 'Sam Rep', role: 'salesRep', isSuperAdmin: false });
     const rep = render(<Sidebar />);
 
-    expect(screen.getByTitle(FALLBACK.name)).toBeDisabled();
-    const repHeading = await screen.findByRole('heading', { name: FALLBACK.name });
+    expect(screen.getByTitle('Company logo')).toBeDisabled();
+    const repHeading = await screen.findByRole('heading', { name: SIDEBAR_BRAND_NAME });
     expect(repHeading.closest('button')).toBeDisabled();
 
     await user.click(repHeading);
@@ -267,6 +246,27 @@ describe('Sidebar brand header', () => {
 });
 
 describe('Sidebar navigation', () => {
+  it('centers collapsed navigation and logout icons in consistent square controls', () => {
+    window.localStorage.setItem(STORAGE_KEY, 'false');
+    render(<Sidebar />);
+
+    expect(screen.getByTitle('Dashboard')).toHaveClass('h-9', 'w-9', 'justify-center');
+    expect(screen.getByTitle('Dashboard')).not.toHaveClass('px-4');
+    expect(screen.getByTitle('Sign Out')).toHaveClass('h-9', 'w-9', 'justify-center', 'p-0');
+    expect(screen.getByTitle('Sign Out').parentElement).toHaveClass('flex-col', 'items-center', 'gap-1');
+    expect(mockAppearanceToggleProps.current?.collapsed).toBe(true);
+    expect(screen.getByLabelText('Expand sidebar from navigation')).toBeInTheDocument();
+  });
+
+  it('expands from the control below the collapsed navigation icons', () => {
+    window.localStorage.setItem(STORAGE_KEY, 'false');
+    const { container } = render(<Sidebar />);
+
+    fireEvent.click(screen.getByLabelText('Expand sidebar from navigation'));
+
+    expect(container.firstChild).toHaveClass('w-56');
+  });
+
   it('orders Leads directly beneath Dashboard', async () => {
     // The order is the feature: agents never see Dashboard, so whatever sits
     // directly beneath it becomes the first item in their sidebar.
@@ -472,7 +472,7 @@ describe('Sidebar keyboard and mobile drawer', () => {
     // Opening Org Settings from the brand block closes the drawer too.
     mockNavigate.mockClear();
     await user.click(screen.getByLabelText('Open menu'));
-    await user.click(screen.getByRole('heading', { name: FALLBACK.name }));
+    await user.click(screen.getByRole('heading', { name: SIDEBAR_BRAND_NAME }));
     expect(mockNavigate).toHaveBeenCalledWith('/settings');
     expect(drawer()).toHaveClass('-translate-x-full');
 

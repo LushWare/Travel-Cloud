@@ -36,7 +36,7 @@ export const handleLeadWebhook = asyncHandler(async (req, res) => {
   for (const entryItem of entry) {
     for (const change of entryItem.changes || []) {
       if (change.value?.leadgen_id) {
-        processFacebookLead(change.value.leadgen_id).catch((e) =>
+        processFacebookLead(change.value.leadgen_id, change.value.platform).catch((e) =>
           req.log.error({ err: e }, 'FB lead processing error')
         );
       }
@@ -107,12 +107,12 @@ async function processWhatsappChange(value) {
   }
 }
 
-async function processFacebookLead(leadgenId) {
+async function processFacebookLead(leadgenId, platformHint) {
   const accessToken = process.env.FACEBOOK_PAGE_ACCESS_TOKEN;
   if (!accessToken) throw new Error('Facebook Page Access Token not configured');
 
   const fbData = await getLeadData(leadgenId, accessToken);
-  const leadData = mapFacebookLeadToLead(fbData);
+  const leadData = mapFacebookLeadToLead(fbData, platformHint);
 
   if (!leadData.email && !leadData.phone) {
     throw new Error('Lead must have email or phone');
@@ -126,6 +126,7 @@ async function processFacebookLead(leadgenId) {
     email: leadData.email,
     phone: leadData.phone,
     message: leadData.message,
+    source: leadData.source,
   });
 
   if (result?.data?.duplicate) {

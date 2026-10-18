@@ -340,6 +340,16 @@ describe('assembleWhere', () => {
     });
   });
 
+  it('filters package lists by valid bounded ID sets', () => {
+    expect(assembleWhere({ ids: '4a958671-d29b-465c-b68c-e855472133f9,a0000000-0000-0000-0000-000000000001' })).toEqual({
+      id: { in: ['4a958671-d29b-465c-b68c-e855472133f9', 'a0000000-0000-0000-0000-000000000001'] },
+    });
+  });
+
+  it('does not broaden malformed package ID filters into unfiltered lists', () => {
+    expect(assembleWhere({ ids: 'bad/id' })).toEqual({ id: { in: [] } });
+  });
+
   it('filters by category', () => {
     expect(assembleWhere({ category: 'HONEYMOON' })).toEqual({ category: 'HONEYMOON' });
   });

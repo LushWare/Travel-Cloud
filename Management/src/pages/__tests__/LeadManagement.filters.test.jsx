@@ -114,8 +114,9 @@ describe('LeadManagement — notification deep links', () => {
       limit: 200,
       page: 1,
     }));
-    expect(await screen.findByText(/Showing/)).toBeInTheDocument();
-    expect(screen.getByText(/selected leads/)).toBeInTheDocument();
+    expect(await screen.findByText(/Active filter: linked leads/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Clear filter' })).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /^All/ })).not.toBeInTheDocument();
   });
 
   it('opens the requested lead detail when open=1 accompanies leadId', async () => {
