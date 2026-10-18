@@ -610,6 +610,7 @@ export const handleInternalEvent = asyncHandler(async (req, res) => {
 // service's tables from another service.
 export const handleFacebookLeadEvent = asyncHandler(async (req, res) => {
   const { leadgenId, name, email, phone, message } = req.body || {};
+  const source = req.body?.source === 'instagram' ? 'instagram' : 'facebook';
   const sanitizedEmail = email ? String(email).trim().toLowerCase() : null;
   const sanitizedPhone = phone ? String(phone).replace(/\D/g, '') : null;
 
@@ -646,8 +647,8 @@ export const handleFacebookLeadEvent = asyncHandler(async (req, res) => {
         email: sanitizedEmail,
         phone: sanitizedPhone,
         phoneNormalized: normalizePhone(sanitizedPhone),
-        source: 'social_media',
-        platform: 'Social_Media',
+        source,
+        platform: source === 'instagram' ? 'Instagram' : 'Facebook',
         message: message?.trim() || null,
         lifecycleStatus: 'NEW',
         tags: ['facebook-lead'],

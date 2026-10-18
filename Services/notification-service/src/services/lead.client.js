@@ -6,14 +6,14 @@ const INTERNAL_EVENTS_TOKEN = process.env.INTERNAL_EVENTS_TOKEN || '';
  * lead creation/dedup/assignment. notification-service must not write to
  * lead-service's tables directly.
  */
-export async function submitFacebookLead({ leadgenId, name, email, phone, message, fetchImpl = fetch }) {
+export async function submitFacebookLead({ leadgenId, name, email, phone, message, source, fetchImpl = fetch }) {
   const res = await fetchImpl(`${LEAD_SERVICE_URL}/api/v1/leads/internal/facebook-lead`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
       'x-internal-token': INTERNAL_EVENTS_TOKEN,
     },
-    body: JSON.stringify({ leadgenId, name, email, phone, message }),
+    body: JSON.stringify({ leadgenId, name, email, phone, message, source }),
   });
   if (!res.ok) {
     throw new Error(`Failed to submit Facebook lead to lead-service (status ${res.status})`);

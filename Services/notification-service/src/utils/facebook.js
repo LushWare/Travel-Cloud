@@ -2,14 +2,26 @@ import { verifyWebhookSignature } from './webhookSignature.js';
 
 export { verifyWebhookSignature };
 
+const GRAPH_API_VERSION = process.env.FACEBOOK_GRAPH_API_VERSION || 'v23.0';
+
 export async function getLeadData(leadgenId, accessToken) {
-  const url = `https://graph.facebook.com/v18.0/${leadgenId}?access_token=${accessToken}`;
+  const query = new URLSearchParams({ fields: 'field_data,platform', access_token: accessToken });
+  const url = `https://graph.facebook.com/${GRAPH_API_VERSION}/${encodeURIComponent(leadgenId)}?${query}`;
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`Facebook API error: ${res.status}`);
-  return res.json();
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const apiError = data?.error;
+    const details = apiError?.message || 'Unknown Graph API error';
+    const code = apiError?.code ? ` (${apiError.code})` : '';
+    throw new Error(`Facebook API error: ${res.status}${code}: ${details}`);
+  }
+  return data;
 }
 
-export function mapFacebookLeadToLead(fbData) {
+export function mapFacebookLeadToLead(fbData, platformHint) {
+  const platform = String(platformHint || fbData.platform || '').toLowerCase();
+  const isInstagram = ['instagram', 'ig'].includes(platform);
+  const source = isInstagram ? 'instagram' : 'facebook';
   const fields = {};
   for (const f of fbData.field_data || []) {
     fields[f.name.toLowerCase()] = f.values?.[0] || '';
@@ -18,10 +30,10 @@ export function mapFacebookLeadToLead(fbData) {
     name: fields.full_name || fields.name || '',
     email: fields.email || '',
     phone: fields.phone_number || fields.phone || '',
-    source: 'social_media',
-    platform: 'Social_Media',
+    source,
+    platform: isInstagram ? 'Instagram' : 'Facebook',
     message: fields.comments || fields.message || '',
-    tags: ['facebook-lead'],
+    tags: [`${source}-lead`],
     leadDateTime: new Date(),
     status: 'new',
   };

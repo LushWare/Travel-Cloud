@@ -33,7 +33,8 @@ enum LeadSource {
   manual
   website
   booking
-  social_media @map("social-media")
+  facebook
+  instagram
   phone_call   @map("phone-call")
   email
   referral
@@ -49,7 +50,8 @@ enum LeadPlatform {
   Manual_Entry @map("Manual Entry")
   Website_Form @map("Website Form")
   Paid_Package @map("Paid Package")
-  Social_Media @map("Social Media")
+  Facebook
+  Instagram
   Phone_Call   @map("Phone Call")
   Email        @map("Email")
   Referral     @map("Referral")

@@ -247,7 +247,9 @@ const EditLeadDialog = ({ isOpen, onClose, lead, salesReps, onSuccess, initialSe
       salesRep: salesRepName,
       assignedTo: assignedToId || (salesRepName ? '__name_only' : ''),
       destination: lead.destination || '',
-      platform: lead.platform || '',
+      platform: ['Social_Media', 'Social Media', 'social_media', 'social-media'].includes(lead.platform)
+        ? 'Facebook'
+        : lead.platform || '',
       travelDate: lead.travelDate ? new Date(lead.travelDate).toISOString().split('T')[0] : '',
       endDate: lead.endDate ? new Date(lead.endDate).toISOString().split('T')[0] : '',
       lifecycleStatus: lead.lifecycleStatus || 'NEW',
@@ -639,12 +641,13 @@ const EditLeadDialog = ({ isOpen, onClose, lead, salesReps, onSuccess, initialSe
                   <p className="mt-1 text-xs text-muted-foreground">Auto-filled from the primary package total</p>
                 </EditInputField>
 
-                <EditInputField label="Platform / Source" icon={Globe}>
+                <EditInputField label="Lead Source" icon={Globe}>
                   <Select value={formData.platform} onValueChange={(v) => setFormData({ ...formData, platform: String(v) })}>
                     <SelectTrigger className="w-full"><SelectValue placeholder="Select Platform" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="Website_Form">🌐 Website Form</SelectItem>
-                      <SelectItem value="Social_Media">📱 Social Media</SelectItem>
+                      <SelectItem value="Facebook">Facebook</SelectItem>
+                      <SelectItem value="Instagram">Instagram</SelectItem>
                       <SelectItem value="Phone_Call">📞 Phone Call</SelectItem>
                       <SelectItem value="Referral">🤝 Referral</SelectItem>
                       <SelectItem value="Email">📧 Email</SelectItem>
