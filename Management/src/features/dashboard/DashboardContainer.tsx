@@ -466,6 +466,7 @@ const DashboardContainer = () => {
               label={metric.title}
               value={metric.value}
               subtitle={metric.subtitle}
+              trend={metric.trend || undefined}
               trendDirection={trendDirection(metric.trend)}
               color={metric.color}
             />

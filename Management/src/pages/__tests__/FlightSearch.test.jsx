@@ -3,9 +3,10 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 
-const { mockSearch, mockBook, mockListBookings, mockCancelBooking } = vi.hoisted(() => ({
+const { mockSearch, mockBook, mockGetCheckoutData, mockListBookings, mockCancelBooking } = vi.hoisted(() => ({
   mockSearch: vi.fn(),
   mockBook: vi.fn(),
+  mockGetCheckoutData: vi.fn(),
   mockListBookings: vi.fn(),
   mockCancelBooking: vi.fn(),
 }));
@@ -14,6 +15,7 @@ vi.mock('../../services/flight.service', () => ({
   flightAPI: {
     search: mockSearch,
     book: mockBook,
+    getCheckoutData: mockGetCheckoutData,
     listBookings: mockListBookings,
     cancelBooking: mockCancelBooking,
   },
@@ -213,6 +215,45 @@ describe('FlightSearch booking', () => {
   it('books with the searched context and the offer’s passenger ids', async () => {
     const user = userEvent.setup();
     mockSearch.mockResolvedValue({ data: [NONSTOP_ROUND_TRIP] });
+    mockGetCheckoutData.mockResolvedValue({
+      data: {
+        offer: {
+          id: NONSTOP_ROUND_TRIP.offerId,
+          owner: { name: 'Emirates', iata_code: 'EK' },
+          base_amount: '500',
+          tax_amount: '120',
+          total_amount: '620',
+          total_currency: 'USD',
+          conditions: { refund_before_departure: { allowed: false } },
+          slices: [{
+            segments: [{
+              origin: { iata_code: 'LHR' },
+              destination: { iata_code: 'DXB' },
+              departing_at: '2026-09-20T08:00:00Z',
+              arriving_at: '2026-09-20T15:00:00Z',
+              marketing_carrier: { iata_code: 'EK', name: 'Emirates' },
+              marketing_carrier_flight_number: '1',
+              operating_carrier: { name: 'Emirates' },
+            }],
+          }, {
+            segments: [{
+              origin: { iata_code: 'DXB' },
+              destination: { iata_code: 'LHR' },
+              departing_at: '2026-09-27T08:00:00Z',
+              arriving_at: '2026-09-27T15:10:00Z',
+              marketing_carrier: { iata_code: 'EK', name: 'Emirates' },
+              marketing_carrier_flight_number: '2',
+              operating_carrier: { name: 'Emirates' },
+            }],
+          }],
+          passengers: [{ id: 'pas_rt_1' }],
+        },
+        seatMaps: [],
+        upsellOffers: [],
+        clientKey: '',
+        cardCheckoutEnabled: false,
+      },
+    });
     renderFlightSearch();
 
     await setDates(user, dateInFuture(30), dateInFuture(37));
@@ -225,6 +266,9 @@ describe('FlightSearch booking', () => {
 
     await user.type(screen.getByPlaceholderText('First name *'), 'John');
     await user.type(screen.getByPlaceholderText('Last name *'), 'Doe');
+    await user.type(screen.getByTitle('Date of birth'), '1990-01-01');
+    await user.type(screen.getByPlaceholderText('Passenger email *'), 'john@test.com');
+    await user.type(screen.getByPlaceholderText('+442079460018'), '+442079460018');
     await user.type(screen.getByPlaceholderText('Email *'), 'john@test.com');
 
     const genderTrigger = screen.getAllByRole('combobox')[1];
@@ -232,7 +276,9 @@ describe('FlightSearch booking', () => {
     await user.click(await screen.findByRole('option', { name: 'Male' }));
 
     await user.click(screen.getByRole('button', { name: /Review Booking/ }));
-    await user.click(screen.getByRole('button', { name: /Confirm Booking/ }));
+    await user.click(screen.getByRole('button', { name: /Review and pay/i }));
+    await user.click(screen.getByRole('checkbox'));
+    await user.click(screen.getByRole('button', { name: /Book using Duffel balance/i }));
 
     await waitFor(() => expect(mockBook).toHaveBeenCalled());
     const payload = mockBook.mock.calls[0][0];
@@ -240,9 +286,9 @@ describe('FlightSearch booking', () => {
     expect(payload.travelers).toHaveLength(1);
     expect(payload.travelers[0].passengerId).toBe('pas_rt_1');
     expect(payload.travelers[0].type).toBe('adult');
+    expect(payload.travelers[0].dob).toBe('1990-01-01');
     // Untouched optional fields are empty strings in the form; the API's schema
     // rejects those, so they must not be sent at all.
-    expect(payload.travelers[0]).not.toHaveProperty('dob');
     expect(payload.travelers[0]).not.toHaveProperty('nationality');
   });
 });
@@ -270,16 +316,17 @@ describe('FlightSearch bookings list', () => {
   it('counts bookings by status bucket', async () => {
     const user = userEvent.setup();
     mockListBookings.mockResolvedValue({
-      data: [booking(1, 'confirmed'), booking(2, 'ticketed'), booking(3, 'failed'), booking(4, 'pending')],
+      data: [booking(1, 'confirmed'), booking(2, 'confirmed'), booking(3, 'failed'), booking(4, 'pending'), booking(5, 'cancelled')],
     });
     renderFlightSearch();
 
     await user.click(screen.getByRole('tab', { name: /Manage Bookings/ }));
 
     await screen.findByText('PNR-1');
-    expect(screen.getByRole('tab', { name: /All/ })).toHaveTextContent('4');
+    expect(screen.getByRole('tab', { name: /All/ })).toHaveTextContent('5');
     expect(screen.getByRole('tab', { name: /Confirmed/ })).toHaveTextContent('2');
     expect(screen.getByRole('tab', { name: /Pending/ })).toHaveTextContent('1');
     expect(screen.getByRole('tab', { name: /Cancelled/ })).toHaveTextContent('1');
+    expect(screen.getByRole('tab', { name: /Failed/ })).toHaveTextContent('1');
   });
 });

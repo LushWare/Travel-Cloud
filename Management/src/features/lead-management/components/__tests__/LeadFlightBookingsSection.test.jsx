@@ -377,7 +377,7 @@ describe('LeadFlightBookingsSection — itinerary-day flights are unaffected', (
       onUpdateDay,
     });
 
-    await user.click(await screen.findByRole('button', { name: /book flight/i }));
+    await user.click(await screen.findByRole('button', { name: /set preferences/i }));
     await user.click(screen.getByRole('button', { name: /submit flight/i }));
 
     await waitFor(() => expect(onUpdateDay).toHaveBeenCalledWith(1, expect.objectContaining({
@@ -396,7 +396,7 @@ describe('LeadFlightBookingsSection — itinerary-day flights are unaffected', (
       onUpdateDay,
     });
 
-    await user.click(await screen.findByRole('button', { name: /book flight/i }));
+    await user.click(await screen.findByRole('button', { name: /set preferences/i }));
     await user.click(screen.getByRole('button', { name: /submit flight/i }));
 
     await waitFor(() => expect(onUpdateDay).toHaveBeenCalledWith(1, expect.objectContaining({
@@ -524,7 +524,7 @@ describe('LeadFlightBookingsSection — round trip fills both direction rows', (
       onUpdateDay,
     });
 
-    await user.click(await screen.findByRole('button', { name: /book flight/i }));
+    await user.click(await screen.findByRole('button', { name: /set preferences/i }));
     expect(lastFlightModalProps.allowRoundTrip).toBe(false);
 
     await user.click(screen.getByRole('button', { name: /submit round trip/i }));

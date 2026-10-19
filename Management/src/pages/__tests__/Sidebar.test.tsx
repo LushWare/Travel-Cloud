@@ -363,25 +363,24 @@ describe('Sidebar navigation', () => {
 });
 
 describe('Sidebar user card', () => {
-  it('renders the role badge and avatar for each role', async () => {
+  it('renders the user name and avatar for each role', async () => {
     setUser({ name: 'Root', role: 'superAdmin', isSuperAdmin: true });
     const superAdmin = render(<Sidebar />);
 
-    const superAdminBadge = await screen.findByText('Super Admin');
-    expect(screen.getByText('R')).toBeInTheDocument();
-    expect(superAdminBadge.parentElement?.querySelector('svg')).not.toBeNull();
+    expect(await screen.findByText('Root')).toBeInTheDocument();
+    expect(screen.getByText('R', { exact: true })).toBeInTheDocument();
     superAdmin.unmount();
 
     setUser({ name: 'Alice Admin', role: 'admin', isSuperAdmin: false });
     const admin = render(<Sidebar />);
-    const adminBadge = await screen.findByText('Admin');
-    expect(adminBadge.parentElement?.querySelector('svg')).toBeNull();
+    expect(await screen.findByText('Alice Admin')).toBeInTheDocument();
+    expect(screen.getByText('A', { exact: true })).toBeInTheDocument();
     admin.unmount();
 
     setUser({ name: 'Sam Rep', role: 'salesRep', isSuperAdmin: false });
     const rep = render(<Sidebar />);
-    const repBadge = await screen.findByText('Sales Rep');
-    expect(repBadge.parentElement?.querySelector('svg')).toBeNull();
+    expect(await screen.findByText('Sam Rep')).toBeInTheDocument();
+    expect(screen.getByText('S', { exact: true })).toBeInTheDocument();
     rep.unmount();
 
     setUser({ name: '', role: 'admin', isSuperAdmin: false });
@@ -398,22 +397,10 @@ describe('Sidebar user card', () => {
     expect(screen.queryByText('Admin')).not.toBeInTheDocument();
   });
 
-  it('greets by time of day', () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
+  it('does not render a time-based greeting in the user card', () => {
+    render(<Sidebar />);
 
-    const cases: Array<[number, string]> = [
-      [9, 'Good Morning'],
-      [12, 'Good Afternoon'],
-      [16, 'Good Afternoon'],
-      [17, 'Good Evening'],
-    ];
-
-    for (const [hour, greeting] of cases) {
-      vi.setSystemTime(new Date(2026, 8, 10, hour, 30, 0));
-      const view = render(<Sidebar />);
-      expect(screen.getByText(greeting)).toBeInTheDocument();
-      view.unmount();
-    }
+    expect(screen.queryByText(/good morning|good afternoon|good evening/i)).not.toBeInTheDocument();
   });
 });
 
