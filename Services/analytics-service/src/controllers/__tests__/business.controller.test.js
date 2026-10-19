@@ -123,13 +123,13 @@ describe('getBusinessSignals', () => {
     expect(signals.bookingOverview).toMatchObject({ pendingRatePct: 20, confirmedUnpaidRatePct: 20, confirmedPartPaidRatePct: 40 });
   });
 
-  it('counts upcoming flights that are neither ticketed nor cancelled', async () => {
+  it('counts upcoming flights with pending or failed status', async () => {
     const res = mockRes();
 
     await getBusinessSignals({ user: { id: 'admin-1', role: 'admin' } }, res, vi.fn());
 
     const [flightQuery, flightParams] = mockPool.query.mock.calls.find(([sql]) => sql.includes('FROM crm_flights."FlightBooking" flight'));
-    expect(flightQuery).toContain("flight.status NOT IN ('ticketed', 'cancelled')");
+    expect(flightQuery).toContain("flight.status IN ('pending', 'failed')");
     expect(flightQuery).toContain('segment."departureAt" BETWEEN $1 AND $1::timestamptz + interval \'7 days\'');
     expect(flightParams[1]).toBeNull();
   });

@@ -7,7 +7,6 @@ const HotelService = {
   async getCountries() { return api.get('/hotels/countries'); },
   async getCities(countryCode) { return api.get('/hotels/cities', { countryCode }); },
   async getEsimPackages(countryCode) { return api.get(`/hotels/addons/esimply/packages/${countryCode}`); },
-  async getEsimPackages(countryCode) { return api.get(`/hotels/addons/esimply/packages/${countryCode}`); },
   async getFilterOptions() { return api.get('/hotels/filter-options'); },
   async prebook(params) { return api.post('/hotels/prebook', params); },
   async book(params) { return api.post('/hotels/book', params); },

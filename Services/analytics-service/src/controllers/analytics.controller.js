@@ -233,40 +233,44 @@ export const getPackageAnalyticsOverview = asyncHandler(async (req, res) => {
     pool.query(`SELECT COUNT(*) FILTER (WHERE "is_active" = true) AS total FROM crm_packages."Package"`),
     pool.query(
       `SELECT
-        COUNT(DISTINCT lps."leadId") AS total_inquiries,
-        COUNT(DISTINCT lps."leadId") FILTER (WHERE l."lifecycleStatus" = 'CONFIRMED') AS total_conversions
+        COUNT(DISTINCT l.id) AS total_inquiries,
+        COUNT(DISTINCT l.id) FILTER (WHERE l."lifecycleStatus" = 'CONFIRMED') AS total_conversions
        FROM crm_leads."LeadPackageSelection" lps
+       JOIN crm_packages."Package" p ON p.id = lps."packageId" AND p."is_active" = true
        JOIN crm_leads."Lead" l ON l.id = lps."leadId"
        WHERE lps."packageId" IS NOT NULL AND l."createdAt" BETWEEN $1 AND $2`,
       [start, end]
     ),
     pool.query(
       `SELECT p.id, p.title AS name,
-        COUNT(DISTINCT lps."leadId") AS inquiries,
-        COUNT(DISTINCT lps."leadId") FILTER (WHERE l."lifecycleStatus" = 'CONFIRMED') AS conversions
+        COUNT(DISTINCT l.id) AS inquiries,
+        COUNT(DISTINCT l.id) FILTER (WHERE l."lifecycleStatus" = 'CONFIRMED') AS conversions
        FROM crm_packages."Package" p
        LEFT JOIN crm_leads."LeadPackageSelection" lps ON lps."packageId" = p.id
        LEFT JOIN crm_leads."Lead" l ON l.id = lps."leadId" AND l."createdAt" BETWEEN $1 AND $2
+       WHERE p."is_active" = true
        GROUP BY p.id, p.title
        ORDER BY inquiries DESC LIMIT 10`,
       [start, end]
     ),
     pool.query(
       `SELECT COALESCE(p.destination, 'Unknown') AS destination,
-        COUNT(DISTINCT lps."leadId") AS inquiries,
-        COUNT(DISTINCT lps."leadId") FILTER (WHERE l."lifecycleStatus" = 'CONFIRMED') AS conversions
+        COUNT(DISTINCT l.id) AS inquiries,
+        COUNT(DISTINCT l.id) FILTER (WHERE l."lifecycleStatus" = 'CONFIRMED') AS conversions
        FROM crm_packages."Package" p
        LEFT JOIN crm_leads."LeadPackageSelection" lps ON lps."packageId" = p.id
        LEFT JOIN crm_leads."Lead" l ON l.id = lps."leadId" AND l."createdAt" BETWEEN $1 AND $2
+       WHERE p."is_active" = true
        GROUP BY 1
        ORDER BY inquiries DESC LIMIT 10`,
       [start, end]
     ),
     pool.query(
       `SELECT DATE_TRUNC($3, l."createdAt") AS bucket,
-        COUNT(DISTINCT lps."leadId") AS inquiries,
-        COUNT(DISTINCT lps."leadId") FILTER (WHERE l."lifecycleStatus" = 'CONFIRMED') AS conversions
+        COUNT(DISTINCT l.id) AS inquiries,
+        COUNT(DISTINCT l.id) FILTER (WHERE l."lifecycleStatus" = 'CONFIRMED') AS conversions
        FROM crm_leads."LeadPackageSelection" lps
+       JOIN crm_packages."Package" p ON p.id = lps."packageId" AND p."is_active" = true
        JOIN crm_leads."Lead" l ON l.id = lps."leadId"
        WHERE lps."packageId" IS NOT NULL AND l."createdAt" BETWEEN $1 AND $2
        GROUP BY bucket ORDER BY bucket ASC`,
