@@ -492,7 +492,7 @@ describe('handleFacebookLeadEvent', () => {
     await handleFacebookLeadEvent(req, res, vi.fn());
 
     expect(mockLeadCreate).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ email: 'jane@test.com', source: 'social_media', platform: 'Social_Media' }),
+      data: expect.objectContaining({ email: 'jane@test.com', source: 'facebook', platform: 'Facebook' }),
     }));
     expect(res.status).toHaveBeenCalledWith(201);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
