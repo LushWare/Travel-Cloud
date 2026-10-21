@@ -1,9 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import Lenis from 'lenis';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
-import PopupModal from './components/PopupModal';
 import HomePage from './pages/HomePage';
 import TravelSolutionsPage from './pages/TravelSolutionsPage';
 import ManagementPortalPage from './pages/ManagementPortalPage';
@@ -73,17 +72,7 @@ function SmoothScroll() {
 }
 
 export default function App() {
-  const [demoOpen, setDemoOpen] = useState(false);
-  const [demoProduct, setDemoProduct] = useState('both');
-
-  const handleOpenDemo = (product = 'both') => {
-    setDemoProduct(product);
-    setDemoOpen(true);
-  };
-
-  const handleCloseDemo = () => {
-    setDemoOpen(false);
-  };
+  const handleBookConsultation = () => window.location.assign('/contact');
 
   return (
     <BrowserRouter>
@@ -92,23 +81,23 @@ export default function App() {
         <Navbar />
         <main className="flex-grow">
           <Routes>
-            <Route path="/" element={<HomePage onOpenDemo={handleOpenDemo} />} />
+            <Route path="/" element={<HomePage onBookConsultation={handleBookConsultation} />} />
             <Route
               path="/travel-solutions"
-              element={<TravelSolutionsPage onOpenDemo={handleOpenDemo} />}
+              element={<TravelSolutionsPage onBookConsultation={handleBookConsultation} />}
             />
             <Route
               path="/management-portal"
-              element={<ManagementPortalPage onOpenDemo={handleOpenDemo} />}
+              element={<ManagementPortalPage onBookConsultation={handleBookConsultation} />}
             />
-            <Route path="/why-us" element={<WhyUsPage onOpenDemo={handleOpenDemo} />} />
-            <Route path="/pricing" element={<PricingPage onOpenDemo={handleOpenDemo} />} />
+            <Route path="/why-us" element={<WhyUsPage />} />
+            <Route path="/pricing" element={<PricingPage onBookConsultation={handleBookConsultation} />} />
             <Route path="/contact" element={<ContactPage />} />
-            <Route path="*" element={<HomePage onOpenDemo={handleOpenDemo} />} />
+            <Route path="*" element={<HomePage onBookConsultation={handleBookConsultation} />} />
           </Routes>
         </main>
 
-        <Footer onOpenDemo={handleOpenDemo} />
+        <Footer />
 
         <a
           href="https://wa.me/94716430053?text=Hi%2C%20I%27d%20like%20to%20know%20more%20about%20LushTravelCloud."
@@ -127,11 +116,6 @@ export default function App() {
           </svg>
         </a>
 
-        <PopupModal
-          isOpen={demoOpen}
-          onClose={handleCloseDemo}
-          initialProduct={demoProduct}
-        />
       </div>
     </BrowserRouter>
   );

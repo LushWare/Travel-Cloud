@@ -45,7 +45,7 @@ const mobileBenefits = [
   'Keep your agency brand with clients on the go.',
 ];
 
-export default function TravelSolutionsPage({ onOpenDemo }) {
+export default function TravelSolutionsPage({ onBookConsultation }) {
   const websiteVisualRef = useRef(null);
   const mobileVisualRef = useRef(null);
   const [websiteVisualVisible, setWebsiteVisualVisible] = useState(false);
@@ -78,15 +78,14 @@ export default function TravelSolutionsPage({ onOpenDemo }) {
         title="A World-Class Digital Experience for"
         highlight="Your Travelers"
         description="Give your clients an inspiring, beautifully branded portal and mobile companion. From initial proposal to the final flight home, elevate every moment of their journey."
-        demoLabel="Request Traveler Portal Demo"
-        demoProduct="client"
+        actionLabel="Book a Free Consultation"
         sandboxLabel="Live Traveler Sandbox"
         sandboxUrl={PORTALS.client.url}
         imageSrc="/1.png"
         imageAlt="LushTravelCloud traveler portal and booking experience"
         curveStyle="wave"
         animateImage
-        onOpenDemo={onOpenDemo}
+        onBookConsultation={onBookConsultation}
       />
 
       <section className="relative overflow-hidden py-20 sm:py-24 lg:py-28">

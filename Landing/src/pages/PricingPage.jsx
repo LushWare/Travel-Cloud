@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Check, ArrowRight, HelpCircle, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
 
-export default function PricingPage({ onOpenDemo }) {
+export default function PricingPage({ onBookConsultation }) {
   const [annualBilling, setAnnualBilling] = useState(true);
   const [openFaq, setOpenFaq] = useState(0);
 
@@ -25,7 +25,7 @@ export default function PricingPage({ onOpenDemo }) {
         'Centralized Booking Calendar',
         'Standard Email & Chat Support',
       ],
-      cta: 'Start with Starter',
+      cta: 'Book a Free Consultation',
     },
     {
       name: 'Growth',
@@ -45,7 +45,7 @@ export default function PricingPage({ onOpenDemo }) {
         'Real-time Analytics & Revenue reports',
         'Priority 24/7 Support with 1-hr SLA',
       ],
-      cta: 'Start 14-Day Free Trial',
+      cta: 'Book a Free Consultation',
     },
     {
       name: 'Enterprise',
@@ -63,7 +63,7 @@ export default function PricingPage({ onOpenDemo }) {
         'Enterprise SLA with 99.98% uptime',
         'Custom staff onboarding & training',
       ],
-      cta: 'Contact Sales for Custom Plan',
+      cta: 'Book a Free Consultation',
     },
   ];
 
@@ -222,7 +222,7 @@ export default function PricingPage({ onOpenDemo }) {
                 </div>
 
                 <button
-                  onClick={() => onOpenDemo(plan.name.toLowerCase())}
+                  onClick={onBookConsultation}
                   className={`w-full py-3.5 px-6 rounded-md font-bold text-xs sm:text-sm transition-all duration-200 flex items-center justify-center gap-2 active:scale-95 ${
                     plan.popular
                       ? 'bg-emerald-200 hover:bg-emerald-300 text-slate-950 shadow-glow'

@@ -9,7 +9,7 @@ const heroSlides = [
   { src: '/4.png', alt: 'LushWare management dashboard on a phone' },
 ];
 
-export default function Hero({ onOpenDemo }) {
+export default function Hero() {
   const [activeSlide, setActiveSlide] = useState(0);
 
   useEffect(() => {

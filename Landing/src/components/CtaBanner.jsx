@@ -1,7 +1,8 @@
 import React from 'react';
 import { ArrowRight } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
-export default function CtaBanner({ onOpenDemo }) {
+export default function CtaBanner() {
   return (
     <section className="relative overflow-hidden bg-brand-forest">
       {/* Background Mountain Panorama with dark green tint matching reference */}
@@ -31,8 +32,8 @@ export default function CtaBanner({ onOpenDemo }) {
 
           {/* Right Action Button */}
           <div className="flex-shrink-0">
-            <button
-              onClick={() => onOpenDemo('both')}
+            <Link
+              to="/contact"
               className="group inline-flex items-center gap-2.5 px-7 py-3.5 rounded-full bg-brand-forestDark/80 hover:bg-black/40 text-white text-sm font-semibold border border-emerald-400/60 hover:border-emerald-300 transition-all duration-200 shadow-lg active:scale-95"
             >
               <span>Get Started</span>
@@ -40,7 +41,7 @@ export default function CtaBanner({ onOpenDemo }) {
                 size={16}
                 className="transition-transform duration-200 group-hover:translate-x-1"
               />
-            </button>
+            </Link>
           </div>
         </div>
       </div>

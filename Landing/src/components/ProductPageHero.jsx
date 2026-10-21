@@ -5,8 +5,7 @@ export default function ProductPageHero({
   title,
   highlight,
   description,
-  demoLabel,
-  demoProduct,
+  actionLabel,
   sandboxLabel,
   sandboxUrl,
   imageSrc,
@@ -14,7 +13,7 @@ export default function ProductPageHero({
   curveStyle,
   actionsSpacing = 'pt-1',
   animateImage = false,
-  onOpenDemo,
+  onBookConsultation,
 }) {
   const heroImageRef = useRef(null);
   const [heroImageVisible, setHeroImageVisible] = useState(false);
@@ -54,10 +53,10 @@ export default function ProductPageHero({
             </p>
             <div className={`flex flex-wrap items-center gap-4 ${actionsSpacing}`}>
               <button
-                onClick={() => onOpenDemo(demoProduct)}
+                onClick={onBookConsultation}
                 className="group inline-flex items-center gap-2.5 rounded-md bg-brand-forest px-7 py-3.5 text-sm font-semibold text-white shadow-glow transition-all hover:bg-brand-forestDark active:scale-95 sm:text-[15px]"
               >
-                <span>{demoLabel}</span>
+                <span>{actionLabel}</span>
                 <ArrowRight
                   size={16}
                   className="transition-transform duration-200 group-hover:translate-x-1"
