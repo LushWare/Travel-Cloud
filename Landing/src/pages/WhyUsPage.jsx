@@ -45,28 +45,25 @@ export default function WhyUsPage() {
 
   return (
     <div className="bg-white pb-20">
-      <section className="relative isolate overflow-hidden border-b-2 border-emerald-200 bg-gradient-to-br from-[#f3f7f5] via-white to-[#edf4f0] px-6 pb-14 pt-28 shadow-[0_4px_12px_-10px_rgba(16,185,129,0.45)] sm:px-8 sm:pb-16 sm:pt-32 lg:pb-20 lg:pt-36">
+      <section className="relative isolate overflow-hidden bg-slate-900 px-6 pb-10 pt-28 sm:px-8 sm:pb-12 sm:pt-32 lg:pb-14 lg:pt-25">
         <div
-          className="pointer-events-none absolute -left-24 -top-24 -z-10 h-80 w-80 rounded-full bg-emerald-200/20 blur-3xl"
+          className="pointer-events-none absolute inset-y-0 right-0 hidden w-[34%] bg-slate-800 [clip-path:polygon(28%_0,100%_0,100%_100%,0_100%)] lg:block"
           aria-hidden="true"
         />
         <div
-          className="pointer-events-none absolute -right-28 bottom-0 -z-10 h-72 w-72 rounded-full bg-teal-100/30 blur-3xl"
+          className="pointer-events-none absolute inset-y-0 right-0 hidden w-[14%] bg-emerald-900/70 [clip-path:polygon(62%_0,100%_0,100%_100%,26%_100%)] lg:block"
           aria-hidden="true"
         />
-        <div className="mx-auto max-w-4xl text-center">
-          <span className="mb-5 inline-flex rounded-full border border-emerald-200/80 bg-white/70 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-brand-forest shadow-sm">
-            Built for travel agencies
-          </span>
-          <h1 className="text-4xl font-extrabold leading-[1.25] tracking-tight text-slate-900 sm:text-5xl lg:text-6xl">
-            Why Travel Agencies Choose{' '}
-            <span className="text-brand-forest">LushTravelCloud</span>
-          </h1>
-          <p className="mx-auto mt-7 max-w-3xl text-base leading-relaxed text-slate-600 sm:mt-8 sm:text-lg">
-            Bring your agency&apos;s daily operations and customer experience together. Manage
-            clients, packages, itineraries, and bookings in the Management Portal, while giving
-            travelers a branded website and mobile experience.
-          </p>
+        <div className="relative mx-auto max-w-7xl">
+          <div className="mx-auto max-w-4xl text-center">
+            <h1 className="detail-hero-reveal text-4xl font-extrabold leading-[1.12] tracking-tight text-white sm:text-5xl lg:text-6xl">
+              Why Travel Agencies Choose
+              <span className="mt-1 block text-emerald-300">LushTravelCloud</span>
+            </h1>
+            <p className="detail-hero-reveal detail-hero-reveal-delay-1 mx-auto mt-8 max-w-3xl text-base leading-relaxed text-slate-300 sm:text-lg">
+              Bring your agency&apos;s daily operations and customer experience together.
+            </p>
+          </div>
         </div>
       </section>
 
