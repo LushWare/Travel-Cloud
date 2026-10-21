@@ -15,7 +15,7 @@ const showcaseImages = [
   { src: '/2.png', alt: 'LushTravelCloud booking website displayed on a phone' },
 ];
 
-export default function TravelSolutionsSection({ onOpenDemo }) {
+export default function TravelSolutionsSection() {
   const [activeImage, setActiveImage] = useState(0);
 
   useEffect(() => {

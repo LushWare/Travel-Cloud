@@ -6,21 +6,21 @@ import ManagementGallery from '../components/Gallery';
 import MarqueeSection from '../components/MarqueeSection';
 import CtaBanner from '../components/CtaBanner';
 
-export default function HomePage({ onOpenDemo }) {
+export default function HomePage({ onBookConsultation }) {
   return (
     <div className="bg-white">
       <div className="relative isolate">
         <div className="relative z-0 lg:sticky lg:top-0">
-          <Hero onOpenDemo={onOpenDemo} />
+          <Hero />
         </div>
         <div className="relative z-10">
-          <TravelSolutionsSection onOpenDemo={onOpenDemo} />
+          <TravelSolutionsSection />
         </div>
       </div>
       <MarqueeSection />
-      <ManagementPortalSection onOpenDemo={onOpenDemo} />
+      <ManagementPortalSection />
       <ManagementGallery />
-      <CtaBanner onOpenDemo={onOpenDemo} />
+      <CtaBanner onBookConsultation={onBookConsultation} />
     </div>
   );
 }

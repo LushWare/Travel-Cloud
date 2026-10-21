@@ -3,15 +3,14 @@ import ProductPageHero from '../components/ProductPageHero';
 import ContainerScroll from '../components/ui/ContainerScroll';
 import ManagementPortalFeatures from '../components/ManagementPortalFeatures';
 
-export default function ManagementPortalPage({ onOpenDemo }) {
+export default function ManagementPortalPage({ onBookConsultation }) {
   return (
     <div className="pb-20 bg-white">
       <ProductPageHero
         title="Control, Visibility & Scale for"
         highlight="Your Agency"
         description="Replace disconnected spreadsheets, email threads, and legacy systems with one centralized CRM and operations engine tailored specifically for the travel industry."
-        demoLabel="Request Management Demo"
-        demoProduct="management"
+        actionLabel="Book a Free Consultation"
         sandboxLabel="Live Management Sandbox"
         sandboxUrl={PORTALS.management.url}
         imageSrc="/6.png"
@@ -19,7 +18,7 @@ export default function ManagementPortalPage({ onOpenDemo }) {
         curveStyle="wave"
         actionsSpacing="pt-6"
         animateImage
-        onOpenDemo={onOpenDemo}
+        onBookConsultation={onBookConsultation}
       />
 
       <section
