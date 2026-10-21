@@ -92,49 +92,51 @@ export default function PricingPage({ onOpenDemo }) {
 
   return (
     <div className="bg-white pb-20">
-      <section className="relative isolate overflow-hidden border-b-2 border-emerald-200 bg-gradient-to-br from-[#f3f7f5] via-white to-[#edf4f0] px-6 pb-10 pt-28 shadow-[0_4px_12px_-10px_rgba(16,185,129,0.45)] sm:px-8 sm:pb-12 sm:pt-32 lg:pb-14 lg:pt-36">
+      <section className="relative isolate overflow-hidden bg-slate-900 px-6 pb-8 pt-28 sm:px-8 sm:pb-10 sm:pt-32 lg:pb-12 lg:pt-24">
         <div
-          className="pointer-events-none absolute -left-24 -top-24 -z-10 h-80 w-80 rounded-full bg-emerald-200/20 blur-3xl"
+          className="pointer-events-none absolute inset-y-0 right-0 hidden w-[34%] bg-slate-800 [clip-path:polygon(28%_0,100%_0,100%_100%,0_100%)] lg:block"
           aria-hidden="true"
         />
         <div
-          className="pointer-events-none absolute -right-28 bottom-0 -z-10 h-72 w-72 rounded-full bg-teal-100/30 blur-3xl"
+          className="pointer-events-none absolute inset-y-0 right-0 hidden w-[14%] bg-emerald-900/70 [clip-path:polygon(62%_0,100%_0,100%_100%,26%_100%)] lg:block"
           aria-hidden="true"
         />
-        <div className="mx-auto max-w-4xl text-center">
-          <span className="mb-5 inline-flex rounded-full border border-emerald-200/80 bg-white/70 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-brand-forest shadow-sm">
-            Simple, transparent pricing
-          </span>
-          <h1 className="text-4xl font-extrabold leading-[1.25] tracking-tight text-slate-900 sm:text-5xl lg:text-6xl">
-            Simple Plans for <span className="text-brand-forest">Every Stage of Growth</span>
-          </h1>
-          <p className="mx-auto mt-7 max-w-3xl text-base leading-relaxed text-slate-600 sm:mt-8 sm:text-lg">
-            Market both exceptional client experiences and manage your operations smoothly with no hidden booking transaction fees.
-          </p>
+        <div className="relative mx-auto max-w-7xl">
+          <div className="mx-auto max-w-4xl text-center">
+            <h1 className="detail-hero-reveal text-4xl font-extrabold leading-[1.12] tracking-tight text-white sm:text-5xl lg:text-6xl">
+              Simple Plans for
+              <span className="mt-1 block text-emerald-300">Every Stage of Growth</span>
+            </h1>
+            <p className="detail-hero-reveal detail-hero-reveal-delay-1 mx-auto mt-5 max-w-3xl text-base leading-relaxed text-slate-300 sm:text-lg">
+              Market both exceptional client experiences and manage your operations smoothly with no hidden booking transaction fees.
+            </p>
 
-          <div className="mt-6 flex items-center justify-center gap-3 sm:mt-7">
-            <span className={`text-xs font-semibold ${!annualBilling ? 'text-slate-900' : 'text-slate-500'}`}>
-              Monthly
-            </span>
-            <button
-              type="button"
-              onClick={() => setAnnualBilling((current) => !current)}
-              className="relative flex h-7 w-14 items-center rounded-full bg-brand-forest p-1 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-forest focus-visible:ring-offset-2"
-              aria-label={`Toggle annual billing: ${annualBilling ? 'annual' : 'monthly'} selected`}
-              aria-pressed={annualBilling}
-            >
-              <span
-                className={`h-5 w-5 rounded-full bg-white shadow-md transition-transform ${
-                  annualBilling ? 'translate-x-7' : 'translate-x-0'
+            <div className="detail-hero-reveal detail-hero-reveal-delay-2 mt-6 flex items-center justify-center gap-3 sm:mt-7">
+              <span className={`text-xs font-semibold transition-colors ${!annualBilling ? 'text-emerald-300' : 'text-slate-400'}`}>
+                Monthly
+              </span>
+              <button
+                type="button"
+                onClick={() => setAnnualBilling((current) => !current)}
+                className={`relative flex h-7 w-14 items-center rounded-full p-1 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 ${
+                  annualBilling ? 'bg-emerald-500' : 'bg-slate-600'
                 }`}
-              />
-            </button>
-            <span className={`text-xs font-semibold ${annualBilling ? 'text-slate-900' : 'text-slate-500'}`}>
-              Annual
-            </span>
-            <span className="ml-1 text-[11px] font-bold bg-emerald-100 text-brand-forest px-2 py-0.5 rounded-full">
-              Save 20%
-            </span>
+                aria-label={`Toggle annual billing: ${annualBilling ? 'annual' : 'monthly'} selected`}
+                aria-pressed={annualBilling}
+              >
+                <span
+                  className={`h-5 w-5 rounded-full bg-white shadow-md transition-transform ${
+                    annualBilling ? 'translate-x-7' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+              <span className={`text-xs font-semibold transition-colors ${annualBilling ? 'text-emerald-300' : 'text-slate-400'}`}>
+                Annual
+              </span>
+              <span className="ml-1 rounded-full bg-emerald-300 px-2 py-0.5 text-[11px] font-bold text-brand-forest">
+                Save 20%
+              </span>
+            </div>
           </div>
         </div>
       </section>

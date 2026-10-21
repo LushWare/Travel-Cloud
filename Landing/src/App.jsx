@@ -89,7 +89,7 @@ export default function App() {
     <BrowserRouter>
       <SmoothScroll />
       <div className="min-h-screen bg-white text-slate-900 flex flex-col font-sans selection:bg-brand-mint selection:text-brand-forest">
-        <Navbar onOpenDemo={handleOpenDemo} />
+        <Navbar />
         <main className="flex-grow">
           <Routes>
             <Route path="/" element={<HomePage onOpenDemo={handleOpenDemo} />} />
@@ -111,7 +111,7 @@ export default function App() {
         <Footer onOpenDemo={handleOpenDemo} />
 
         <a
-          href="https://wa.me/18004892041?text=Hi%2C%20I%27d%20like%20to%20know%20more%20about%20LushTravelCloud."
+          href="https://wa.me/94716430053?text=Hi%2C%20I%27d%20like%20to%20know%20more%20about%20LushTravelCloud."
           target="_blank"
           rel="noopener noreferrer"
           aria-label="Chat with us on WhatsApp"

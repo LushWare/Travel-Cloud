@@ -4,6 +4,8 @@ import toast from '@/lib/toast';
 import { apiErrorMessage } from '@/lib/apiErrorMessage';
 
 const AuthContext = createContext();
+const INACTIVITY_LIMIT_MS = 60 * 60 * 1000;
+const LAST_ACTIVITY_KEY = 'lastActivity';
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -12,14 +14,13 @@ export const AuthProvider = ({ children }) => {
   const [token, setToken] = useState(null);
 
   const API_URL = import.meta.env.VITE_API_URL || 'https://api.lushtravelcloud.com/api/v1';
-  const INACTIVITY_LIMIT_MS = 60 * 60 * 1000;
 
   // Initialize auth from localStorage
   useEffect(() => {
     const initializeAuth = () => {
       const savedToken = localStorage.getItem('token') || sessionStorage.getItem('token');
       const savedUser = localStorage.getItem('user') || sessionStorage.getItem('user');
-      const lastActivity = sessionStorage.getItem('lastActivity');
+      const lastActivity = localStorage.getItem(LAST_ACTIVITY_KEY) || sessionStorage.getItem(LAST_ACTIVITY_KEY);
 
       if (savedToken) {
         const now = Date.now();
@@ -27,9 +28,10 @@ export const AuthProvider = ({ children }) => {
           // Session expired due to inactivity
           localStorage.removeItem('token');
           localStorage.removeItem('user');
+          localStorage.removeItem(LAST_ACTIVITY_KEY);
           sessionStorage.removeItem('token');
           sessionStorage.removeItem('user');
-          sessionStorage.removeItem('lastActivity');
+          sessionStorage.removeItem(LAST_ACTIVITY_KEY);
         } else {
           setToken(savedToken);
           if (savedUser) {
@@ -78,8 +80,10 @@ export const AuthProvider = ({ children }) => {
         // Save to localStorage
         localStorage.setItem('token', authToken);
         localStorage.setItem('user', JSON.stringify(userData));
+        localStorage.setItem(LAST_ACTIVITY_KEY, Date.now().toString());
         sessionStorage.setItem('token', authToken);
         sessionStorage.setItem('user', JSON.stringify(userData));
+        sessionStorage.setItem(LAST_ACTIVITY_KEY, localStorage.getItem(LAST_ACTIVITY_KEY));
 
         // Update state
         setToken(authToken);
@@ -104,48 +108,56 @@ export const AuthProvider = ({ children }) => {
 
   // Logout function
   const logout = useCallback(async (opts = {}) => {
-    try {
-      // Only call logout endpoint if we have a valid token
-      if (token) {
-        try {
-          await axios.post(`${API_URL}/auth/logout`);
-        } catch (error) {
-          // Logout endpoint errors are not critical - continue with local cleanup
+    if (token) {
+      try {
+        axios.post(`${API_URL}/auth/logout`).catch((error) => {
           if (error.response?.status === 401) {
             console.warn('Token already expired or invalid, skipping server logout');
           } else {
             console.error('Logout error:', error);
           }
-        }
+        });
+      } catch (error) {
+        console.error('Logout error:', error);
       }
-    } finally {
-      // Clear localStorage
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      sessionStorage.removeItem('token');
-      sessionStorage.removeItem('user');
-      sessionStorage.removeItem('lastActivity');
 
-      // Clear state
-      setToken(null);
-      setUser(null);
-      setIsAuthenticated(false);
+    }
+    // Clear local state immediately; server logout must not keep the UI authenticated.
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    localStorage.removeItem(LAST_ACTIVITY_KEY);
+    sessionStorage.removeItem('token');
+    sessionStorage.removeItem('user');
+    sessionStorage.removeItem(LAST_ACTIVITY_KEY);
 
-      // Clear authorization header
-      delete axios.defaults.headers.common['Authorization'];
-      const { silent = false } = opts || {};
-      if (!silent) {
-        toast.success('Logged out successfully');
-      }
+    setToken(null);
+    setUser(null);
+    setIsAuthenticated(false);
+
+    delete axios.defaults.headers.common['Authorization'];
+    const { silent = false } = opts || {};
+    if (!silent) {
+      toast.success('Logged out successfully');
     }
   }, [API_URL, token]);
 
   const inactivityTimerRef = useRef(null);
 
   useEffect(() => {
-    const resetTimer = () => {
+    const getLastActivity = () => {
+      const storedValue = localStorage.getItem(LAST_ACTIVITY_KEY) || sessionStorage.getItem(LAST_ACTIVITY_KEY);
+      const timestamp = Number(storedValue);
+      return Number.isFinite(timestamp) && timestamp > 0 ? timestamp : null;
+    };
+
+    const resetTimer = (lastActivityAt = Date.now()) => {
       if (inactivityTimerRef.current) {
         clearTimeout(inactivityTimerRef.current);
+      }
+      const remainingTime = INACTIVITY_LIMIT_MS - (Date.now() - lastActivityAt);
+      if (remainingTime <= 0) {
+        logout({ silent: true });
+        return;
       }
       inactivityTimerRef.current = setTimeout(() => {
         try {
@@ -153,42 +165,51 @@ export const AuthProvider = ({ children }) => {
         } catch (e) {
         }
         logout({ silent: true });
-      }, INACTIVITY_LIMIT_MS);
+      }, remainingTime);
     };
 
     const updateLastActivity = () => {
+      const now = Date.now();
       try {
-        sessionStorage.setItem('lastActivity', Date.now().toString());
+        localStorage.setItem(LAST_ACTIVITY_KEY, now.toString());
+        sessionStorage.setItem(LAST_ACTIVITY_KEY, now.toString());
       } catch (e) {
       }
-      resetTimer();
+      resetTimer(now);
     };
 
-    const visibilityListener = () => {
-      try {
-        const last = sessionStorage.getItem('lastActivity');
-        if (last && Date.now() - Number(last) > INACTIVITY_LIMIT_MS) {
-          logout({ silent: true });
-        } else {
-          resetTimer();
-        }
-      } catch (e) {
+    const checkLastActivity = () => {
+      const lastActivityAt = getLastActivity();
+      if (lastActivityAt === null) {
+        updateLastActivity();
+      } else {
+        resetTimer(lastActivityAt);
+      }
+    };
+
+    const storageListener = (event) => {
+      if (event.key === 'token' && !event.newValue) {
+        logout({ silent: true });
+      } else if (event.key === LAST_ACTIVITY_KEY) {
+        checkLastActivity();
       }
     };
 
     if (isAuthenticated) {
-      updateLastActivity();
+      checkLastActivity();
       const events = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll'];
       events.forEach((ev) => window.addEventListener(ev, updateLastActivity));
-      document.addEventListener('visibilitychange', visibilityListener);
-      window.addEventListener('focus', visibilityListener);
+      document.addEventListener('visibilitychange', checkLastActivity);
+      window.addEventListener('focus', checkLastActivity);
+      window.addEventListener('storage', storageListener);
     }
 
     return () => {
       const events = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll'];
       events.forEach((ev) => window.removeEventListener(ev, updateLastActivity));
-      document.removeEventListener('visibilitychange', visibilityListener);
-      window.removeEventListener('focus', visibilityListener);
+      document.removeEventListener('visibilitychange', checkLastActivity);
+      window.removeEventListener('focus', checkLastActivity);
+      window.removeEventListener('storage', storageListener);
       if (inactivityTimerRef.current) {
         clearTimeout(inactivityTimerRef.current);
       }

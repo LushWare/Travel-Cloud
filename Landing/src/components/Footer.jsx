@@ -86,19 +86,19 @@ export default function Footer() {
               <li className="flex items-center gap-2">
                 <Mail size={13} className="text-emerald-400" />
                 <a
-                  href="mailto:hello@lushtravelcloud.com"
+                  href="mailto:info@lushware.net"
                   className="hover:text-emerald-400 transition-colors"
                 >
-                  hello@lushtravelcloud.com
+                  info@lushware.net
                 </a>
               </li>
               <li className="flex items-center gap-2">
                 <Phone size={13} className="text-emerald-400" />
                 <a
-                  href="tel:+18004892041"
+                  href="tel:+94 71 643 0053"
                   className="hover:text-emerald-400 transition-colors"
                 >
-                  +1 (800) 489-2041
+                  +94 71 643 0053
                 </a>
               </li>
             </ul>

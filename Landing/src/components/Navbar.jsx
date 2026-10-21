@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { NavLink, Link, useLocation } from 'react-router-dom';
 import { Menu, X, ArrowRight } from 'lucide-react';
 
-export default function Navbar({ onOpenDemo }) {
+export default function Navbar() {
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const location = useLocation();
@@ -98,8 +98,9 @@ export default function Navbar({ onOpenDemo }) {
 
         {/* Right CTA Button */}
         <div className="hidden sm:flex items-center gap-4">
-          <button
-            onClick={() => onOpenDemo('both')}
+          <a
+            href="/contact"
+            onClick={() => handleNavigationClick('/contact')}
             className="group inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-brand-forest hover:bg-brand-forestDark text-white text-[13.5px] font-medium transition-all duration-200 shadow-sm hover:shadow-glow active:scale-95"
           >
             <span>Get Started</span>
@@ -107,7 +108,7 @@ export default function Navbar({ onOpenDemo }) {
               size={15}
               className="transition-transform duration-200 group-hover:translate-x-1"
             />
-          </button>
+          </a>
         </div>
 
         {/* Mobile menu button */}
@@ -143,16 +144,14 @@ export default function Navbar({ onOpenDemo }) {
           </div>
 
           <div className="pt-3 border-t border-slate-100 flex flex-col gap-3">
-            <button
-              onClick={() => {
-                setMobileMenuOpen(false);
-                onOpenDemo('both');
-              }}
+            <a
+              href="/contact"
+              onClick={() => handleNavigationClick('/contact')}
               className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-full bg-brand-forest text-white text-sm font-semibold shadow-glow"
             >
               <span>Get Started</span>
               <ArrowRight size={16} />
-            </button>
+            </a>
           </div>
         </div>
       )}
