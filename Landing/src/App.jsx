@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import Lenis from 'lenis';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
@@ -71,11 +71,45 @@ function SmoothScroll() {
   return null;
 }
 
-export default function App() {
-  const handleBookConsultation = () => window.location.assign('/contact');
+function PersistentContactPage() {
+  const { pathname } = useLocation();
+  const isContactPage = pathname === '/contact';
 
   return (
+    <div
+      aria-hidden={!isContactPage}
+      style={
+        isContactPage
+          ? undefined
+          : {
+              position: 'fixed',
+              left: '-10000px',
+              top: 0,
+              width: '100vw',
+              visibility: 'hidden',
+              pointerEvents: 'none',
+            }
+      }
+    >
+      <ContactPage />
+    </div>
+  );
+}
+
+export default function App() {
+  return (
     <BrowserRouter>
+      <AppContent />
+    </BrowserRouter>
+  );
+}
+
+function AppContent() {
+  const navigate = useNavigate();
+  const handleBookConsultation = () => navigate('/contact');
+
+  return (
+    <>
       <SmoothScroll />
       <div className="min-h-screen bg-white text-slate-900 flex flex-col font-sans selection:bg-brand-mint selection:text-brand-forest">
         <Navbar />
@@ -92,9 +126,10 @@ export default function App() {
             />
             <Route path="/why-us" element={<WhyUsPage />} />
             <Route path="/pricing" element={<PricingPage onBookConsultation={handleBookConsultation} />} />
-            <Route path="/contact" element={<ContactPage />} />
+            <Route path="/contact" element={null} />
             <Route path="*" element={<HomePage onBookConsultation={handleBookConsultation} />} />
           </Routes>
+          <PersistentContactPage />
         </main>
 
         <Footer />
@@ -117,6 +152,6 @@ export default function App() {
         </a>
 
       </div>
-    </BrowserRouter>
+    </>
   );
 }
