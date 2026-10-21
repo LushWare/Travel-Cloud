@@ -98,8 +98,8 @@ export default function Navbar() {
 
         {/* Right CTA Button */}
         <div className="hidden sm:flex items-center gap-4">
-          <a
-            href="/contact"
+          <Link
+            to="/contact"
             onClick={() => handleNavigationClick('/contact')}
             className="group inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-brand-forest hover:bg-brand-forestDark text-white text-[13.5px] font-medium transition-all duration-200 shadow-sm hover:shadow-glow active:scale-95"
           >
@@ -108,7 +108,7 @@ export default function Navbar() {
               size={15}
               className="transition-transform duration-200 group-hover:translate-x-1"
             />
-          </a>
+          </Link>
         </div>
 
         {/* Mobile menu button */}
@@ -144,14 +144,14 @@ export default function Navbar() {
           </div>
 
           <div className="pt-3 border-t border-slate-100 flex flex-col gap-3">
-            <a
-              href="/contact"
+            <Link
+              to="/contact"
               onClick={() => handleNavigationClick('/contact')}
               className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-full bg-brand-forest text-white text-sm font-semibold shadow-glow"
             >
               <span>Get Started</span>
               <ArrowRight size={16} />
-            </a>
+            </Link>
           </div>
         </div>
       )}
