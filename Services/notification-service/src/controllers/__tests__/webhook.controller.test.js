@@ -1,12 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const {
-  mockGetLeadData, mockMapFacebookLeadToLead, mockSubmitFacebookLead,
+  mockGetLeadData, mockMapFacebookLeadToLead, mockSubmitFacebookLead, mockSubmitGoogleAdsLead,
   mockLogWhatsappCommunication, mockLoggerInfo,
 } = vi.hoisted(() => ({
   mockGetLeadData: vi.fn(),
   mockMapFacebookLeadToLead: vi.fn(),
   mockSubmitFacebookLead: vi.fn(),
+  mockSubmitGoogleAdsLead: vi.fn(),
   mockLogWhatsappCommunication: vi.fn(),
   mockLoggerInfo: vi.fn(),
 }));
@@ -19,6 +20,7 @@ vi.mock('../../utils/facebook.js', () => ({
 
 vi.mock('../../services/lead.client.js', () => ({
   submitFacebookLead: mockSubmitFacebookLead,
+  submitGoogleAdsLead: mockSubmitGoogleAdsLead,
   logWhatsappCommunication: mockLogWhatsappCommunication,
 }));
 
@@ -26,7 +28,7 @@ vi.mock('../../config/logger.js', () => ({
   default: { info: mockLoggerInfo, warn: vi.fn(), error: vi.fn() },
 }));
 
-const { handleLeadWebhook, verifyWhatsappWebhook, handleWhatsappWebhook } = await import('../webhook.controller.js');
+const { handleLeadWebhook, handleGoogleAdsLeadWebhook, verifyWhatsappWebhook, handleWhatsappWebhook } = await import('../webhook.controller.js');
 
 function buildReqRes(body) {
   const req = { body, get: () => null, log: { error: vi.fn() } };
@@ -38,9 +40,11 @@ beforeEach(() => {
   mockGetLeadData.mockReset();
   mockMapFacebookLeadToLead.mockReset();
   mockSubmitFacebookLead.mockReset();
+  mockSubmitGoogleAdsLead.mockReset();
   mockLogWhatsappCommunication.mockReset();
   mockLoggerInfo.mockReset();
   process.env.FACEBOOK_PAGE_ACCESS_TOKEN = 'test-token';
+  process.env.GOOGLE_ADS_WEBHOOK_KEY = 'google-key';
   process.env.WHATSAPP_VERIFY_TOKEN = 'test-verify-token';
   process.env.NODE_ENV = 'test';
 });
@@ -81,6 +85,65 @@ describe('handleLeadWebhook — Facebook Lead Ads processing', () => {
       expect.objectContaining({ leadgenId: 'fb-lead-2' }),
       expect.stringMatching(/duplicate/i)
     );
+  });
+});
+
+describe('handleGoogleAdsLeadWebhook', () => {
+  it('maps a Google lead-form submission into lead-service', async () => {
+    mockSubmitGoogleAdsLead.mockResolvedValue({ data: { leadId: 'lead-1', duplicate: false } });
+    const { req, res } = buildReqRes({
+      google_key: 'google-key',
+      lead_id: 'google-lead-1',
+      campaign_id: 'campaign-2',
+      user_column_data: [
+        { column_id: 'FULL_NAME', string_value: 'Jane Doe' },
+        { column_id: 'EMAIL', string_value: 'jane@example.com' },
+        { column_id: 'PHONE_NUMBER', string_value: '+15551234567' },
+        { column_name: 'Destination', string_value: 'Sri Lanka' },
+        { column_name: 'Number of travelers', string_value: '2 travelers' },
+      ],
+    });
+
+    await handleGoogleAdsLeadWebhook(req, res, vi.fn());
+
+    expect(mockSubmitGoogleAdsLead).toHaveBeenCalledWith(expect.objectContaining({
+      leadId: 'google-lead-1',
+      name: 'Jane Doe',
+      email: 'jane@example.com',
+      phone: '+15551234567',
+      destination: 'Sri Lanka',
+      numberOfTravelers: 2,
+    }));
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it('rejects submissions with a wrong webhook key', async () => {
+    const { req, res } = buildReqRes({ google_key: 'wrong-key', lead_id: 'google-lead-1' });
+    const next = vi.fn();
+
+    await handleGoogleAdsLeadWebhook(req, res, next);
+
+    expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 401 }));
+    expect(mockSubmitGoogleAdsLead).not.toHaveBeenCalled();
+  });
+
+  it('forwards provider test submissions for CRM creation', async () => {
+    mockSubmitGoogleAdsLead.mockResolvedValue({ data: { leadId: 'lead-test', duplicate: false } });
+    const { req, res } = buildReqRes({
+      google_key: 'google-key',
+      lead_id: 'google-test-1',
+      is_test: true,
+      user_column_data: [{ column_id: 'EMAIL', string_value: 'test@example.com' }],
+    });
+
+    await handleGoogleAdsLeadWebhook(req, res, vi.fn());
+
+    expect(mockSubmitGoogleAdsLead).toHaveBeenCalledWith(expect.objectContaining({
+      leadId: 'google-test-1',
+      email: 'test@example.com',
+      isTest: true,
+    }));
+    expect(res.status).toHaveBeenCalledWith(200);
   });
 });
 

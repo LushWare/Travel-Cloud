@@ -21,6 +21,21 @@ export async function submitFacebookLead({ leadgenId, name, email, phone, messag
   return res.json();
 }
 
+export async function submitGoogleAdsLead(payload, fetchImpl = fetch) {
+  const res = await fetchImpl(`${LEAD_SERVICE_URL}/api/v1/leads/internal/google-ads-lead`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-internal-token': INTERNAL_EVENTS_TOKEN,
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to submit Google Ads lead to lead-service (status ${res.status})`);
+  }
+  return res.json();
+}
+
 /**
  * Log an inbound WhatsApp message or an outbound delivery-status callback
  * onto the matching lead's timeline. lead-service resolves `phone` to a

@@ -9,6 +9,7 @@ import {
   createWebsiteContactLead,
   handleInternalEvent, draftLead,
   handleFacebookLeadEvent,
+  handleGoogleAdsLeadEvent,
   logCommunication, sendWhatsappReply,
 } from '../controllers/lead.controller.js';
 import {
@@ -40,6 +41,7 @@ const internalTokenAuth = (req, res, next) => {
 };
 router.post('/internal/events', internalTokenAuth, handleInternalEvent);
 router.post('/internal/facebook-lead', internalTokenAuth, handleFacebookLeadEvent);
+router.post('/internal/google-ads-lead', internalTokenAuth, handleGoogleAdsLeadEvent);
 router.post('/internal/communication-logs', internalTokenAuth, logCommunication);
 router.post('/internal/intake', internalTokenAuth, intakeLead);
 router.get('/internal/by-phone', internalTokenAuth, lookupLeadsByPhone);
