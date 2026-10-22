@@ -1,7 +1,7 @@
 import prisma from '../db/client.js';
 import AppError from '../utils/appError.js';
 import asyncHandler from '../utils/asyncHandler.js';
-import { createLeadSchema, updateLeadSchema, logCommunicationSchema, whatsappReplySchema } from '../validators/lead.validator.js';
+import { createLeadSchema, updateLeadSchema, logCommunicationSchema, whatsappReplySchema, googleAdsLeadSchema } from '../validators/lead.validator.js';
 import { sendWhatsappText } from '../services/notification.client.js';
 import {
   validateTransition,
@@ -655,6 +655,81 @@ export const handleFacebookLeadEvent = asyncHandler(async (req, res) => {
         assignedToId: assignedId || null,
         assignmentMode: assignedId ? 'auto' : 'manual',
         statusHistory: { create: [{ status: 'NEW', actor: 'USER', changedById: null, notes: 'Created from Facebook Lead Ads' }] },
+      },
+    });
+  });
+
+  res.status(201).json({ success: true, data: { leadId: lead.id, salesRepId: lead.assignedToId, duplicate: false } });
+});
+
+export const handleGoogleAdsLeadEvent = asyncHandler(async (req, res) => {
+  const parsed = googleAdsLeadSchema.safeParse(req.body || {});
+  if (!parsed.success) {
+    const messages = parsed.error.issues.map((issue) => issue.message).join('; ');
+    throw new AppError(messages, 400);
+  }
+  const leadData = parsed.data;
+  const isTest = leadData.isTest === true;
+  const email = leadData.email?.trim().toLowerCase() || null;
+  const phone = leadData.phone?.replace(/\D/g, '') || null;
+  const existingByProviderId = await prisma.lead.findFirst({
+    where: { intakeChannel: 'google-ads', intakeSessionId: leadData.leadId },
+    select: { id: true },
+  });
+  if (existingByProviderId) {
+    return res.json({ success: true, data: { leadId: existingByProviderId.id, duplicate: true } });
+  }
+
+  const existing = isTest ? null : await prisma.lead.findFirst({
+    where: {
+      OR: [
+        ...(email ? [{ email }] : []),
+        ...(phone ? [{ phone }, { phoneNormalized: phone }, { whatsappNormalized: phone }] : []),
+      ],
+    },
+    select: { id: true },
+  });
+  if (existing) {
+    const duplicateNote = `Duplicate Google Ads lead submission (Lead ID: ${leadData.leadId})`;
+    const priorNote = await prisma.leadRemark.findFirst({
+      where: { leadId: existing.id, text: duplicateNote },
+      select: { id: true },
+    });
+    if (!priorNote) {
+      await prisma.leadRemark.create({
+        data: { leadId: existing.id, text: duplicateNote, date: new Date(), addedById: null },
+      });
+    }
+    return res.json({ success: true, data: { leadId: existing.id, duplicate: true } });
+  }
+
+  const lead = await prisma.$transaction(async (tx) => {
+    const assignedId = await autoAssignSalesRep(tx, {});
+    return tx.lead.create({
+      data: {
+        name: `${isTest ? '[TEST] ' : ''}${leadData.name || 'Google Ads Lead'}`,
+        email,
+        phone,
+        phoneNormalized: normalizePhone(phone),
+        source: 'google_ads',
+        platform: 'Google_Ads',
+        intakeChannel: 'google-ads',
+        intakeSessionId: leadData.leadId,
+        destination: leadData.destination || null,
+        travelDate: leadData.travelDate ? new Date(leadData.travelDate) : null,
+        numberOfTravelers: leadData.numberOfTravelers ?? null,
+        budget: leadData.budget || null,
+        message: leadData.message || null,
+        lifecycleStatus: 'NEW',
+        tags: ['google-ads-lead', ...(isTest ? ['google-ads-test'] : [])],
+        assignedToId: assignedId || null,
+        assignmentMode: assignedId ? 'auto' : 'manual',
+        statusHistory: { create: [{
+          status: 'NEW',
+          actor: 'USER',
+          changedById: null,
+          notes: isTest ? 'Google Ads webhook test submission' : 'Created from Google Ads Lead Form',
+        }] },
       },
     });
   });

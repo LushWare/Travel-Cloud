@@ -1,7 +1,8 @@
 import asyncHandler from '../utils/asyncHandler.js';
 import AppError from '../utils/appError.js';
 import { verifyWebhookSignature, getLeadData, mapFacebookLeadToLead } from '../utils/facebook.js';
-import { submitFacebookLead, logWhatsappCommunication } from '../services/lead.client.js';
+import { mapGoogleAdsLead } from '../utils/googleAds.js';
+import { submitFacebookLead, submitGoogleAdsLead, logWhatsappCommunication } from '../services/lead.client.js';
 import logger from '../config/logger.js';
 
 export const verifyWebhook = asyncHandler(async (req, res) => {
@@ -44,6 +45,24 @@ export const handleLeadWebhook = asyncHandler(async (req, res) => {
   }
 
   res.status(200).json({ received: true });
+});
+
+export const handleGoogleAdsLeadWebhook = asyncHandler(async (req, res) => {
+  const expectedKey = process.env.GOOGLE_ADS_WEBHOOK_KEY;
+  const receivedKey = req.body?.google_key;
+  if (!expectedKey) throw new AppError('Google Ads webhook is not configured', 503);
+  if (typeof receivedKey !== 'string' || receivedKey !== expectedKey) {
+    throw new AppError('Invalid Google Ads webhook key', 401);
+  }
+
+  const lead = mapGoogleAdsLead(req.body);
+  if (!lead.leadId || (!lead.email && !lead.phone)) {
+    throw new AppError('Google Ads lead must include a lead ID and email or phone', 400);
+  }
+
+  const result = await submitGoogleAdsLead(lead);
+  req.log?.info?.({ leadId: result?.data?.leadId, duplicate: result?.data?.duplicate, test: lead.isTest }, 'Google Ads lead processed');
+  return res.status(200).json({ received: true });
 });
 
 export const verifyWhatsappWebhook = asyncHandler(async (req, res) => {

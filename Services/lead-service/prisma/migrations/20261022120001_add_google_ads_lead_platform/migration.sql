@@ -1,0 +1,1 @@
+ALTER TYPE "crm_leads"."LeadPlatform" ADD VALUE 'Google Ads';

@@ -7,6 +7,7 @@ const SOURCE_OPTIONS = [
   { id: 'website', label: 'Website' },
   { id: 'facebook', label: 'Facebook' },
   { id: 'instagram', label: 'Instagram' },
+  { id: 'google-ads', label: 'Google Ads' },
   { id: 'phone_call', label: 'Phone Call' },
   { id: 'email', label: 'Email' },
   { id: 'referral', label: 'Referral' },

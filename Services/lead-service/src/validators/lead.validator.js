@@ -93,6 +93,21 @@ export const logCommunicationSchema = z.object({
   message: 'Either leadId or phone is required',
 });
 
+export const googleAdsLeadSchema = z.object({
+  leadId: z.string().trim().min(1).max(200),
+  isTest: z.boolean().optional(),
+  name: z.string().trim().max(200).nullable().optional(),
+  email: z.string().email().max(320).nullable().optional(),
+  phone: z.string().trim().max(50).nullable().optional(),
+  destination: z.string().trim().max(255).nullable().optional(),
+  travelDate: z.string().datetime().nullable().optional(),
+  numberOfTravelers: z.number().int().min(1).nullable().optional(),
+  budget: z.string().trim().max(100).nullable().optional(),
+  message: z.string().trim().max(2000).nullable().optional(),
+}).strict().refine((value) => Boolean(value.email || value.phone), {
+  message: 'Lead must have email or phone',
+});
+
 export const whatsappReplySchema = z.object({
   text: z.string().trim().min(1).max(4096),
 }).strict();

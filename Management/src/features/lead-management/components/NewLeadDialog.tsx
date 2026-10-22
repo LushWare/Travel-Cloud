@@ -450,6 +450,7 @@ const NewLeadDialog = ({ isOpen, onClose, salesReps, onSuccess }: NewLeadDialogP
                       <SelectItem value="Website_Form">🌐 Website Form</SelectItem>
                       <SelectItem value="Facebook">Facebook</SelectItem>
                       <SelectItem value="Instagram">Instagram</SelectItem>
+                      <SelectItem value="Google_Ads">Google Ads</SelectItem>
                       <SelectItem value="Phone_Call">📞 Phone Call</SelectItem>
                       <SelectItem value="Referral">🤝 Referral</SelectItem>
                       <SelectItem value="Email">📧 Email</SelectItem>

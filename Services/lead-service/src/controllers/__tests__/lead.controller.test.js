@@ -7,6 +7,7 @@ const {
   mockLeadUpdate,
   mockLeadCreate,
   mockLeadRemarkCreate,
+  mockLeadRemarkFindFirst,
   mockSettingsUpsert,
   mockSettingsUpdate,
   mockSelectionCount,
@@ -25,6 +26,7 @@ const {
   mockLeadUpdate: vi.fn(),
   mockLeadCreate: vi.fn(),
   mockLeadRemarkCreate: vi.fn(),
+  mockLeadRemarkFindFirst: vi.fn(),
   mockSettingsUpsert: vi.fn(),
   mockSettingsUpdate: vi.fn(),
   mockSelectionCount: vi.fn(),
@@ -45,7 +47,7 @@ vi.mock('../../db/client.js', () => ({
       update: mockLeadUpdate, create: mockLeadCreate,
       groupBy: mockLeadGroupBy, aggregate: mockLeadAggregate, count: mockLeadCount,
     },
-    leadRemark: { create: mockLeadRemarkCreate },
+    leadRemark: { create: mockLeadRemarkCreate, findFirst: mockLeadRemarkFindFirst },
     leadCommunicationLog: { create: mockLeadCommunicationLogCreate },
     settings: { upsert: mockSettingsUpsert, update: mockSettingsUpdate },
     leadPackageSelection: { count: mockSelectionCount },
@@ -64,7 +66,7 @@ vi.mock('../../services/notification.client.js', () => ({
 
 import {
   updateLead, createLead, draftLead, assignLead, unassignLead, getLeads,
-  getLeadsByStatus, searchLeads, handleFacebookLeadEvent,
+  getLeadsByStatus, searchLeads, handleFacebookLeadEvent, handleGoogleAdsLeadEvent,
   logCommunication, sendWhatsappReply, getLeadStats,
 } from '../lead.controller.js';
 
@@ -478,6 +480,7 @@ describe('handleFacebookLeadEvent', () => {
     mockLeadFindFirst.mockReset();
     mockLeadCreate.mockReset();
     mockLeadRemarkCreate.mockReset();
+    mockLeadRemarkFindFirst.mockReset().mockResolvedValue(null);
     mockSettingsUpsert.mockReset().mockResolvedValue({ assignmentMode: 'manual' });
     mockSettingsUpdate.mockReset();
     mockTransaction.mockReset().mockImplementation(async (fn) => fn({ lead: txLead, settings: txSettings }));
@@ -524,6 +527,112 @@ describe('handleFacebookLeadEvent', () => {
 
     expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 400 }));
     expect(mockLeadFindFirst).not.toHaveBeenCalled();
+  });
+});
+
+describe('handleGoogleAdsLeadEvent', () => {
+  const txLead = { create: mockLeadCreate };
+  const txSettings = { upsert: mockSettingsUpsert, update: mockSettingsUpdate };
+
+  beforeEach(() => {
+    mockLeadFindFirst.mockReset().mockResolvedValue(null);
+    mockLeadCreate.mockReset().mockResolvedValue({ id: 'lead-google', assignedToId: null });
+    mockLeadRemarkCreate.mockReset();
+    mockSettingsUpsert.mockReset().mockResolvedValue({ assignmentMode: 'manual' });
+    mockSettingsUpdate.mockReset();
+    mockTransaction.mockReset().mockImplementation(async (fn) => fn({ lead: txLead, settings: txSettings }));
+  });
+
+  it('creates a Google Ads lead with its provider ID and trip details', async () => {
+    const req = { body: {
+      leadId: 'google-1', name: 'Jane Doe', email: 'Jane@Test.com', phone: '+1 (555) 123-4567',
+      destination: 'Sri Lanka', travelDate: '2027-04-01T00:00:00.000Z', numberOfTravelers: 2,
+    } };
+    const res = { json: vi.fn(), status: vi.fn().mockReturnThis() };
+
+    await handleGoogleAdsLeadEvent(req, res, vi.fn());
+
+    expect(mockLeadCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        email: 'jane@test.com', phone: '15551234567', source: 'google_ads', platform: 'Google_Ads',
+        intakeChannel: 'google-ads', intakeSessionId: 'google-1', destination: 'Sri Lanka',
+        numberOfTravelers: 2,
+      }),
+    }));
+    expect(res.status).toHaveBeenCalledWith(201);
+  });
+
+  it('saves test leads and uses the configured sales rep auto-assignment', async () => {
+    mockSettingsUpsert.mockResolvedValue({
+      id: 'settings-1',
+      assignmentMode: 'auto',
+      autoStrategy: 'round_robin',
+      enabledSalesRepIds: ['sales-rep-1'],
+      roundRobinIndex: 0,
+    });
+    mockLeadCreate.mockResolvedValue({ id: 'lead-google-test', assignedToId: 'sales-rep-1' });
+    const req = { body: {
+      leadId: 'google-test-1', isTest: true, name: 'Test Traveler',
+      email: 'test@example.com', phone: '+1 555 123 4567',
+    } };
+    const res = { json: vi.fn(), status: vi.fn().mockReturnThis() };
+
+    await handleGoogleAdsLeadEvent(req, res, vi.fn());
+
+    expect(mockLeadFindFirst).toHaveBeenCalledTimes(1);
+    expect(mockSettingsUpsert).toHaveBeenCalled();
+    expect(mockSettingsUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      data: { roundRobinIndex: { increment: 1 } },
+    }));
+    expect(mockLeadCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        name: '[TEST] Test Traveler',
+        tags: ['google-ads-lead', 'google-ads-test'],
+        assignedToId: 'sales-rep-1',
+        assignmentMode: 'auto',
+        intakeSessionId: 'google-test-1',
+      }),
+    }));
+    expect(res.status).toHaveBeenCalledWith(201);
+  });
+
+  it('returns the existing lead when Google retries the same lead ID', async () => {
+    mockLeadFindFirst.mockResolvedValueOnce({ id: 'lead-existing' });
+    const req = { body: { leadId: 'google-1', phone: '15551234567' } };
+    const res = { json: vi.fn() };
+
+    await handleGoogleAdsLeadEvent(req, res, vi.fn());
+
+    expect(mockLeadCreate).not.toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledWith({ success: true, data: { leadId: 'lead-existing', duplicate: true } });
+  });
+
+  it('matches normalized phone numbers and does not repeat duplicate remarks on retries', async () => {
+    mockLeadFindFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 'lead-existing' });
+    mockLeadRemarkFindFirst.mockResolvedValue({ id: 'remark-existing' });
+    const req = { body: { leadId: 'google-1', phone: '+1 (555) 123-4567' } };
+    const res = { json: vi.fn() };
+
+    await handleGoogleAdsLeadEvent(req, res, vi.fn());
+
+    expect(mockLeadFindFirst).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      where: { OR: expect.arrayContaining([{ phoneNormalized: '15551234567' }]) },
+    }));
+    expect(mockLeadRemarkCreate).not.toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledWith({ success: true, data: { leadId: 'lead-existing', duplicate: true } });
+  });
+
+  it('rejects leads without a valid contact method', async () => {
+    const req = { body: { leadId: 'google-1', name: 'Jane Doe' } };
+    const res = { json: vi.fn(), status: vi.fn().mockReturnThis() };
+    const next = vi.fn();
+
+    await handleGoogleAdsLeadEvent(req, res, next);
+
+    expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 400 }));
+    expect(mockLeadCreate).not.toHaveBeenCalled();
   });
 });
 
