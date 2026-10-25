@@ -160,6 +160,12 @@ variable "facebook_page_access_token" {
   sensitive   = true
 }
 
+variable "google_ads_webhook_key" {
+  description = "Google Ads lead-form webhook verification key (notification)."
+  type        = string
+  sensitive   = true
+}
+
 variable "duffel_access_token" {
   description = "Duffel API access token (flight)."
   type        = string

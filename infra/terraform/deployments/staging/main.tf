@@ -20,7 +20,7 @@ module "deployment" {
   whatsapp_phone_number_id     = var.whatsapp_phone_number_id
   whatsapp_business_account_id = var.whatsapp_business_account_id
 
-  # Secret Manager secrets (26 rows of the plan table)
+  # Secret Manager secrets (27 rows of the plan table)
   database_url               = var.database_url
   direct_url                 = var.direct_url
   jwt_secret                 = var.jwt_secret
@@ -37,6 +37,7 @@ module "deployment" {
   facebook_verify_token      = var.facebook_verify_token
   facebook_app_secret        = var.facebook_app_secret
   facebook_page_access_token = var.facebook_page_access_token
+  google_ads_webhook_key     = var.google_ads_webhook_key
   duffel_access_token        = var.duffel_access_token
   travelport_client_id       = var.travelport_client_id
   travelport_client_secret   = var.travelport_client_secret

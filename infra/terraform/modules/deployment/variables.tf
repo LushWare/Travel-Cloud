@@ -71,7 +71,7 @@ variable "whatsapp_business_account_id" {
 }
 
 # ---------------------------------------------------------------------------
-# Secret Manager secrets — the full 26-row table from the deployment plan.
+# Secret Manager secrets — the full 27-row table from the deployment plan.
 # Every value is sensitive, required, and has no default: values must come
 # from this environment's terraform.tfvars (gitignored). The actual created
 # secret id is "<env>-<logical id>", see secrets.tf.
@@ -169,6 +169,12 @@ variable "facebook_app_secret" {
 
 variable "facebook_page_access_token" {
   description = "Facebook page access token (notification)."
+  type        = string
+  sensitive   = true
+}
+
+variable "google_ads_webhook_key" {
+  description = "Google Ads lead-form webhook verification key (notification)."
   type        = string
   sensitive   = true
 }

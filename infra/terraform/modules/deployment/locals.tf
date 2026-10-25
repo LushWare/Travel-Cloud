@@ -218,7 +218,7 @@ locals {
       name    = "${var.env}-notification-service"
       memory  = "512Mi"
       cpu     = "1"
-      secrets = ["${var.env}-internal-events-token", "${var.env}-email-user", "${var.env}-email-password", "${var.env}-whatsapp-access-token", "${var.env}-whatsapp-app-secret", "${var.env}-whatsapp-verify-token", "${var.env}-facebook-verify-token", "${var.env}-facebook-app-secret", "${var.env}-facebook-page-access-token"]
+      secrets = ["${var.env}-internal-events-token", "${var.env}-email-user", "${var.env}-email-password", "${var.env}-whatsapp-access-token", "${var.env}-whatsapp-app-secret", "${var.env}-whatsapp-verify-token", "${var.env}-facebook-verify-token", "${var.env}-facebook-app-secret", "${var.env}-facebook-page-access-token", "${var.env}-google-ads-webhook-key"]
       plain_env = {
         NODE_ENV                     = "production"
         LEAD_SERVICE_URL             = var.notification_lead_service_url
