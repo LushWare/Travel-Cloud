@@ -6,8 +6,8 @@ import {
 } from '../services/lead.client.js';
 import { getLatestSentDocument, resendDocument } from '../services/billing.client.js';
 
-function extractToolContext(body) {
-  const callId = body?.call?.call_id ?? body?.call_id ?? body?.args?.call_id ?? null;
+function extractToolContext(body, req) {
+  const callId = req.get?.('x-elevenlabs-conversation-id') ?? null;
   const args = body?.args && typeof body.args === 'object' ? body.args : (body || {});
   return { callId, args };
 }
@@ -21,7 +21,7 @@ function extractToolContext(body) {
 // on null — an explicit unavailable/failed result, never a success shape.
 async function resolveLeadId(callId) {
   if (!callId) return null;
-  const call = await prisma.voiceCall.findUnique({ where: { retellCallId: callId } });
+  const call = await prisma.voiceCall.findUnique({ where: { conversationId: callId } });
   if (!call || call.disposition !== 'IN_PROGRESS') return null;
   return call.leadId ?? null;
 }
@@ -52,7 +52,7 @@ const EVENT_WRITE_ATTEMPTS = 2;
 async function logEvent(callId, functionName, args, result, succeeded, startedAt, log) {
   if (!callId) return;
   try {
-    const call = await prisma.voiceCall.findUnique({ where: { retellCallId: callId } });
+    const call = await prisma.voiceCall.findUnique({ where: { conversationId: callId } });
     if (!call) return;
     for (let attempt = 1; attempt <= EVENT_WRITE_ATTEMPTS; attempt += 1) {
       try {
@@ -80,7 +80,7 @@ async function logEvent(callId, functionName, args, result, succeeded, startedAt
 function wrap(functionName, handler) {
   return asyncHandler(async (req, res) => {
     const startedAt = Date.now();
-    const { callId, args } = extractToolContext(req.body);
+    const { callId, args } = extractToolContext(req.body, req);
     let result;
     let succeeded = true;
     try {
@@ -92,7 +92,7 @@ function wrap(functionName, handler) {
     }
     // The handler's write has already committed by the time we get here. Letting
     // an audit failure escape would turn a successful tool call into a 500, and
-    // Retell retries failed tool calls — applying the same change twice. The
+    // ElevenLabs retries failed tool calls — applying the same change twice. The
     // audit write is therefore its own failure domain: loud in the logs, never
     // fatal to the result the handler produced.
     try {
@@ -118,7 +118,7 @@ export const getTripStatusTool = wrap('get_trip_status', async ({ callId, reques
   return { available: true, ...brief };
 });
 
-// Money — the tool's own Retell-side description instructs the agent to call
+// Money — the tool's own ElevenLabs-side description instructs the agent to call
 // this ONLY when the caller explicitly asks about price, payment, invoice or
 // balance (see docs/voice-agent-prompt.md). This endpoint's own contract is
 // the other half of that rule: it returns figures only when a quotation has
@@ -140,7 +140,7 @@ export const getPaymentStatusTool = wrap('get_payment_status', async ({ callId, 
 // only ever reaches the one lead bound to it (see resolveLeadId). Requiring
 // trip_confirmed as a real argument means the LLM must explicitly assert
 // confirmation happened on every single mutating call, not just once at the
-// top of the conversation — Retell's own tool schema also marks it required.
+// top of the conversation — the ElevenLabs tool schema also marks it required.
 function requireTripConfirmed(args) {
   return args?.trip_confirmed === true;
 }

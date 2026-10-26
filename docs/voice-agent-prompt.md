@@ -1,34 +1,22 @@
-# Retell agent configuration — Lushware voice sales agent
+# ElevenLabs agent configuration — Lushware voice sales agent
 
-Everything to paste into the Retell dashboard. Three parts:
+The live prompt and tool definitions are synchronized with `cd Services && node
+setup-voice-agent.mjs --apply`. This file is the prompt source of truth.
 
-1. **Begin message** — the first thing the caller hears
-2. **General prompt** — how the agent behaves
-3. **Post-call analysis** — the fields voice-service reads back
+The agent has seven live tools: `search_packages`, `get_trip_status`,
+`get_payment_status`, `attach_package`, `adjust_itinerary`, `preview_price`,
+and `resend_document`. Each tool is a webhook to `voice-service` and the
+conversation ID comes from ElevenLabs' system variable, not caller speech.
 
-The agent has seven live tools (see `Services/setup-voice-agent.mjs`'s
-`buildTools()`): `search_packages`, `get_trip_status`, `get_payment_status`,
-`attach_package`, `adjust_itinerary`, `preview_price`, `resend_document`.
-Every one of them is
-pushed to Retell automatically by that script — **you never paste a tool
-definition into the dashboard by hand.**
-
-**One real unknown, stated plainly:** the exact request Retell sends when it
-calls a tool has not been confirmed against a live call — unlike the
-inbound/post-call webhooks, which were verified end-to-end this session. The
-handler code is defensive about it (`toolDispatch.controller.js`), but the
-first real test call is what actually confirms tool calls work at all. Do that
-test before relying on this in production — see the checklist near the
-bottom.
-
+Rules here mirror `docs/designs/voice-sales-agent.md`. If the two ever disagree,
 Rules here mirror `docs/designs/voice-sales-agent.md`. If the two ever disagree,
 the design doc is the source of truth and this file is stale.
 
 ---
 
-## 1. Begin message
+## 1. First message
 
-Retell → your agent → **Begin Message**.
+ElevenLabs → agent → **First message**.
 
 ```
 Thanks for calling {{brand}}. You're speaking with an AI assistant. How can I help you today?
@@ -41,7 +29,7 @@ so the brand name changes by editing `.env` — never by editing the agent.
 
 ## 2. General prompt
 
-Retell → your agent → **General Prompt**. Paste everything in the box below.
+ElevenLabs → agent → **System prompt**. The setup script syncs this block.
 
 ```
 # Who you are
@@ -297,13 +285,13 @@ Thank them by name if you know it. Confirm the callback. End warmly and briefly.
 
 ---
 
-## 3. Post-call analysis fields
+## 3. Post-call data collection
 
-Retell → your agent → **Post-Call Analysis** → add each as a **Custom Analysis
-Field**. `voice-service` reads exactly these names — a different name is silently
-ignored, and the lead arrives with an empty slot set.
+The setup script configures these as ElevenLabs post-call data collection
+fields. `voice-service` reads these exact names; a mismatch leaves the intake
+slots empty.
 
-| Field name     | Type   | Description to enter in Retell |
+| Field name     | Type   | Description |
 |----------------|--------|--------------------------------|
 | `destination`  | string | Where the caller wants to travel. Empty if not stated. |
 | `travelers`    | number | Total number of people travelling, adults and children. Empty if not stated. |
@@ -313,6 +301,7 @@ ignored, and the lead arrives with an empty slot set.
 | `email`        | string | The caller's email address, only if they gave one. Empty if not stated. |
 | `selected_package_id` | string | The exact `package_id` from a `search_packages` result the caller clearly confirmed. Never a guessed or invented id. Empty if nothing was confirmed. |
 | `needs_rep_followup` | boolean | True whenever a human must call this person back — including any time the agent said someone would get back to them. False only for a call that needs nothing further, such as a wrong number. |
+| `user_sentiment` | string | The caller's sentiment, such as Positive, Neutral, or Negative. |
 
 Ranges enforced on our side: `travelers` 1–50, `duration` 1–30 nights. A value
 outside those is dropped rather than stored wrong. `selected_package_id` that
@@ -326,18 +315,19 @@ fires after the call ends (see the caller-cases note above). For a returning
 caller with an open trip, `attach_package` already works live; `selected_package_id`
 is a harmless no-op there since the package is already attached.
 
-`needs_rep_followup` drives the email that alerts the sales team. If Retell omits
+`needs_rep_followup` drives the email that alerts the sales team. If ElevenLabs omits
 it, or sends something unparseable, we treat it as **true** — an extra email costs
 nothing, an unkept callback promise costs a customer.
 
-Also switch on **Call Summary** and **User Sentiment** — both are stored and shown
-on the lead's AI tab.
+The transcription summary and `user_sentiment` are stored with the call record.
 
 ---
 
 ## Test it before pointing the real number at it
 
-Retell's **Test Call** runs the agent without a phone number. Work through:
+Use ElevenLabs agent preview for prompt behavior. Then test with a real inbound
+call because preview does not run the initiation webhook and cannot validate
+caller lookup or telephony metadata. Work through:
 
 - A new caller wanting the Maldives in December for two people — should trigger
   search_packages and describe a real package with no price attached
@@ -360,8 +350,8 @@ guess.
 
 ## First real call — what to check
 
-The tool-call wire format is the one thing in this build that isn't
-confirmed end-to-end (see the top of this file). On the first real test call:
+The first real test call confirms the ElevenLabs account configuration, phone
+metadata, and webhook delivery. On that call:
 
 1. Ask something that should trigger a tool (e.g. "what packages do you have
    for Bali?").
@@ -370,7 +360,6 @@ confirmed end-to-end (see the top of this file). On the first real test call:
 3. Open the lead in Management → **AI tab** → the call's action list should
    show `search_packages` (or whichever tool fired).
 
-If nothing shows up at all, the tool call likely isn't reaching voice-service —
-check the tool `url`s Retell has on file (`Services/setup-voice-agent.mjs`
-re-run with no `--apply` will show what it would push) and the
-`x-retell-tool-secret` header value against `RETELL_TOOL_SECRET` in `.env`.
+If a tool action does not appear, run `cd Services && node setup-voice-agent.mjs`
+to inspect the intended configuration, then verify ElevenLabs tool URLs and
+that the configured `x-elevenlabs-tool-secret` matches `ELEVENLABS_TOOL_SECRET`.

@@ -1,4 +1,6 @@
-# Design: Retell AI Voice Sales Agent — Inbound Call Handling & Rep Workflow Automation
+# Design: Voice Sales Agent — Inbound Call Handling & Rep Workflow Automation
+
+> **Provider update:** This design was drafted around Retell. The implementation now uses ElevenLabs Conversational AI. Provider-specific references below describe the original proposal; use `docs/voice-agent-prompt.md`, `Services/setup-voice-agent.mjs`, and `Services/voice-service/` for the deployed ElevenLabs contracts.
 
 Branch: microservices
 Repo: LushWare-Org/Travel-CRM

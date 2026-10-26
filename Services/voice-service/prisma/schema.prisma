@@ -41,7 +41,7 @@ model VoiceNumber {
   id             String  @id @default(uuid())
   e164           String  @unique
   label          String?
-  retellAgentId  String
+  agentId        String
   isActive       Boolean @default(true)
   language       String  @default("en")
   disclosureText String?
@@ -58,7 +58,7 @@ model VoiceNumber {
 
 model VoiceCall {
   id           String       @id @default(uuid())
-  retellCallId String       @unique
+  conversationId String      @unique
   numberId     String?
   number       VoiceNumber? @relation(fields: [numberId], references: [id])
 

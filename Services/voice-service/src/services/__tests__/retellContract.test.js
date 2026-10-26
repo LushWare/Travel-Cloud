@@ -6,7 +6,7 @@ const DYNAMIC_VARIABLES = [
   'has_open_lead', 'open_trip_count', 'status_class',
 ];
 
-describe('dynamic variables handed to the Retell agent', () => {
+describe('dynamic variables handed to the ElevenLabs agent', () => {
   it('sends exactly the variables the agent prompt reads, for an unknown caller', () => {
     const vars = buildDynamicVariables({
       identity: resolveCallerIdentity([]),
@@ -25,7 +25,7 @@ describe('dynamic variables handed to the Retell agent', () => {
     expect(Object.keys(vars).sort()).toEqual(DYNAMIC_VARIABLES);
   });
 
-  it('sends every value as a string, since Retell interpolates them into speech', () => {
+  it('sends every value as a string for prompt interpolation', () => {
     const vars = buildDynamicVariables({
       identity: resolveCallerIdentity([{ leadId: 'l', firstName: 'Nimal', statusClass: 'confirmed', destination: 'Bali' }]),
       voiceNumber: { label: 'Lushware Travel', disclosureText: 'Recorded.' },

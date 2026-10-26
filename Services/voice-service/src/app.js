@@ -12,7 +12,7 @@ const app = express();
 app.use(helmet());
 app.use(cors({ origin: process.env.CLIENT_URL || '*', credentials: true }));
 
-// rawBody is required for Retell's HMAC signature check, which is computed
+// rawBody is required for ElevenLabs' HMAC signature check, which is computed
 // over the exact bytes sent.
 app.use(express.json({
   limit: '5mb',

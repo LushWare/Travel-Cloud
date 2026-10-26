@@ -300,7 +300,7 @@ function summarizeChange(before, after) {
 // PREPARE tier — computes from the CURRENTLY PERSISTED cost lines and
 // persists nothing. This exists so a rep opening the lead sees fresh totals
 // ready to review; the agent must never speak the result (enforced in the
-// prompt and in the Retell tool's own description, not here — this endpoint
+// prompt and in the ElevenLabs tool's own description, not here — this endpoint
 // only guarantees the number is never saved).
 export const previewPricingForVoice = asyncHandler(async (req, res) => {
   const lead = await loadLead(req.params.id);

@@ -45,7 +45,14 @@ const {
 
 const res = () => ({ json: vi.fn() });
 const next = vi.fn();
-const reqWith = (body) => ({ body, requestId: 'req-1', log: { error: vi.fn() } });
+const reqWith = (body, conversationId) => ({
+  body,
+  requestId: 'req-1',
+  log: { error: vi.fn() },
+  get: (name) => name === 'x-elevenlabs-conversation-id'
+    ? conversationId ?? body?.system__conversation_id ?? body?.conversation_id ?? body?.call?.call_id
+    : undefined,
+});
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -63,6 +70,14 @@ describe('search_packages — needs no active lead', () => {
 });
 
 describe('lead-bound tools — never trust an id from args', () => {
+  it('gets the conversation id from the provider header, not tool arguments', async () => {
+    mockVoiceCallFindUnique.mockResolvedValue({ id: 'vc-1', leadId: 'lead-real', disposition: 'IN_PROGRESS' });
+    mockGetTripBrief.mockResolvedValue({ statusClass: 'quote_sent' });
+    await getTripStatusTool(reqWith({ args: { conversation_id: 'untrusted' } }, 'conv_trusted'), res(), next);
+    expect(mockVoiceCallFindUnique).toHaveBeenCalledWith({ where: { conversationId: 'conv_trusted' } });
+    expect(mockGetTripBrief).toHaveBeenCalledWith('lead-real', 'req-1');
+  });
+
   it('get_trip_status resolves the lead from the call record, ignoring any lead id in args', async () => {
     mockVoiceCallFindUnique.mockResolvedValue({ id: 'vc-1', leadId: 'lead-real', disposition: 'IN_PROGRESS' });
     mockGetTripBrief.mockResolvedValue({ statusClass: 'quote_sent' });
@@ -313,12 +328,11 @@ describe('only the call in progress may act', () => {
     expect(mockGetTripBrief).not.toHaveBeenCalled();
   });
 
-  it('does not honour a call id arriving through args.call_id when that call has already completed', async () => {
-    mockVoiceCallFindUnique.mockResolvedValue({ id: 'vc-1', leadId: 'lead-1', disposition: 'COMPLETED' });
+  it('does not use a tool argument as a conversation id without the provider header', async () => {
     const r = res();
     await getTripStatusTool(reqWith({ args: { call_id: 'call_1' } }), r, next);
-    expect(mockVoiceCallFindUnique).toHaveBeenCalledWith({ where: { retellCallId: 'call_1' } });
     expect(r.json.mock.calls[0][0]).toEqual({ available: false });
+    expect(mockVoiceCallFindUnique).not.toHaveBeenCalled();
     expect(mockGetTripBrief).not.toHaveBeenCalled();
   });
 

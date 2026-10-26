@@ -1,70 +1,73 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { symmetric } from 'retell-sdk/lib/webhook_auth.js';
-import { verifyRetellSignature, requireRetellSignature } from '../retellSignature.js';
+import crypto from 'node:crypto';
+import { verifyElevenLabsSignature, requireElevenLabsSignature } from '../elevenLabsSignature.js';
 
 const SECRET = 'key_test_secret';
-const BODY = JSON.stringify({ event: 'call_analyzed', call: { call_id: 'abc' } });
+const BODY = JSON.stringify({ type: 'post_call_transcription', data: { conversation_id: 'abc' } });
 const raw = Buffer.from(BODY);
 
-const signNow = (body = BODY, secret = SECRET) => symmetric.sign(body, secret);
+const sign = (body = BODY, secret = SECRET, timestamp = Math.floor(Date.now() / 1000)) => {
+  const digest = crypto.createHmac('sha256', secret).update(`${timestamp}.${body}`).digest('hex');
+  return `t=${timestamp},v0=${digest}`;
+};
 
-describe('verifyRetellSignature', () => {
-  it('accepts a signature produced by Retell’s own signer', async () => {
-    expect(await verifyRetellSignature(raw, await signNow(), SECRET)).toBe(true);
+describe('verifyElevenLabsSignature', () => {
+  it('accepts an ElevenLabs HMAC signature over the raw body', async () => {
+    expect(await verifyElevenLabsSignature(raw, sign(), SECRET)).toBe(true);
   });
 
   it('accepts a raw body passed as a string rather than a Buffer', async () => {
-    expect(await verifyRetellSignature(BODY, await signNow(), SECRET)).toBe(true);
+    expect(await verifyElevenLabsSignature(BODY, sign(), SECRET)).toBe(true);
   });
 
   it('rejects a signature made with a different secret', async () => {
-    expect(await verifyRetellSignature(raw, await signNow(BODY, 'other_key'), SECRET)).toBe(false);
+    expect(await verifyElevenLabsSignature(raw, sign(BODY, 'other_key'), SECRET)).toBe(false);
   });
 
   it('rejects a valid signature replayed against a tampered body', async () => {
-    const sig = await signNow();
-    expect(await verifyRetellSignature(Buffer.from('{"event":"tampered"}'), sig, SECRET)).toBe(false);
+    const sig = sign();
+    expect(await verifyElevenLabsSignature(Buffer.from('{"type":"tampered"}'), sig, SECRET)).toBe(false);
   });
 
-  it('rejects a signature older than the five-minute replay window', async () => {
-    const stale = await symmetric.sign(BODY, SECRET, Date.now() - 6 * 60 * 1000);
-    expect(await verifyRetellSignature(raw, stale, SECRET)).toBe(false);
+  it('rejects a signature older than the SDK replay window', async () => {
+    const stale = sign(BODY, SECRET, Math.floor(Date.now() / 1000) - 31 * 60);
+    expect(await verifyElevenLabsSignature(raw, stale, SECRET)).toBe(false);
   });
 
   it('accepts a signature inside the replay window', async () => {
-    const recent = await symmetric.sign(BODY, SECRET, Date.now() - 60 * 1000);
-    expect(await verifyRetellSignature(raw, recent, SECRET)).toBe(true);
+    const recent = sign(BODY, SECRET, Math.floor(Date.now() / 1000) - 60);
+    expect(await verifyElevenLabsSignature(raw, recent, SECRET)).toBe(true);
   });
 
-  it('rejects a bare hex digest, which is not Retell’s format', async () => {
-    expect(await verifyRetellSignature(raw, 'a'.repeat(64), SECRET)).toBe(false);
+  it('rejects a bare hex digest without the ElevenLabs signature format', async () => {
+    expect(await verifyElevenLabsSignature(raw, 'a'.repeat(64), SECRET)).toBe(false);
   });
 
   it('rejects a malformed signature instead of throwing', async () => {
-    expect(await verifyRetellSignature(raw, 'not-a-signature', SECRET)).toBe(false);
+    expect(await verifyElevenLabsSignature(raw, 'not-a-signature', SECRET)).toBe(false);
   });
 
   it('rejects a missing signature', async () => {
-    expect(await verifyRetellSignature(raw, undefined, SECRET)).toBe(false);
+    expect(await verifyElevenLabsSignature(raw, undefined, SECRET)).toBe(false);
   });
 
   it('rejects a missing raw body', async () => {
-    expect(await verifyRetellSignature(undefined, await signNow(), SECRET)).toBe(false);
+    expect(await verifyElevenLabsSignature(undefined, sign(), SECRET)).toBe(false);
   });
 
   it('rejects when no secret is configured', async () => {
-    expect(await verifyRetellSignature(raw, await signNow(), undefined)).toBe(false);
+    expect(await verifyElevenLabsSignature(raw, sign(), undefined)).toBe(false);
   });
 });
 
-describe('requireRetellSignature', () => {
-  const originalEnv = process.env.RETELL_WEBHOOK_SECRET;
+describe('requireElevenLabsSignature', () => {
+  const originalEnv = process.env.ELEVENLABS_WEBHOOK_SECRET;
   let req; let next;
 
   beforeEach(async () => {
-    process.env.RETELL_WEBHOOK_SECRET = SECRET;
+    process.env.ELEVENLABS_WEBHOOK_SECRET = SECRET;
     next = vi.fn();
-    const sig = await signNow();
+    const sig = sign();
     req = {
       rawBody: raw,
       path: '/post-call',
@@ -74,31 +77,31 @@ describe('requireRetellSignature', () => {
   });
 
   afterEach(() => {
-    if (originalEnv === undefined) delete process.env.RETELL_WEBHOOK_SECRET;
-    else process.env.RETELL_WEBHOOK_SECRET = originalEnv;
+    if (originalEnv === undefined) delete process.env.ELEVENLABS_WEBHOOK_SECRET;
+    else process.env.ELEVENLABS_WEBHOOK_SECRET = originalEnv;
   });
 
   it('calls next with no error for a valid signature', async () => {
-    await requireRetellSignature(req, {}, next);
+    await requireElevenLabsSignature(req, {}, next);
     expect(next).toHaveBeenCalledWith();
   });
 
   it('rejects an invalid signature with status 401', async () => {
-    req.get = vi.fn(() => 'v=123,d=' + 'a'.repeat(64));
-    await requireRetellSignature(req, {}, next);
+    req.get = vi.fn(() => 't=123,v0=' + 'a'.repeat(64));
+    await requireElevenLabsSignature(req, {}, next);
     expect(next.mock.calls[0][0].statusCode).toBe(401);
   });
 
   it('rejects with 503 when the secret is not configured', async () => {
-    delete process.env.RETELL_WEBHOOK_SECRET;
-    await requireRetellSignature(req, {}, next);
+    delete process.env.ELEVENLABS_WEBHOOK_SECRET;
+    await requireElevenLabsSignature(req, {}, next);
     expect(next.mock.calls[0][0].statusCode).toBe(503);
   });
 
   it('rejects an unsigned request even outside production', async () => {
     process.env.NODE_ENV = 'development';
     req.get = vi.fn(() => undefined);
-    await requireRetellSignature(req, {}, next);
+    await requireElevenLabsSignature(req, {}, next);
     expect(next.mock.calls[0][0].statusCode).toBe(401);
   });
 });
