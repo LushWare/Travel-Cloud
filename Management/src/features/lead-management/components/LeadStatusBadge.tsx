@@ -11,6 +11,11 @@ export type LifecycleStatus =
   | 'BOOKING_FAILED'
   | 'CANCELLED';
 
+export const LIFECYCLE_STATUSES: LifecycleStatus[] = [
+  'NEW', 'PENDING_VERIFICATION', 'DRAFTING', 'QUOTED', 'REVISION', 'APPROVED',
+  'BOOKING_IN_PROGRESS', 'CONFIRMED', 'CLOSED_LOST', 'BOOKING_FAILED', 'CANCELLED',
+];
+
 // Signal Console semantic tokens grouped by what each status actually means,
 // not one-hue-per-status: muted = not yet formalized, primary = actively in
 // motion, warning = needs rep attention, success = positive milestone,
@@ -32,7 +37,7 @@ export const LIFECYCLE_STATUS_COLORS: Record<LifecycleStatus, string> = {
 
 export const LIFECYCLE_STATUS_LABELS: Record<LifecycleStatus, string> = {
   NEW: 'New',
-  PENDING_VERIFICATION: 'Pending Verification',
+  PENDING_VERIFICATION: 'Needs Rep Attention',
   DRAFTING: 'Drafting',
   QUOTED: 'Quoted',
   REVISION: 'Revision',
@@ -46,7 +51,7 @@ export const LIFECYCLE_STATUS_LABELS: Record<LifecycleStatus, string> = {
 
 export const LIFECYCLE_STATUS_INFO: Record<LifecycleStatus, string> = {
   NEW: 'Fresh lead, not yet drafted',
-  PENDING_VERIFICATION: 'Machine-created lead, awaiting agent verification',
+  PENDING_VERIFICATION: 'Unclaimed intake requiring rep attention',
   DRAFTING: 'Actively customizing itinerary and costs',
   QUOTED: 'Formal proposal sent to client',
   REVISION: 'Client requested changes to the quote',

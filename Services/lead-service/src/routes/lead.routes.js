@@ -14,7 +14,7 @@ import {
 } from '../controllers/lead.controller.js';
 import {
   listPackageSelections, getPackageSelection, createPackageSelection, updatePackageSelection, deletePackageSelection,
-  updateSelectionItinerary, refreshPackageSelection, quotePackageSelection,
+  updateSelectionItinerary, refreshPackageSelection, quotePackageSelection, autoQuoteVoiceBooking,
   getSelectionPricing, calculateSelectionPricing, applySelectionPricing,
   listSelectionFlights, addSelectionFlight, deleteSelectionFlight,
 } from '../controllers/lead-package-selection.controller.js';
@@ -50,6 +50,7 @@ router.get('/internal/:id/payment-brief', internalTokenAuth, getPaymentBrief);
 router.post('/internal/:id/packages/attach', internalTokenAuth, attachPackageForVoice);
 router.post('/internal/:id/itinerary/adjust', internalTokenAuth, adjustItineraryForVoice);
 router.post('/internal/:id/pricing/preview', internalTokenAuth, previewPricingForVoice);
+router.post('/internal/voice-auto-quote', internalTokenAuth, autoQuoteVoiceBooking);
 
 // Protected
 router.use(requireAuth);

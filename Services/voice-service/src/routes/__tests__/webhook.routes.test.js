@@ -12,6 +12,7 @@ const mockVoiceCallUpsert = vi.fn();
 const mockVoiceCallFindUnique = vi.fn();
 const mockVoiceCallCreate = vi.fn();
 const mockVoiceCallUpdate = vi.fn();
+const mockVoiceCallEventFindFirst = vi.fn();
 vi.mock('../../db/client.js', () => ({
   default: {
     voiceNumber: { findFirst: (...args) => mockVoiceNumberFindFirst(...args) },
@@ -21,14 +22,17 @@ vi.mock('../../db/client.js', () => ({
       create: (...args) => mockVoiceCallCreate(...args),
       update: (...args) => mockVoiceCallUpdate(...args),
     },
+    voiceCallEvent: { findFirst: (...args) => mockVoiceCallEventFindFirst(...args) },
   },
 }));
 
 const mockLookup = vi.fn();
 const mockSubmitIntake = vi.fn();
+const mockIssueVoiceQuotation = vi.fn();
 vi.mock('../../services/lead.client.js', () => ({
   lookupLeadsByPhone: (...args) => mockLookup(...args),
   submitIntake: (...args) => mockSubmitIntake(...args),
+  issueVoiceQuotation: (...args) => mockIssueVoiceQuotation(...args),
   logCallCommunication: vi.fn(),
 }));
 
@@ -108,8 +112,10 @@ beforeEach(() => {
   mockVoiceCallFindUnique.mockResolvedValue({ id: 'vc-1', leadId: null, needsRepFollowup: false });
   mockVoiceCallCreate.mockResolvedValue({ id: 'vc-1', leadId: null });
   mockVoiceCallUpdate.mockResolvedValue({ id: 'vc-1' });
+  mockVoiceCallEventFindFirst.mockResolvedValue(null);
   mockLookup.mockResolvedValue({ matches: [], samePerson: true });
   mockSubmitIntake.mockResolvedValue({ leadId: 'lead-9', created: true });
+  mockIssueVoiceQuotation.mockResolvedValue({ issued: true, delivery: { allSent: true } });
   mockNotify.mockResolvedValue({ notified: 2 });
   mockIsOverDailyCap.mockResolvedValue({ overCap: false, count: 0, cap: 20 });
 });
@@ -221,6 +227,74 @@ describe('POST /api/v1/webhooks/voice/post-call', () => {
       channel: 'voice', sessionId: 'conv_abc123', contact: { phone: '94771234567' },
       slots: { destination: 'Maldives', travelers: 2, duration: 7 },
     });
+  });
+
+  it('persists confirmed identity and dates and clears follow-up only for a created booking', async () => {
+    const body = postCallBody();
+    body.data.analysis.data_collection_results = {
+      full_name: { value: 'Jane Doe' },
+      email: { value: 'jane@example.com' },
+      travel_date: { value: '2026-12-01' },
+      end_date: { value: '2026-12-08' },
+      travelers: { value: 2 },
+      selected_package_id: { value: '11111111-1111-4111-8111-111111111111' },
+      booking_confirmed: { value: true },
+      needs_rep_followup: { value: false },
+    };
+    mockVoiceCallEventFindFirst.mockResolvedValue({ result: {
+      created: true,
+      bookingStatus: 'pending',
+      bookingId: 'booking-1',
+      leadId: 'booked-lead-1',
+      packageId: '11111111-1111-4111-8111-111111111111',
+      searchPriceSnapshot: 1200,
+    } });
+    mockVoiceCallUpdate.mockResolvedValueOnce({ id: 'vc-1', leadId: 'booked-lead-1' });
+    await postSigned('/api/v1/webhooks/voice/post-call', body);
+    expect(mockSubmitIntake).not.toHaveBeenCalled();
+    expect(mockIssueVoiceQuotation).toHaveBeenCalledWith({
+      leadId: 'booked-lead-1',
+      bookingId: 'booking-1',
+      packageId: '11111111-1111-4111-8111-111111111111',
+      searchPriceSnapshot: 1200,
+    }, expect.any(String));
+    expect(mockVoiceCallUpdate.mock.calls.at(-1)[0].data.leadId).toBe('booked-lead-1');
+    expect(mockVoiceCallUpdate.mock.calls.at(-1)[0].data.needsRepFollowup).toBe(false);
+  });
+
+  it('flags a successful booking for rep follow-up when automatic quote delivery fails', async () => {
+    const body = postCallBody();
+    mockVoiceCallEventFindFirst.mockResolvedValue({ result: {
+      created: true,
+      bookingStatus: 'pending',
+      bookingId: 'booking-1',
+      leadId: 'booked-lead-1',
+      packageId: '11111111-1111-4111-8111-111111111111',
+      searchPriceSnapshot: 1200,
+    } });
+    mockVoiceCallUpdate.mockResolvedValueOnce({ id: 'vc-1', leadId: 'booked-lead-1' });
+    mockIssueVoiceQuotation.mockResolvedValue({ issued: false, needsRepFollowup: true, reason: 'auto_quote_delivery_failed' });
+
+    await postSigned('/api/v1/webhooks/voice/post-call', body);
+
+    expect(mockVoiceCallUpdate.mock.calls.at(-1)[0].data.needsRepFollowup).toBe(true);
+    expect(mockNotify).toHaveBeenCalled();
+  });
+
+  it('flags a new voice lead for rep review when the booking price changed during the call', async () => {
+    const body = postCallBody();
+    body.data.analysis.data_collection_results = {
+      full_name: { value: 'Jane Doe' },
+      email: { value: 'jane@example.com' },
+      selected_package_id: { value: '11111111-1111-4111-8111-111111111111' },
+      needs_rep_followup: { value: false },
+    };
+    mockVoiceCallEventFindFirst.mockResolvedValue({ result: {
+      created: false, requiresRepReview: true, reason: 'package_price_changed_since_search',
+    } });
+    await postSigned('/api/v1/webhooks/voice/post-call', body);
+    expect(mockSubmitIntake.mock.calls[0][0].voiceReviewReason).toBe('package_price_changed_since_search');
+    expect(mockVoiceCallUpdate.mock.calls.at(-1)[0].data.needsRepFollowup).toBe(true);
   });
 
   it('updates the call row created during initiation instead of creating another', async () => {

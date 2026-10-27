@@ -8,7 +8,7 @@ const DOC_PATH = path.join(ROOT, '..', 'docs', 'voice-agent-prompt.md');
 const API = 'https://api.elevenlabs.io/v1';
 const OWNED_TOOL_NAMES = new Set([
   'search_packages', 'get_trip_status', 'get_payment_status', 'attach_package',
-  'adjust_itinerary', 'preview_price', 'resend_document',
+  'adjust_itinerary', 'preview_price', 'resend_document', 'request_booking',
 ]);
 
 const ANALYSIS_FIELDS = {
@@ -22,6 +22,13 @@ const ANALYSIS_FIELDS = {
     type: 'string',
     description: 'Exact package_id from a search_packages result, only when the caller confirmed that package. Never invent or guess one.',
   },
+  booking_confirmed: {
+    type: 'boolean',
+    description: 'True only when the caller explicitly asked to book the exact package and confirmed the booking request after hearing the booking will remain pending until the team confirms it.',
+  },
+  full_name: { type: 'string', description: 'Customer full name, only if clearly provided.' },
+  travel_date: { type: 'string', description: 'Confirmed travel start date in YYYY-MM-DD format.' },
+  end_date: { type: 'string', description: 'Confirmed return/end date in YYYY-MM-DD format, if provided.' },
   needs_rep_followup: {
     type: 'boolean',
     description: 'True if a specialist must call back, including when the agent promised follow-up or could not resolve the request. False only when fully resolved.',
@@ -116,6 +123,20 @@ function buildTools(baseUrl, toolSecret) {
       ['package_id', 'trip_confirmed'], 20, true,
     ),
     tool(
+      'request_booking',
+      'Create a pending booking for an exact active package returned by search_packages. Before calling, explain that the unchanged exact-package quotation will be sent after the call to both the caller\'s confirmed email and WhatsApp number, then get explicit consent to proceed. Only call after confirming the package, full name, email, travel date, and traveler count. The system sends the quote; never speak its price or say the booking is confirmed or paid.',
+      {
+        package_id: { type: 'string', description: 'Exact package_id from a search_packages result in this call.' },
+        booking_confirmed: { type: 'boolean', description: 'True only after explicit caller consent to submit this booking request.' },
+        full_name: { type: 'string', description: 'Customer full name.' },
+        email: { type: 'string', description: 'Customer email address.' },
+        travel_date: { type: 'string', description: 'Travel start date, YYYY-MM-DD.' },
+        end_date: { type: 'string', description: 'Return/end date, YYYY-MM-DD, if known.' },
+        travelers: { type: 'integer', description: 'Number of travelers, 1 to 50.' },
+      },
+      ['package_id', 'booking_confirmed', 'full_name', 'email', 'travel_date', 'travelers'], 30, true,
+    ),
+    tool(
       'adjust_itinerary',
       'Prepare an itinerary change for a specialist to review. Never commits pricing and requires explicit trip confirmation.',
       {
@@ -162,8 +183,15 @@ const firstMessage = blockAfter(doc, '## 1. First message');
 const prompt = blockAfter(doc, '## 2. General prompt');
 if (!firstMessage || !prompt || prompt.length < 500) fail('The first message or general prompt is missing or truncated.');
 
-const REQUIRED_PHRASES = ['Never say a price', 'flight costs or fares', 'Never look someone up'];
-const missingRules = REQUIRED_PHRASES.filter((phrase) => !prompt.includes(phrase));
+const normalizedPrompt = prompt.replace(/\s+/g, ' ');
+const REQUIRED_PHRASES = [
+  'Never say a price',
+  'flight costs or fares',
+  'Never look someone up',
+  'handle any customer question politely',
+  'This applies to any customer question',
+];
+const missingRules = REQUIRED_PHRASES.filter((phrase) => !normalizedPrompt.includes(phrase.replace(/\s+/g, ' ')));
 if (missingRules.length) fail(`The prompt is missing safety rules: ${missingRules.join(', ')}`);
 
 const baseUrl = publicBaseUrl.replace(/\/$/, '');

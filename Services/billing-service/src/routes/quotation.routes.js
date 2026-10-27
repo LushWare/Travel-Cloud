@@ -18,6 +18,7 @@ const internalTokenAuth = (req, res, next) => {
   next();
 };
 router.post('/from-lead', internalTokenAuth, quotationController.createQuotationFromLead);
+router.post('/:id/send-voice-auto', internalTokenAuth, quotationController.sendVoiceQuotation);
 router.post('/:id/resend-voice', internalTokenAuth, quotationController.resendQuotationForVoice);
 router.put('/:id', requireAuth, authorize('admin', 'salesRep'), quotationController.updateQuotation);
 router.delete('/:id', requireAuth, authorize('admin'), quotationController.deleteQuotation);

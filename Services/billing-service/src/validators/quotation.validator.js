@@ -12,6 +12,12 @@ export const sendQuotationSchema = z
   })
   .refine((v) => v.channel !== 'whatsapp' || true, { message: 'Invalid send payload' });
 
+export const voiceAutoSendQuotationSchema = z.object({
+  leadId: z.string().min(1),
+  packageId: z.string().min(1),
+  expectedPackagePrice: z.number().finite().nonnegative(),
+}).strict();
+
 /**
  * Body for POST /quotations/:id/convert. Every field is an optional
  * per-invoice override — anything omitted falls back to the source

@@ -1,54 +1,47 @@
 import { useState } from 'react';
-import { AlertCircle } from 'lucide-react';
-import { LIFECYCLE_STATUS_LABELS, LIFECYCLE_STATUS_INFO } from './LeadStatusBadge';
+import { LIFECYCLE_STATUS_LABELS } from './LeadStatusBadge';
 import type { LifecycleStatus } from './LeadStatusBadge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 
-const ALLOWED_TRANSITIONS: Record<LifecycleStatus, LifecycleStatus[]> = {
-  NEW: ['DRAFTING', 'CLOSED_LOST'],
+const STATUS_CHANGE_OPTIONS: { status: LifecycleStatus; label: string }[] = [
+  { status: 'NEW', label: 'New' },
+  { status: 'PENDING_VERIFICATION', label: 'Needs Rep Attention' },
+  { status: 'DRAFTING', label: 'Drafting' },
+  { status: 'QUOTED', label: 'Quoted' },
+  { status: 'REVISION', label: 'Revision' },
+  { status: 'APPROVED', label: 'Approved' },
+  { status: 'BOOKING_IN_PROGRESS', label: 'Booking' },
+  { status: 'CONFIRMED', label: 'Confirmed' },
+  { status: 'CLOSED_LOST', label: 'Lost' },
+];
+
+const ALLOWED_STATUS_TRANSITIONS: Record<LifecycleStatus, LifecycleStatus[]> = {
   PENDING_VERIFICATION: ['NEW', 'CLOSED_LOST'],
+  NEW: ['DRAFTING', 'CLOSED_LOST'],
   DRAFTING: ['QUOTED', 'CLOSED_LOST'],
   QUOTED: ['REVISION', 'APPROVED', 'CLOSED_LOST'],
   REVISION: ['DRAFTING', 'QUOTED', 'APPROVED', 'CLOSED_LOST'],
   APPROVED: ['BOOKING_IN_PROGRESS', 'CLOSED_LOST'],
   BOOKING_IN_PROGRESS: ['CONFIRMED', 'BOOKING_FAILED'],
-  BOOKING_FAILED: ['BOOKING_IN_PROGRESS', 'REVISION', 'CLOSED_LOST'],
   CONFIRMED: ['CANCELLED'],
   CLOSED_LOST: [],
+  BOOKING_FAILED: ['BOOKING_IN_PROGRESS', 'REVISION', 'CLOSED_LOST'],
   CANCELLED: [],
 };
 
-function getGatekeeperReason(status: LifecycleStatus, pricing: Record<string, any> = {}): string | null {
-  if (status === 'QUOTED') {
-    if (!pricing.sellSubtotal || Number(pricing.sellSubtotal) <= 0) {
-      return 'Requires sell subtotal > 0';
-    }
-  }
-
-  if (status === 'APPROVED') {
-    if (!pricing.paidAmount || Number(pricing.paidAmount) <= 0) {
-      return 'Requires a verified payment covering the deposit';
-    }
-    if (Number(pricing.paidAmount) < Number(pricing.depositAmount || 0)) {
-      return 'Verified payment must cover the deposit plan';
-    }
-  }
-
-  if (status === 'CONFIRMED') {
-    if (pricing.actualTotal == null || Number(pricing.actualTotal) <= 0) {
-      return 'Requires flight and hotel actuals > 0';
-    }
-  }
-
-  return null;
-}
+const TRANSITION_REQUIREMENTS: Partial<Record<LifecycleStatus, string>> = {
+  QUOTED: 'Requires a selling price greater than zero.',
+  APPROVED: 'Requires a verified payment covering the deposit.',
+  CONFIRMED: 'Requires actual flight and hotel costs.',
+  CLOSED_LOST: 'Requires a loss reason.',
+};
 
 interface StatusChangeDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  lead: { name: string; lifecycleStatus?: LifecycleStatus; pricing?: Record<string, any> } | null;
+  lead: { name: string; lifecycleStatus?: LifecycleStatus } | null;
   // Unused - StatusChangeDialog reads LIFECYCLE_STATUS_LABELS/INFO directly
   // rather than these; kept in the signature since the caller (LeadManagement
   // page) still passes them and dropping them isn't this migration's scope.
@@ -59,114 +52,136 @@ interface StatusChangeDialogProps {
 
 const StatusChangeDialog = ({ isOpen, onClose, lead, onStatusChange }: StatusChangeDialogProps) => {
   const [lostReason, setLostReason] = useState('');
+  const [pendingStatus, setPendingStatus] = useState<LifecycleStatus | null>(null);
 
   if (!lead) return null;
 
-  const currentStatus = lead.lifecycleStatus || 'NEW';
-  const allowedStatuses = ALLOWED_TRANSITIONS[currentStatus] || [];
-  const pricing = lead.pricing || {};
-
   const handleChange = (status: LifecycleStatus) => {
-    if (status === 'CLOSED_LOST' && !lostReason.trim()) return;
-    onStatusChange(lead, status, status === 'CLOSED_LOST' ? lostReason.trim() : undefined);
+    setPendingStatus(status);
     setLostReason('');
   };
 
-  const handleOpenChange = (open: boolean) => { if (!open) onClose(); };
+  const handleConfirmChange = () => {
+    if (!pendingStatus || (pendingStatus === 'CLOSED_LOST' && !lostReason.trim())) return;
+    onStatusChange(lead, pendingStatus, pendingStatus === 'CLOSED_LOST' ? lostReason.trim() : undefined);
+    setPendingStatus(null);
+    setLostReason('');
+  };
 
-  // Terminal state - no transitions available
-  if (allowedStatuses.length === 0 && currentStatus !== 'NEW') {
-    return (
-      <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Update Status</DialogTitle>
-            <DialogDescription>{lead.name}</DialogDescription>
-          </DialogHeader>
-          <div className="text-center py-4">
-            <AlertCircle className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
-            <p className="text-foreground">{LIFECYCLE_STATUS_LABELS[currentStatus] || currentStatus} is a terminal state</p>
-            <p className="text-sm text-muted-foreground mt-1">No further status changes are possible</p>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={onClose} className="w-full">
-              Close
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    );
-  }
+  const handleCancelChange = () => {
+    setPendingStatus(null);
+    setLostReason('');
+  };
+
+  const handleOpenChange = (open: boolean) => {
+    if (!open) {
+      setLostReason('');
+      setPendingStatus(null);
+      onClose();
+    }
+  };
+
+  const currentStatus = lead.lifecycleStatus || 'NEW';
+  const currentLabel = LIFECYCLE_STATUS_LABELS[currentStatus] || currentStatus;
+
+  const getRestrictionReason = (status: LifecycleStatus) => {
+    if (status === currentStatus) return 'This is the current status.';
+    if (status === 'PENDING_VERIFICATION') {
+      return 'Intake-only status; claim the lead to move it to New.';
+    }
+    if (currentStatus === 'CLOSED_LOST') return 'Closed Lost is a final status.';
+    if (currentStatus === 'CANCELLED') return 'Cancelled is a final status.';
+    if (!ALLOWED_STATUS_TRANSITIONS[currentStatus]?.includes(status)) {
+      return `Cannot move from ${currentLabel} to ${LIFECYCLE_STATUS_LABELS[status]} directly.`;
+    }
+    return undefined;
+  };
 
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-sm">
+      <DialogContent className="max-h-[90dvh] max-w-xl overflow-y-auto sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>Update Status</DialogTitle>
           <DialogDescription>{lead.name}</DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-2 max-h-[60vh] overflow-y-auto">
-          {allowedStatuses.map((status) => {
-            const isCurrent = currentStatus === status;
-            const label = LIFECYCLE_STATUS_LABELS[status] || status;
-            const info = LIFECYCLE_STATUS_INFO[status] || '';
-            const gatekeeper = getGatekeeperReason(status, pricing);
-            const disabled = !!gatekeeper || isCurrent;
-
-            return (
-              <button
-                key={status}
-                onClick={() => !disabled && handleChange(status)}
-                disabled={disabled}
-                className={`w-full flex items-center gap-3 p-3 rounded-lg text-left transition-all ${
-                  disabled
-                    ? 'bg-muted border-2 border-border opacity-60 cursor-not-allowed'
-                    : 'border-2 border-border hover:border-ring hover:bg-muted'
-                }`}
-              >
-                <div className={`w-3 h-3 rounded-full shrink-0 ${isCurrent ? 'bg-foreground' : 'bg-muted-foreground/40'}`} />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-medium text-foreground">{label}</p>
-                    {isCurrent && (
-                      <span className="text-xs text-muted-foreground font-medium">Current</span>
-                    )}
-                  </div>
-                  <p className="text-xs text-muted-foreground">{info}</p>
-                  {gatekeeper && (
-                    <p className="text-xs text-warning mt-1 flex items-center gap-1">
-                      <AlertCircle className="w-3 h-3" />
-                      {gatekeeper}
-                    </p>
-                  )}
-                </div>
-              </button>
-            );
-          })}
-
-          {allowedStatuses.includes('CLOSED_LOST') && (
-            <div className="pt-2">
-              <label className="block text-xs font-medium text-foreground mb-1">
-                Loss Reason <span className="text-destructive">*</span>
-              </label>
-              <Textarea
-                value={lostReason}
-                onChange={(e) => setLostReason(e.target.value)}
-                placeholder="Why was this lead lost?"
-                rows={2}
-              />
-              {lostReason.trim().length === 0 && (
-                <p className="text-xs text-destructive mt-1">Loss reason is required</p>
-              )}
+        {pendingStatus ? (
+          <div className="space-y-3 rounded-lg border border-border p-3">
+            <div>
+              <p className="font-medium text-foreground">Are you sure?</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Change status from {currentLabel} to {STATUS_CHANGE_OPTIONS.find(({ status }) => status === pendingStatus)?.label}?
+              </p>
             </div>
-          )}
-        </div>
+            {pendingStatus === 'CLOSED_LOST' && (
+              <div>
+                <label className="mb-1 block text-xs font-medium text-foreground">
+                  Loss Reason <span className="text-destructive">*</span>
+                </label>
+                <Textarea
+                  value={lostReason}
+                  onChange={(e) => setLostReason(e.target.value)}
+                  placeholder="Why was this lead lost?"
+                  rows={2}
+                />
+                {!lostReason.trim() && (
+                  <p className="mt-1 text-xs text-destructive">Loss reason is required</p>
+                )}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-2">
+            {STATUS_CHANGE_OPTIONS.map(({ status, label }) => {
+              const restrictionReason = getRestrictionReason(status);
+              const disabled = Boolean(restrictionReason);
+              const requirement = !disabled && TRANSITION_REQUIREMENTS[status];
+
+              return (
+                <button
+                  key={status}
+                  onClick={() => handleChange(status)}
+                  disabled={disabled}
+                  className={`min-h-[76px] w-full rounded-lg border-2 px-2.5 py-2 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-70 sm:px-3 ${
+                    currentStatus === status
+                      ? 'border-primary bg-primary/10 text-primary'
+                      : disabled
+                        ? 'border-border bg-muted/40 text-muted-foreground'
+                        : 'border-border text-foreground hover:border-ring hover:bg-muted'
+                  }`}
+                >
+                  <span className="block font-medium">{label}</span>
+                  {(restrictionReason || requirement) && (
+                    <span className="mt-0.5 block text-xs font-normal text-muted-foreground">
+                      {restrictionReason || requirement}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         <DialogFooter>
-          <Button variant="outline" onClick={onClose} className="w-full">
-            Cancel
-          </Button>
+          {pendingStatus ? (
+            <>
+              <Button variant="outline" onClick={handleCancelChange} className="w-full">
+                Cancel
+              </Button>
+              <Button
+                variant={pendingStatus === 'CLOSED_LOST' ? 'destructive' : 'default'}
+                onClick={handleConfirmChange}
+                disabled={pendingStatus === 'CLOSED_LOST' && !lostReason.trim()}
+                className="w-full"
+              >
+                {pendingStatus === 'CLOSED_LOST' ? 'Confirm Closed Lost' : 'Confirm'}
+              </Button>
+            </>
+          ) : (
+            <Button variant="outline" onClick={() => handleOpenChange(false)} className="w-full">
+              Cancel
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

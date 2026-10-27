@@ -487,6 +487,7 @@ module "voice_service" {
     BILLING_SERVICE_URL      = module.billing_service.uri
     USER_SERVICE_URL         = module.user_service.uri
     PACKAGE_SERVICE_URL      = module.package_service.uri
+    BOOKING_SERVICE_URL      = module.booking_service.uri
     NOTIFICATION_SERVICE_URL = module.notification_service.uri
   })
   memory                = local.services.voice-service.memory

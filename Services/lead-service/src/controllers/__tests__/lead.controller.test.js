@@ -853,6 +853,26 @@ describe('getLeadStats — assigned/unassigned/conversionRate summary', () => {
       summary: expect.objectContaining({ total: 0, assigned: 0, unassigned: 0, conversionRate: '0.0' }),
     }));
   });
+
+  it('includes the combined rep-attention count in lead stats', async () => {
+    mockLeadGroupBy.mockResolvedValue([]);
+    mockLeadAggregate.mockResolvedValue({ _count: 4 });
+    mockLeadCount.mockResolvedValueOnce(0).mockResolvedValueOnce(0).mockResolvedValueOnce(3);
+
+    const { req, res, next } = buildReqRes({ user: adminUser });
+    await getLeadStats(req, res, next);
+
+    expect(mockLeadCount.mock.calls[2][0].where).toEqual({
+      AND: [{}, { OR: [
+        { needsRepFollowup: true },
+        { voiceNeedsRepReview: true },
+        { lifecycleStatus: 'PENDING_VERIFICATION', convertedBookingId: null },
+      ] }],
+    });
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      summary: expect.objectContaining({ needsRepAttention: 3 }),
+    }));
+  });
 });
 describe('getLeads / searchLeads — remarks reach the list UI', () => {
   beforeEach(() => {
@@ -873,6 +893,37 @@ describe('getLeads / searchLeads — remarks reach the list UI', () => {
 
     expect(mockLeadFindMany.mock.calls[0][0].where.AND).toContainEqual({
       id: { in: ['lead-1', 'lead-2', 'lead-3'] },
+    });
+  });
+
+  it('filters the list to package or price changes awaiting rep review', async () => {
+    const req = { query: { voiceNeedsRepReview: 'true' }, user: adminUser };
+    await getLeads(req, { json: vi.fn() }, vi.fn());
+    expect(mockLeadFindMany.mock.calls[0][0].where.AND).toContainEqual({ voiceNeedsRepReview: true });
+  });
+
+  it('filters the list to all leads needing rep attention', async () => {
+    const req = { query: { needsRepAttention: 'true' }, user: adminUser };
+    await getLeads(req, { json: vi.fn() }, vi.fn());
+    expect(mockLeadFindMany.mock.calls[0][0].where.AND).toContainEqual({
+      OR: [
+        { needsRepFollowup: true },
+        { voiceNeedsRepReview: true },
+        { lifecycleStatus: 'PENDING_VERIFICATION', convertedBookingId: null },
+      ],
+    });
+  });
+
+  it('scopes the rep-attention queue to the rep’s leads and unclaimed intake', async () => {
+    const user = { id: 'rep-1', role: 'salesRep', isSuperAdmin: false, permissions: [] };
+    const req = { query: { needsRepAttention: 'true' }, user };
+    await getLeads(req, { json: vi.fn() }, vi.fn());
+
+    expect(mockLeadFindMany.mock.calls[0][0].where.AND).toContainEqual({
+      OR: [
+        { assignedToId: 'rep-1' },
+        { lifecycleStatus: 'PENDING_VERIFICATION', convertedBookingId: null },
+      ],
     });
   });
 

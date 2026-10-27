@@ -4,7 +4,7 @@ import asyncHandler from '../utils/asyncHandler.js';
 import { initiationSchema, postCallSchema } from '../validators/elevenLabs.schema.js';
 import { resolveCallerIdentity, buildDynamicVariables } from '../services/callerIdentity.service.js';
 import { toStoredTranscript, toIntakeTranscript } from '../services/transcript.service.js';
-import { lookupLeadsByPhone, submitIntake } from '../services/lead.client.js';
+import { lookupLeadsByPhone, submitIntake, issueVoiceQuotation } from '../services/lead.client.js';
 import { notifyRepsOfCallback } from '../services/notify.service.js';
 import { isOverDailyCap } from '../services/callVolume.service.js';
 import { normalizePhone, maskPhone } from '../utils/phone.js';
@@ -112,9 +112,26 @@ export const handlePostCall = asyncHandler(async (req, res) => {
   if (fromNumber && stored.length) {
     const slots = extractSlots(custom);
     const email = extractEmail(custom);
+    const name = extractFullName(custom);
     const selectedPackageId = extractSelectedPackageId(custom);
-    const followup = needsFollowup(custom);
+    let bookingCreated = false;
+    let voiceReviewReason = null;
+    let bookingAudit = null;
+    try {
+      bookingAudit = await prisma.voiceCallEvent.findFirst({
+        where: { voiceCallId: saved.id, functionName: 'request_booking', succeeded: true },
+        orderBy: { sequence: 'desc' },
+        select: { result: true },
+      });
+      bookingCreated = bookingAudit?.result?.created === true && bookingAudit?.result?.bookingStatus === 'pending';
+      if (bookingAudit?.result?.requiresRepReview === true) {
+        voiceReviewReason = bookingAudit.result.reason || 'package_changed_requires_repricing';
+      }
+    } catch (err) {
+      req.log.error({ err, conversationId }, 'Could not verify the voice booking result');
+    }
     let leadId = saved.leadId;
+    let followup = bookingCreated ? false : (voiceReviewReason ? true : needsFollowup(custom));
 
     const volume = await isOverDailyCap(fromNumber);
     if (volume.overCap) {
@@ -125,18 +142,47 @@ export const handlePostCall = asyncHandler(async (req, res) => {
       return res.json({ received: true });
     }
 
-    try {
-      const result = await submitIntake({
-        channel: 'voice',
-        sessionId: conversationId,
-        contact: { phone: fromNumber, ...(email ? { email } : {}) },
-        slots,
-        ...(selectedPackageId ? { selectedPackageId } : {}),
-        transcript: toIntakeTranscript(stored, { callId: conversationId, startedAt }),
-      }, req.requestId);
-      if (result?.leadId) leadId = result.leadId;
-    } catch (err) {
-      req.log.error({ err, conversationId }, 'Lead intake failed for completed call');
+    if (!bookingCreated || !leadId) {
+      try {
+        const result = await submitIntake({
+          channel: 'voice',
+          sessionId: conversationId,
+          contact: { phone: fromNumber, ...(name ? { name } : {}), ...(email ? { email } : {}) },
+          slots,
+          ...(selectedPackageId ? { selectedPackageId } : {}),
+          ...(voiceReviewReason ? { voiceReviewReason } : {}),
+          transcript: toIntakeTranscript(stored, { callId: conversationId, startedAt }),
+        }, req.requestId);
+        if (result?.leadId) leadId = result.leadId;
+      } catch (err) {
+        req.log.error({ err, conversationId }, 'Lead intake failed for completed call');
+      }
+    }
+
+    if (bookingCreated) {
+      const booking = bookingAudit?.result;
+      if (booking?.leadId && booking?.bookingId && booking?.packageId
+        && Number.isFinite(Number(booking.searchPriceSnapshot))) {
+        leadId = booking.leadId;
+        try {
+          const quote = await issueVoiceQuotation({
+            leadId,
+            bookingId: booking.bookingId,
+            packageId: booking.packageId,
+            searchPriceSnapshot: Number(booking.searchPriceSnapshot),
+          }, req.requestId);
+          if (quote?.issued !== true || quote?.delivery?.allSent !== true) {
+            followup = true;
+            req.log.warn({ conversationId, leadId, reason: quote?.reason }, 'Automatic voice quotation needs rep follow-up');
+          }
+        } catch (err) {
+          followup = true;
+          req.log.error({ err, conversationId, leadId }, 'Automatic voice quotation failed');
+        }
+      } else {
+        followup = true;
+        req.log.error({ conversationId, leadId }, 'Successful voice booking is missing verified quote details');
+      }
     }
 
     await prisma.voiceCall.update({
@@ -164,6 +210,10 @@ function needsFollowup(custom) {
 function extractSlots(custom = {}) {
   const slots = {};
   if (custom.destination) slots.destination = String(custom.destination).slice(0, 255);
+  const travelDate = parseDate(custom.travel_date ?? custom.travelDate);
+  const endDate = parseDate(custom.end_date ?? custom.endDate);
+  if (travelDate) slots.travelDate = travelDate;
+  if (endDate) slots.endDate = endDate;
   if (custom.budget) slots.budget = String(custom.budget).slice(0, 255);
   if (custom.preferences) slots.preferences = String(custom.preferences).slice(0, 1000);
   const travelers = Number(custom.travelers);
@@ -182,4 +232,15 @@ const PACKAGE_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]
 function extractSelectedPackageId(custom = {}) {
   const id = custom.selected_package_id ?? custom.selectedPackageId;
   return typeof id === 'string' && PACKAGE_ID_RE.test(id) ? id : undefined;
+}
+
+function parseDate(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return undefined;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value ? undefined : date;
+}
+
+function extractFullName(custom = {}) {
+  if (typeof custom.full_name !== 'string') return undefined;
+  return custom.full_name.trim().slice(0, 255) || undefined;
 }

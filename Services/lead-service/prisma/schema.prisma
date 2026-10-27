@@ -236,8 +236,18 @@ model Lead {
   // REVISION and AI-touched and awaiting rep review at the same time.
   aiHandled        Boolean   @default(false)
   needsRepFollowup Boolean   @default(false)
-  aiVerifiedAt     DateTime?
-  aiVerifiedById   String? // → users.User.id
+
+  // Voice-agent exact-match logic. `voiceExactPackageMatch` is true only when
+  // the caller accepted the exact package as offered; any change to the offer
+  // or any pricing delta flips `voicePriceChanged` and routes the lead to a rep.
+  voiceExactPackageMatch        Boolean   @default(false)
+  voicePriceChanged             Boolean   @default(false)
+  voiceNeedsRepReview           Boolean   @default(false)
+  voiceReviewReason             String?
+  voiceAiBookingAllowed         Boolean   @default(false)
+  voiceCustomerIdentityConfirmed Boolean  @default(false)
+  aiVerifiedAt                  DateTime?
+  aiVerifiedById                String? // → users.User.id
 
   remarks           LeadRemark[]
   statusHistory     LeadStatusHistory[]
@@ -267,6 +277,8 @@ model Lead {
   @@index([whatsappNormalized])
   @@index([aiHandled])
   @@index([needsRepFollowup])
+  @@index([voiceNeedsRepReview])
+  @@index([voiceAiBookingAllowed])
   @@schema("crm_leads")
 }
 

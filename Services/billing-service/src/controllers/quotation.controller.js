@@ -9,7 +9,7 @@ import { generateQuotationPDF } from '../utils/quotationPDFGenerator.js';
 import { sendQuotationEmail } from '../utils/emailService.js';
 import { sendQuotationWhatsapp } from '../utils/whatsappService.js';
 import { uploadPdfBuffer } from '../utils/cloudinary.js';
-import { sendQuotationSchema, convertToInvoiceSchema } from '../validators/quotation.validator.js';
+import { sendQuotationSchema, voiceAutoSendQuotationSchema, convertToInvoiceSchema } from '../validators/quotation.validator.js';
 import { LeadSnapshotForQuotation } from '@travel-crm/contracts';
 import { getOrgSettings, toBrandingShape, getBankDetails } from '../config/orgSettings.js';
 
@@ -122,8 +122,7 @@ export const createQuotationFromLead = asyncHandler(async (req, res) => {
 
   // Internal (gateway-bypassing) call: there is usually no request user, so the
   // acting user id arrives in the body. Fall back to req.user for completeness.
-  const createdById = req.user?.id || parsed.createdById;
-  if (!createdById) throw new AppError('createdById is required', 400);
+  const createdById = req.user?.id || parsed.createdById || null;
 
   const quotation = await createOrVersionQuotation({
     ...parsed,
@@ -189,6 +188,80 @@ export const sendQuotation = asyncHandler(async (req, res) => {
     logger.error({ err }, 'Failed to send quotation');
     throw new AppError("We couldn't send that quotation. Please try again.", 400);
   }
+});
+
+export const sendVoiceQuotation = asyncHandler(async (req, res) => {
+  const { leadId, packageId, expectedPackagePrice } = voiceAutoSendQuotationSchema.parse(req.body || {});
+  const quotation = await prisma.quotation.findUnique({ where: { id: req.params.id }, include: quotationInclude });
+  if (!quotation) throw new AppError('Quotation not found', 404);
+  if (!['draft', 'sent'].includes(quotation.status)) {
+    throw new AppError('Only a draft or sent quotation can be delivered automatically', 409);
+  }
+  if (quotation.leadId !== leadId || quotation.packageId !== packageId
+    || typeof expectedPackagePrice !== 'number' || !Number.isFinite(expectedPackagePrice)
+    || expectedPackagePrice < 0 || Math.abs(Number(quotation.subtotal) - expectedPackagePrice) > 0.01) {
+    return res.json({
+      success: true,
+      data: { email: 'not_sent', whatsapp: 'not_sent', allSent: false, reason: 'quotation_package_price_mismatch' },
+    });
+  }
+
+  const results = {
+    email: quotation.emailSent ? 'already_sent' : quotation.customerEmail ? 'failed' : 'unavailable',
+    whatsapp: quotation.whatsappSent ? 'already_sent' : quotation.customerPhone ? 'failed' : 'unavailable',
+  };
+  if (results.email === 'unavailable' || results.whatsapp === 'unavailable') {
+    req.log.warn({ quotationId: quotation.id, results }, 'Voice quotation is missing a delivery channel');
+  }
+
+  let pdf;
+  if (results.email === 'failed' || results.whatsapp === 'failed') {
+    pdf = await generateQuotationPDF(quotation);
+  }
+
+  if (results.email === 'failed') {
+    try {
+      await sendQuotationEmail({ quotation, recipientEmail: quotation.customerEmail, pdfBuffer: pdf });
+      await prisma.quotation.update({
+        where: { id: quotation.id },
+        data: { status: 'sent', sentAt: quotation.sentAt || new Date(), emailSent: true },
+      });
+      results.email = 'sent';
+    } catch (err) {
+      req.log.error({ err, quotationId: quotation.id }, 'Voice quotation email delivery failed');
+    }
+  }
+
+  if (results.whatsapp === 'failed') {
+    try {
+      const mediaUrl = quotation.pdfUrl || await uploadPdfBuffer(pdf, `quotation-${quotation.quotationNumber}`);
+      await sendQuotationWhatsapp({ quotation, phone: quotation.customerPhone, mediaUrl });
+      await prisma.quotation.update({
+        where: { id: quotation.id },
+        data: {
+          status: 'sent', sentAt: quotation.sentAt || new Date(), whatsappSent: true,
+          whatsappSentAt: new Date(), pdfUrl: mediaUrl,
+        },
+      });
+      results.whatsapp = 'sent';
+    } catch (err) {
+      req.log.error({ err, quotationId: quotation.id }, 'Voice quotation WhatsApp delivery failed');
+    }
+  }
+
+  if (results.email === 'sent' || results.whatsapp === 'sent') {
+    try {
+      await logLeadCommunication({
+        leadId: quotation.leadId,
+        type: 'message',
+        notes: `Voice quotation ${quotation.quotationNumber} delivery (email: ${results.email}, WhatsApp: ${results.whatsapp})`,
+      });
+    } catch (err) {
+      req.log.error({ err, leadId: quotation.leadId }, 'Failed to log voice quotation delivery');
+    }
+  }
+
+  res.json({ success: true, data: { ...results, allSent: ['sent', 'already_sent'].includes(results.email) && ['sent', 'already_sent'].includes(results.whatsapp) } });
 });
 
 // ─── POST /:id/resend-voice ─────────────────────────────────────

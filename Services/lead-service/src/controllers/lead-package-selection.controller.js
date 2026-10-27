@@ -1,4 +1,5 @@
 import prisma from '../db/client.js';
+import { z } from 'zod';
 import AppError from '../utils/appError.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import { createPackageSelectionSchema, updatePackageSelectionSchema, addOptionalFlightSchema } from '../validators/lead.validator.js';
@@ -13,6 +14,7 @@ import {
   refreshSelection,
   recomputeSelectionPricing,
   snapshotSelectionQuotation,
+  sendVoiceQuotation,
   syncLeadBudgetFromSelection,
 } from '../services/lead-selection.service.js';
 import {
@@ -290,6 +292,134 @@ export const quotePackageSelection = asyncHandler(async (req, res) => {
   });
 
   res.json({ success: true, data: { selection: updatedSelection, lead: updatedLead, quotation } });
+});
+
+const VoiceAutoQuoteRequest = z.object({
+  leadId: z.string().min(1),
+  bookingId: z.string().min(1),
+  packageId: z.string().min(1),
+  searchPriceSnapshot: z.number().finite().nonnegative(),
+});
+
+async function flagVoiceAutoQuoteForReview(leadId, reason) {
+  await prisma.lead.update({
+    where: { id: leadId },
+    data: {
+      needsRepFollowup: true,
+      voiceNeedsRepReview: true,
+      voiceReviewReason: reason,
+    },
+  });
+}
+
+export const autoQuoteVoiceBooking = asyncHandler(async (req, res) => {
+  const parsed = VoiceAutoQuoteRequest.safeParse(req.body);
+  if (!parsed.success) throw new AppError('Invalid voice quotation request', 400);
+  const { leadId, bookingId, packageId, searchPriceSnapshot } = parsed.data;
+  const lead = await prisma.lead.findUnique({ where: { id: leadId } });
+  if (!lead) throw new AppError('Lead not found', 404);
+
+  const canRetryDelivery = ['auto_quote_delivery_failed', 'auto_quote_generation_failed'].includes(lead.voiceReviewReason);
+  if (lead.convertedBookingId !== bookingId
+    || !lead.voiceExactPackageMatch
+    || !lead.voiceCustomerIdentityConfirmed
+    || !lead.voiceAiBookingAllowed
+    || lead.voicePriceChanged
+    || (lead.voiceNeedsRepReview && !canRetryDelivery)) {
+    return res.status(409).json({ success: false, data: { issued: false, reason: 'voice_booking_not_eligible' } });
+  }
+
+  const selection = await prisma.leadPackageSelection.findFirst({ where: { leadId, packageId } });
+  if (!selection || selection.pendingAiChange) {
+    await flagVoiceAutoQuoteForReview(leadId, 'package_changed_requires_repricing');
+    return res.json({ success: true, data: { issued: false, needsRepFollowup: true, reason: 'package_changed_requires_repricing' } });
+  }
+
+  try {
+    const pkg = await fetchPackage(packageId);
+    const currentPrice = Number(pkg.sellPrice);
+    if (!pkg.isActive || !Number.isFinite(currentPrice) || Math.abs(currentPrice - searchPriceSnapshot) > 0.01) {
+      await flagVoiceAutoQuoteForReview(leadId, 'package_price_changed_since_search');
+      return res.json({ success: true, data: { issued: false, needsRepFollowup: true, reason: 'package_price_changed_since_search' } });
+    }
+
+    if (!(await isSelectionMaterialized(selection.id))) await materializeSelection({ selectionId: selection.id });
+    await recomputeSelectionPricing(selection.id);
+    const pricedSelection = await loadOwnedSelection(leadId, selection.id, { pricing: true, costLines: true });
+    const pricingInputs = gatekeeperInputs(pricedSelection.pricing, pricedSelection.costLines);
+    if (!Number.isFinite(pricingInputs.sellSubtotal)
+      || Math.abs(pricingInputs.sellSubtotal - searchPriceSnapshot) > 0.01) {
+      await flagVoiceAutoQuoteForReview(leadId, 'quotation_package_price_mismatch');
+      return res.json({ success: true, data: { issued: false, needsRepFollowup: true, reason: 'quotation_package_price_mismatch' } });
+    }
+    const statusHistory = [];
+    let nextStatus = lead.lifecycleStatus;
+    const transition = (status, notes) => {
+      validateTransition({ currentStatus: nextStatus, nextStatus: status, pricing: pricingInputs });
+      statusHistory.push({ status, actor: 'SYSTEM', changedById: null, notes });
+      nextStatus = status;
+    };
+
+    if (nextStatus === 'PENDING_VERIFICATION') {
+      transition('NEW', 'Voice booking details verified for automatic quotation');
+    }
+    if (nextStatus === 'NEW') {
+      transition('DRAFTING', 'Voice exact-package quotation prepared');
+    }
+    if (nextStatus !== 'QUOTED') {
+      if (!['DRAFTING', 'REVISION'].includes(nextStatus)) {
+        await flagVoiceAutoQuoteForReview(leadId, 'lead_status_requires_rep_review');
+        return res.json({ success: true, data: { issued: false, needsRepFollowup: true, reason: 'lead_status_requires_rep_review' } });
+      }
+      transition('QUOTED', 'Exact-package voice quotation sent by email and WhatsApp');
+    }
+
+    let quotationId = selection.currentQuoteId;
+    if (!quotationId) {
+      const quotation = await snapshotSelectionQuotation(selection.id);
+      quotationId = quotation.id;
+      await prisma.leadPackageSelection.update({
+        where: { id: selection.id },
+        data: { currentQuoteId: quotationId },
+      });
+      if (!Number.isFinite(Number(quotation.subtotal))
+        || Math.abs(Number(quotation.subtotal) - searchPriceSnapshot) > 0.01) {
+        await flagVoiceAutoQuoteForReview(leadId, 'quotation_package_price_mismatch');
+        return res.json({ success: true, data: { issued: false, needsRepFollowup: true, reason: 'quotation_package_price_mismatch' } });
+      }
+    }
+
+    const delivery = await sendVoiceQuotation(quotationId, {
+      leadId,
+      packageId,
+      expectedPackagePrice: searchPriceSnapshot,
+    }, req.requestId);
+    if (!delivery.allSent) {
+      await flagVoiceAutoQuoteForReview(leadId, 'auto_quote_delivery_failed');
+      return res.json({
+        success: true,
+        data: { issued: false, needsRepFollowup: true, quotationId, delivery, reason: 'auto_quote_delivery_failed' },
+      });
+    }
+
+    await prisma.lead.update({
+      where: { id: leadId },
+      data: {
+        primarySelectionId: selection.id,
+        lifecycleStatus: 'QUOTED',
+        needsRepFollowup: false,
+        voiceNeedsRepReview: false,
+        voiceReviewReason: null,
+        ...(statusHistory.length ? { statusHistory: { create: statusHistory } } : {}),
+      },
+    });
+    await syncLeadBudgetFromSelection(leadId, selection.id);
+    return res.json({ success: true, data: { issued: true, quotationId, delivery } });
+  } catch (err) {
+    req.log?.error({ err, leadId, bookingId }, 'Automatic voice quotation failed');
+    await flagVoiceAutoQuoteForReview(leadId, 'auto_quote_generation_failed');
+    return res.json({ success: true, data: { issued: false, needsRepFollowup: true, reason: 'auto_quote_generation_failed' } });
+  }
 });
 
 // ─── Pricing ─────────────────────────────────────────────────────

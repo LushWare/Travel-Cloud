@@ -81,7 +81,7 @@ locals {
       name    = "${var.env}-booking-service"
       memory  = "512Mi"
       cpu     = "1"
-      secrets = ["${var.env}-database-url", "${var.env}-direct-url"]
+      secrets = ["${var.env}-database-url", "${var.env}-direct-url", "${var.env}-internal-events-token"]
       plain_env = {
         NODE_ENV   = "production"
         CLIENT_URL = local.client_url
