@@ -37,11 +37,22 @@ async function resolveActiveSelection(lead) {
 // Every write action here reaches a lead regardless of how it was created
 // (a voice call may resume an existing rep-owned lead) — always mark it so a
 // rep sees the AI touched it, whether or not the lead originated as a voice
-// lead.
-async function markAiTouched(leadId) {
+// lead. Exact-match package confirmations are auto-book eligible; any
+// package change that requires a price recalculation flags the lead for rep
+// review instead of letting the agent auto-send a quote.
+async function markAiTouched(leadId, review = {}) {
   await prisma.lead.update({
     where: { id: leadId },
-    data: { aiHandled: true, needsRepFollowup: true },
+    data: {
+      aiHandled: true,
+      needsRepFollowup: review.needsRepFollowup ?? true,
+      voiceExactPackageMatch: review.voiceExactPackageMatch ?? false,
+      voicePriceChanged: review.voicePriceChanged ?? false,
+      voiceNeedsRepReview: review.voiceNeedsRepReview ?? false,
+      voiceReviewReason: review.voiceReviewReason ?? null,
+      voiceAiBookingAllowed: review.voiceAiBookingAllowed ?? false,
+      voiceCustomerIdentityConfirmed: review.voiceCustomerIdentityConfirmed ?? false,
+    },
   });
 }
 
@@ -127,7 +138,14 @@ export const attachPackageForVoice = asyncHandler(async (req, res) => {
   }
 
   const result = await attachPackageToLead(lead.id, packageId, { primarySelectionId: lead.primarySelectionId });
-  await markAiTouched(lead.id);
+  await markAiTouched(lead.id, {
+    voiceExactPackageMatch: true,
+    voicePriceChanged: false,
+    voiceNeedsRepReview: false,
+    voiceReviewReason: null,
+    voiceAiBookingAllowed: false,
+    voiceCustomerIdentityConfirmed: false,
+  });
 
   res.status(result.alreadyAttached ? 200 : 201).json({ success: true, data: result });
 });
@@ -245,7 +263,14 @@ export const adjustItineraryForVoice = asyncHandler(async (req, res) => {
     req.log.error({ err, leadId: lead.id, selectionId: selection.id }, 'Itinerary edit applied but the rep review card could not be saved');
   }
   try {
-    await markAiTouched(lead.id);
+    await markAiTouched(lead.id, {
+      voiceExactPackageMatch: false,
+      voicePriceChanged: true,
+      voiceNeedsRepReview: true,
+      voiceReviewReason: 'package_changed_requires_repricing',
+      voiceAiBookingAllowed: false,
+      voiceCustomerIdentityConfirmed: false,
+    });
   } catch (err) {
     req.log.error({ err, leadId: lead.id }, 'Itinerary edit applied but the lead could not be flagged for a rep');
   }
@@ -300,7 +325,7 @@ function summarizeChange(before, after) {
 // PREPARE tier — computes from the CURRENTLY PERSISTED cost lines and
 // persists nothing. This exists so a rep opening the lead sees fresh totals
 // ready to review; the agent must never speak the result (enforced in the
-// prompt and in the Retell tool's own description, not here — this endpoint
+// prompt and in the ElevenLabs tool's own description, not here — this endpoint
 // only guarantees the number is never saved).
 export const previewPricingForVoice = asyncHandler(async (req, res) => {
   const lead = await loadLead(req.params.id);

@@ -18,7 +18,8 @@ const SOURCE_OPTIONS = [
 ];
 
 const AI_OPTIONS = [
-  { id: 'needsRepFollowup', label: 'Needs check', icon: AlertTriangle },
+  { id: 'needsRepAttention', label: 'Needs Rep Attention', icon: AlertTriangle },
+  { id: 'voiceNeedsRepReview', label: 'Package/price review', icon: AlertTriangle },
   { id: 'aiHandled', label: 'AI handled', icon: Sparkles },
   { id: 'aiVerified', label: 'AI verified', icon: CheckCircle2 },
 ];

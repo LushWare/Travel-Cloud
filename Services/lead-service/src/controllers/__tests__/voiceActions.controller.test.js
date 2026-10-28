@@ -198,14 +198,22 @@ describe('attachPackageForVoice', () => {
     expect(r.json.mock.calls[0][0].data.alreadyAttached).toBe(true);
   });
 
-  it('flags the lead as AI-touched and needing a rep check', async () => {
+  it('flags the lead as AI-touched and marks the exact package as auto-book eligible', async () => {
     mockLeadFindUnique.mockResolvedValue(lead({ primarySelectionId: null }));
     mockSelectionFindFirst.mockResolvedValue(null);
     mockFetchPackage.mockResolvedValue({ title: 'Bali Escape' });
     mockSelectionCreate.mockResolvedValue({ id: 'sel-2' });
     await attachPackageForVoice({ params: { id: 'lead-1' }, body: { packageId: 'pkg-2' } }, res(), next);
     expect(mockLeadUpdate).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ aiHandled: true, needsRepFollowup: true }),
+      data: expect.objectContaining({
+        aiHandled: true,
+        needsRepFollowup: true,
+        voiceExactPackageMatch: true,
+        voicePriceChanged: false,
+        voiceNeedsRepReview: false,
+        voiceReviewReason: null,
+        voiceAiBookingAllowed: false,
+      }),
     }));
   });
 
@@ -241,6 +249,22 @@ describe('adjustItineraryForVoice — status guards', () => {
     await adjustItineraryForVoice({ params: { id: 'lead-1' }, body: { addNights: 2 } }, res(), next);
     expect(mockLeadUpdate).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ lifecycleStatus: 'REVISION' }),
+    }));
+  });
+
+  it('marks changed-package edits as rep review required with pricing recalculation', async () => {
+    mockLeadFindUnique.mockResolvedValue(lead({ lifecycleStatus: 'DRAFTING' }));
+    mockSelectionFindUnique.mockResolvedValue({ ...selection(), itineraryDays: [] });
+    mockApplyItinerary.mockResolvedValue({ leadId: 'lead-1', selectionId: 'sel-1', lifecycleStatus: 'DRAFTING' });
+    await adjustItineraryForVoice({ params: { id: 'lead-1' }, body: { addNights: 2 } }, res(), next);
+    expect(mockLeadUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        voiceExactPackageMatch: false,
+        voicePriceChanged: true,
+        voiceNeedsRepReview: true,
+        voiceReviewReason: 'package_changed_requires_repricing',
+        voiceAiBookingAllowed: false,
+      }),
     }));
   });
 

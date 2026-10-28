@@ -332,7 +332,7 @@ describe('voice channel lead intake', () => {
     expect(mockLeadUpsert.mock.calls[0][0].create.phoneNormalized).toBe('94771234567');
   });
 
-  it('keys the lead on the retell call id so a webhook retry does not fork a second lead', async () => {
+  it('keys the lead on the provider conversation id so a webhook retry does not fork a second lead', async () => {
     arrangeNewLead();
     await postIntake(voiceBody());
     expect(mockLeadUpsert.mock.calls[0][0].where).toEqual({

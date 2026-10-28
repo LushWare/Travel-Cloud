@@ -198,7 +198,8 @@ export default function LeadAiCallsTab({ lead, onVerified }: LeadAiCallsTabProps
   }
 
   const verified = Boolean(lead?.aiVerifiedAt);
-  const needsCheck = calls.some((c) => c.needsRepFollowup) || Boolean(lead?.needsRepFollowup);
+  const packageReview = Boolean(lead?.voiceNeedsRepReview);
+  const needsCheck = packageReview || calls.some((c) => c.needsRepFollowup) || Boolean(lead?.needsRepFollowup);
 
   return (
     <div className="space-y-4">
@@ -208,9 +209,14 @@ export default function LeadAiCallsTab({ lead, onVerified }: LeadAiCallsTabProps
         <div className="flex items-center gap-2 text-sm">
           <Sparkles className="w-4 h-4 text-purple-600 dark:text-purple-400" />
           <span className="font-semibold">{calls.length} {calls.length === 1 ? 'call' : 'calls'}</span>
-          {needsCheck && (
-            <span className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-300">
-              <AlertTriangle className="w-4 h-4" /> Needs your check
+          {packageReview && (
+            <span className="inline-flex items-center gap-1 text-amber-800 dark:text-amber-300" role="alert">
+              <AlertTriangle className="w-4 h-4" /> Package/price change needs review
+            </span>
+          )}
+          {needsCheck && !packageReview && (
+            <span className="inline-flex items-center gap-1 text-amber-800 dark:text-amber-300" role="alert">
+              <AlertTriangle className="w-4 h-4" /> Needs Rep Attention
             </span>
           )}
           {verified && !needsCheck && (
@@ -246,7 +252,7 @@ export default function LeadAiCallsTab({ lead, onVerified }: LeadAiCallsTabProps
                   <span className="text-muted-foreground font-normal">· {formatDuration(call.durationSec)}</span>
                   {call.needsRepFollowup && (
                     <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800 dark:bg-amber-500/15 dark:text-amber-300">
-                      <AlertTriangle className="w-3 h-3" /> Needs check
+                      <AlertTriangle className="w-3 h-3" /> Needs Rep Attention
                     </span>
                   )}
                   {call.matchOutcome === 'AMBIGUOUS' && (

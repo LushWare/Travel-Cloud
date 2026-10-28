@@ -2,13 +2,13 @@ import crypto from 'node:crypto';
 import AppError from '../utils/appError.js';
 
 export const requireToolSecret = (req, res, next) => {
-  const secret = process.env.RETELL_TOOL_SECRET || process.env.RETELL_WEBHOOK_SECRET;
+  const secret = process.env.ELEVENLABS_TOOL_SECRET;
   if (!secret) {
-    req.log?.error('RETELL_TOOL_SECRET is not configured — rejecting tool call');
+    req.log?.error('ELEVENLABS_TOOL_SECRET is not configured — rejecting tool call');
     return next(new AppError('Tool call verification unavailable', 503));
   }
 
-  const provided = req.get('x-retell-tool-secret') || '';
+  const provided = req.get('x-elevenlabs-tool-secret') || '';
   const a = Buffer.from(String(provided));
   const b = Buffer.from(String(secret));
   const ok = a.length === b.length && crypto.timingSafeEqual(a, b);

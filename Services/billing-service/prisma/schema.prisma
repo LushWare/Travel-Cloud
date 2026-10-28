@@ -367,7 +367,7 @@ model Quotation {
   leadId               String // → leads.Lead.id
   packageId            String? // → packages.Package.id
   itineraryId          String? // → packages.ManualItinerary.id
-  createdById          String // → users.User.id
+  createdById          String? // → users.User.id; null for system-generated voice quotations
   lastModifiedById     String?
   convertedToInvoiceId String? // → billing.Invoice.id (same schema)
 

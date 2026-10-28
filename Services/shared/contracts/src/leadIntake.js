@@ -28,10 +28,16 @@ export const LeadIntakeContactWithMethod = LeadIntakeContact.refine(
 
 export const LeadIntakeSlots = z.object({
   destination: z.string().max(255).optional(),
+  travelDate: z.coerce.date().optional(),
+  endDate: z.coerce.date().optional(),
   duration: z.coerce.number().int().min(1).max(30).optional(),
   travelers: z.coerce.number().int().min(1).max(50).optional(),
   budget: z.string().max(255).optional(),
   preferences: z.string().max(1000).optional(),
+}).superRefine((slots, ctx) => {
+  if (slots.travelDate && slots.endDate && slots.endDate < slots.travelDate) {
+    ctx.addIssue({ code: 'custom', path: ['endDate'], message: 'endDate cannot be before travelDate' });
+  }
 });
 
 // `id`/`at` are required (not just `role`/`content`) so the server can diff a
@@ -52,6 +58,15 @@ export const LeadIntakeRequest = z.object({
   slots: LeadIntakeSlots.optional(),
   transcript: z.array(LeadIntakeTranscriptMessage).min(1).max(40),
   selectedPackageId: z.string().uuid().optional(),
+  voiceReviewReason: z.enum([
+    'package_changed_requires_repricing',
+    'package_price_changed_since_search',
+    'package_price_unavailable_at_search',
+    'quoted_price_unavailable',
+    'booking_request_conflicts_with_existing',
+    'booking_details_changed_requires_review',
+    'customer_identity_changed_requires_review',
+  ]).optional(),
 });
 
 export const LeadIntakeResult = z.object({

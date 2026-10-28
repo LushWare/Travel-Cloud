@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   submitIntake, lookupLeadsByPhone,
-  getTripBrief, getPaymentBrief, attachPackage, adjustItinerary, previewPricing,
+  getTripBrief, getPaymentBrief, attachPackage, adjustItinerary, previewPricing, issueVoiceQuotation,
 } from '../lead.client.js';
 
 const ok = (data) => ({
@@ -137,6 +137,19 @@ describe('live in-call actions', () => {
     await vi.advanceTimersByTimeAsync(0);
     await promise;
     expect(spy.mock.calls[0][0]).toBe('http://lead.test/api/v1/leads/internal/lead-1/pricing/preview');
+  });
+
+  it('issues a verified voice quotation through the internal route with a longer webhook budget', async () => {
+    const spy = slowFetch(20_000, { issued: true });
+    vi.stubGlobal('fetch', spy);
+    const payload = { leadId: 'lead-1', bookingId: 'booking-1', packageId: 'pkg-1', searchPriceSnapshot: 1200 };
+    const promise = issueVoiceQuotation(payload, 'request-1');
+    await vi.advanceTimersByTimeAsync(20_000);
+    await expect(promise).resolves.toEqual({ issued: true });
+    expect(spy.mock.calls[0][0]).toBe('http://lead.test/api/v1/leads/internal/voice-auto-quote');
+    expect(spy.mock.calls[0][1].headers['x-internal-token']).toBe('test-token');
+    expect(JSON.parse(spy.mock.calls[0][1].body)).toEqual(payload);
+    expect(spy.mock.calls[0][1].signal.aborted).toBe(false);
   });
 
   it('a live write action waits longer than the lookup budget, so it is not aborted mid-write', async () => {

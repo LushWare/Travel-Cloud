@@ -285,7 +285,7 @@ app.use(`${V1}/payments`,  proxy(SERVICES.billing));
 app.use(`${V1}/careers`,   proxy(SERVICES.career));
 app.use(`${V1}/vacancies`, proxy(SERVICES.career));
 
-//Retell AI Voice call
+// ElevenLabs voice-agent webhooks
 app.use(`${V1}/webhooks/voice`, proxy(SERVICES.voice));
 
 app.use(`${V1}/webhooks/duffel-flights`, proxy(SERVICES.flight));

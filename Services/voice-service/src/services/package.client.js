@@ -3,6 +3,7 @@ import { domainAuthHeader } from '../utils/cloudRunAuth.js';
 const BASE = () => process.env.PACKAGE_SERVICE_URL || 'http://localhost:3003';
 const TIMEOUT_MS = 3000;
 const MAX_RESULTS = 5;
+export const PACKAGE_PRICE_SNAPSHOT = Symbol.for('packagePriceSnapshot');
 
 export async function searchPackages(query, requestId) {
   const q = String(query || '').trim();
@@ -21,14 +22,20 @@ export async function searchPackages(query, requestId) {
     if (!res.ok) return [];
     const json = await res.json().catch(() => null);
     const rows = Array.isArray(json?.data) ? json.data : [];
-    return rows.slice(0, MAX_RESULTS).map((p) => ({
-      packageId: p.id,
-      title: p.title,
-      destination: p.destination,
-      durationDays: p.durationDays ?? null,
-      summary: p.description ? String(p.description).slice(0, 400) : null,
-      // Deliberately no price field (basePrice/sellPrice) — see file header.
-    }));
+    return rows.slice(0, MAX_RESULTS).map((p) => {
+      const result = {
+        packageId: p.id,
+        title: p.title,
+        destination: p.destination,
+        durationDays: p.durationDays ?? null,
+        summary: p.description ? String(p.description).slice(0, 400) : null,
+      };
+      const priceSnapshot = Number(p.sellPrice);
+      Object.defineProperty(result, PACKAGE_PRICE_SNAPSHOT, {
+        value: Number.isFinite(priceSnapshot) ? priceSnapshot : null,
+      });
+      return result;
+    });
   } catch {
     return [];
   } finally {

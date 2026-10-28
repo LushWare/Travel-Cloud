@@ -110,6 +110,11 @@ describe('LeadAiCallsTab', () => {
     expect(await screen.findByText('Shared number')).toBeInTheDocument();
   });
 
+  it('shows a red warning when an exact-package booking needs rep review', async () => {
+    render(<LeadAiCallsTab lead={{ ...lead, voiceNeedsRepReview: true }} />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('Package/price change needs review');
+  });
+
   it('marks the lead as checked when the rep confirms', async () => {
     const onVerified = vi.fn();
     render(<LeadAiCallsTab lead={lead} onVerified={onVerified} />);

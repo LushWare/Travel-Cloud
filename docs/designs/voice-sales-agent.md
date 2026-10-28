@@ -1,4 +1,6 @@
-# Design: Retell AI Voice Sales Agent — Inbound Call Handling & Rep Workflow Automation
+# Design: Voice Sales Agent — Inbound Call Handling & Rep Workflow Automation
+
+> **Provider update:** This design was drafted around Retell. The implementation now uses ElevenLabs Conversational AI. Provider-specific references below describe the original proposal; use `docs/voice-agent-prompt.md`, `Services/setup-voice-agent.mjs`, and `Services/voice-service/` for the deployed ElevenLabs contracts.
 
 Branch: microservices
 Repo: LushWare-Org/Travel-CRM
@@ -71,7 +73,7 @@ Two users, in priority order:
 
 1. **The agent's fallback is a promise plus a flag, never a transfer.** Per the user's explicit direction, warm transfer is dropped from v1. When the agent cannot handle something it says *"one of our team members will get back to you as soon as possible"* and marks the lead `needs_rep_followup`. This removes online-rep checking, business-hours routing and call-transfer plumbing from scope — a material simplification, chosen by the user for a real reason (reps are not reliably free to take a transfer).
 
-2. **The agent prepares; a human commits.** Every capability is classified into exactly one of three tiers — ANSWER (read, speak), PREPARE (write reversible draft state), COMMIT (irreversible, customer-visible, or monetary). The agent operates in ANSWER and PREPARE. COMMIT is human-only, without exception. This is the same "bot proposes, agent verifies" premise the chatbot intake design already established, extended to write operations.
+2. **The agent prepares, with an exact-package quotation exception.** The agent operates in ANSWER and PREPARE. It may create a `pending` booking request for an exact active package when the caller explicitly confirms, the full identity/travel details are present, and the package price matches a server-recorded search snapshot. For that same verified request, the system creates and sends a quotation to both the supplied email and caller phone after the call; this is not supplier confirmation, payment, or a confirmed trip. Any mismatch, repricing, or delivery failure routes to a rep. Changed offers and other COMMIT actions remain human-only.
 
 3. **Financial figures are read-only, on-request-only, and never computed aloud.** Refined from the user's clarification. Two rules, both required:
    - **Only on request.** The agent never volunteers a figure. If the caller does not ask about money, money is never mentioned.
@@ -83,7 +85,7 @@ Two users, in priority order:
 
 5. **Caller identity comes from the carrier, never from the conversation.** `from_number` is supplied by the telephony network; a caller's spoken claims are not. The agent is given no lookup-by-name, lookup-by-email or lookup-by-id tool. This is the direct application of the IDOR lesson already documented in `leadIntake.controller.js` — *"`contact` is fully attacker-controlled... an anonymous caller could type a stranger's email into a fresh wizard session and merge into that stranger's Lead"* — to a channel where dialling is free and anonymous.
 
-6. **Anything the agent writes is visible to a rep before it is visible to a customer.** No agent-prepared quotation, invoice, itinerary or booking reaches the customer without a human clicking approve. The one exception is re-sending a document that was *already* sent to that same customer previously (Premise 3's logic: no new information leaves the business).
+6. **Only the unchanged exact-package quote is auto-issued.** The agent may create the pending booking and auto-send its quotation under Premise 2 after the server verifies the active package and unchanged search price. The caller is told the booking remains pending, not supplier-confirmed. Any changed-package or repriced quotation, invoice, itinerary, flight, or hotel requires human review. Re-sending an already-sent document remains allowed.
 
 ## Approaches Considered
 
@@ -125,8 +127,10 @@ The complete, closed vocabulary of what the agent may do:
 | **PREPARE** | Record a flight *preference* (not a search) | note on lead + `needsRepFollowup` | Reversible |
 | **PREPARE** | Move `QUOTED → REVISION` on a change request | `validateTransition` | Reversible |
 | **PREPARE** | Re-send an **already-sent** document to email + WhatsApp | `POST /internal/email`, `sendWhatsappTemplateMessage` | Low (Premise 6 exception) |
+| **PREPARE** | Submit a pending booking request for an exact active package with unchanged search price | `POST /bookings/internal/voice` | Caller-confirmed; remains pending, unpaid, and not supplier-confirmed |
+| **COMMIT exception** | Create and send the unchanged exact-package quotation to both email and WhatsApp after a verified voice booking | lead internal voice auto-quote → billing email/WhatsApp | Automated only when the quote total matches the search snapshot; mismatch or delivery failure requires rep follow-up |
 | **COMMIT** | Apply pricing | `applySelectionPricing` | **Rep only** |
-| **COMMIT** | Send a new quotation | `quotePackageSelection` | **Rep only** |
+| **COMMIT** | Send a changed or repriced quotation | `quotePackageSelection` | **Rep only** |
 | **COMMIT** | Book or cancel a flight | `POST /flights/book`, `/book-for-lead`, `/bookings/:id/cancel` | **Rep only — creates a real airline PNR** |
 | **COMMIT** | Confirm a hotel booking | booking-service write | **Rep only** |
 | **COMMIT** | Any status transition past `NEW`, invoice, payment, voucher | — | **Rep only** |
@@ -292,7 +296,7 @@ Phase 4 is nearly free — the send endpoints already exist. Phase 5 is where re
 - Every inbound call produces a `VoiceCall` row with transcript, recording and duration — zero calls unrecorded, verifiable by reconciling Retell's call count against `VoiceCall` row count.
 - A call from an unknown number produces a `PENDING_VERIFICATION` lead with no rep typing, tagged `source: voice_agent`.
 - A returning caller's third call appears as a third distinct `VoiceCall` on the *same* lead — not a fourth duplicate lead, and not an overwrite of call two.
-- No voice-originated lead is ever auto-assigned, auto-priced, auto-quoted or auto-booked. Verifiable as a test asserting no COMMIT-tier endpoint is reachable from `voice-service`'s outbound client — specifically that `POST /flights/book`, `/flights/book-for-lead` and `/flights/bookings/:id/cancel` appear nowhere in its call graph.
+- No voice-originated lead is auto-assigned or supplier-booked. An exact-package request may create a pending booking and automatically issue its quote to email and WhatsApp only after caller confirmation and server verification that the active package price and quotation total match the search snapshot. Package/price changes or delivery failures route to rep review. Flight booking and cancellation endpoints remain unreachable from `voice-service`.
 - **No flight price is ever spoken, and no flight search runs during a call.** Verifiable from `VoiceCallEvent`: no event names a flight-search or flight-price function, and no agent turn following a flight question contains a currency figure.
 - No computed figure is ever spoken. Verifiable by transcript review against `VoiceCallEvent` — any call where `calculateSelectionPricing` ran and a number appears in the following agent turn is a defect.
 - `POST /leads/internal/intake` remains unreachable from the public internet; `/api/v1/webhooks/voice/*` rejects every unsigned request. Both verified by live E2E against the gateway, matching the existing public-route contract specs.

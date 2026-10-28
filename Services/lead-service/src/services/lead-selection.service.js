@@ -421,3 +421,28 @@ export async function snapshotSelectionQuotation(selectionId, { createdById = nu
   const json = await res.json();
   return json.data;
 }
+
+export async function sendVoiceQuotation(quotationId, payload, requestId, fetchImpl = fetch) {
+  const token = process.env.INTERNAL_EVENTS_TOKEN;
+  if (!token) throw new AppError('INTERNAL_EVENTS_TOKEN is not configured', 503);
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 30000);
+  try {
+    const res = await fetchImpl(`${BILLING_SERVICE_URL}/api/v1/billing/quotations/${encodeURIComponent(quotationId)}/send-voice-auto`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-internal-token': token,
+        ...(requestId ? { 'x-request-id': requestId } : {}),
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new AppError(json?.message || `billing-service ${res.status}`, 502);
+    return json.data ?? json;
+  } finally {
+    clearTimeout(timer);
+  }
+}
