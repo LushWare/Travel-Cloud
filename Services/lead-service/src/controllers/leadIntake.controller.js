@@ -50,7 +50,7 @@ const INTAKE_NOTE_BY_CHANNEL = {
   voice: 'Created by voice agent lead intake',
 };
 
-function buildCreateData({ channel, sessionId, contact, slots }) {
+function buildCreateData({ channel, sessionId, contact, slots, voiceReviewReason }) {
   const clean = normalizeContact(contact);
   const extras = slotExtras({ slots, existingTravelDate: null });
   return {
@@ -65,6 +65,10 @@ function buildCreateData({ channel, sessionId, contact, slots }) {
     intakeChannel: channel,
     intakeSessionId: sessionId,
     destination: slots.destination || null,
+    travelDate: slots.travelDate || null,
+    endDate: slots.endDate || (slots.travelDate && slots.duration
+      ? new Date(slots.travelDate.getTime() + slots.duration * 86400000)
+      : null),
     numberOfTravelers: slots.travelers ?? null,
     budget: slots.budget || null,
     message: extras.length ? extras.join('; ') : null,
@@ -74,6 +78,12 @@ function buildCreateData({ channel, sessionId, contact, slots }) {
     // the lead arrives already flagged for a rep rather than waiting to be
     // noticed in a filter.
     needsRepFollowup: channel === 'voice',
+    voiceExactPackageMatch: false,
+    voicePriceChanged: Boolean(voiceReviewReason),
+    voiceNeedsRepReview: Boolean(voiceReviewReason),
+    voiceReviewReason: voiceReviewReason || null,
+    voiceAiBookingAllowed: false,
+    voiceCustomerIdentityConfirmed: false,
     // Machine-created lead, never auto-assigned — an agent must claim it.
     statusHistory: {
       create: [{
@@ -88,11 +98,25 @@ function buildCreateData({ channel, sessionId, contact, slots }) {
 
 // Merges only the slots actually present in this turn, leaving the rest of an
 // existing lead untouched. Never resets lifecycleStatus.
-function mergeSlotData({ slots, existing }) {
+function mergeSlotData({ slots, existing, contact, voiceReviewReason }) {
   const data = {};
+  if (contact.name && !existing?.name) data.name = contact.name;
+  if (contact.email && !existing?.email) data.email = contact.email;
   if (slots.destination != null && slots.destination !== '') data.destination = slots.destination;
+  if (slots.travelDate) data.travelDate = slots.travelDate;
+  if (slots.endDate) data.endDate = slots.endDate;
   if (slots.travelers != null) data.numberOfTravelers = slots.travelers;
   if (slots.budget != null && slots.budget !== '') data.budget = slots.budget;
+  if (voiceReviewReason) {
+    data.aiHandled = true;
+    data.needsRepFollowup = true;
+    data.voiceExactPackageMatch = false;
+    data.voicePriceChanged = true;
+    data.voiceNeedsRepReview = true;
+    data.voiceReviewReason = voiceReviewReason;
+    data.voiceAiBookingAllowed = false;
+    data.voiceCustomerIdentityConfirmed = false;
+  }
 
   // Only fold in extras not already present verbatim — the durable-signal
   // check fires on EVERY turn while it holds, so without this a still-PENDING
@@ -150,7 +174,7 @@ export const intakeLead = asyncHandler(async (req, res) => {
     const messages = parsed.error.issues.map((e) => `${e.path.join('.')}: ${e.message}`).join('; ');
     throw new AppError(messages, 400);
   }
-  const { channel, sessionId, contact, slots = {}, transcript, selectedPackageId } = parsed.data;
+  const { channel, sessionId, contact, slots = {}, transcript, selectedPackageId, voiceReviewReason } = parsed.data;
   const cleanContact = normalizeContact(contact);
   const sessionKey = {
     intakeChannel_intakeSessionId: { intakeChannel: channel, intakeSessionId: sessionId },
@@ -175,8 +199,8 @@ export const intakeLead = asyncHandler(async (req, res) => {
     // resets lifecycleStatus; it only merges the slots of the still-PENDING row.
     const upserted = await tx.lead.upsert({
       where: sessionKey,
-      create: buildCreateData({ channel, sessionId, contact: cleanContact, slots }),
-      update: mergeSlotData({ slots, existing: sessionLead }),
+      create: buildCreateData({ channel, sessionId, contact: cleanContact, slots, voiceReviewReason }),
+      update: mergeSlotData({ slots, existing: sessionLead, contact: cleanContact, voiceReviewReason }),
     });
     const created = !sessionLead;
     await appendTranscriptMessages(tx, upserted.id, transcript);

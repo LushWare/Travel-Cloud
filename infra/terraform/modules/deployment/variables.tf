@@ -71,7 +71,7 @@ variable "whatsapp_business_account_id" {
 }
 
 # ---------------------------------------------------------------------------
-# Secret Manager secrets — the full 26-row table from the deployment plan.
+# Secret Manager secrets — the full 27-row table from the deployment plan.
 # Every value is sensitive, required, and has no default: values must come
 # from this environment's terraform.tfvars (gitignored). The actual created
 # secret id is "<env>-<logical id>", see secrets.tf.
@@ -169,6 +169,12 @@ variable "facebook_app_secret" {
 
 variable "facebook_page_access_token" {
   description = "Facebook page access token (notification)."
+  type        = string
+  sensitive   = true
+}
+
+variable "google_ads_webhook_key" {
+  description = "Google Ads lead-form webhook verification key (notification)."
   type        = string
   sensitive   = true
 }
@@ -414,7 +420,7 @@ variable "management_notifications_enabled" {
   type        = string
   default     = "false"
 }
-# ── Voice agent (Retell AI) ────────────────────────────────────────────────
+# Legacy Retell inputs retained during the voice-provider migration.
 # Empty is fail-closed, not inert: without the webhook secret the two lifecycle
 # webhooks answer 503 and nothing is ever recorded; without the tool secret
 # (or its webhook-secret fallback) every CustomTool call is rejected. That is
@@ -434,6 +440,41 @@ variable "retell_tool_secret" {
   description = "Shared secret the Retell CustomTools carry in their own `headers` field (secret id <env>-retell-tool-secret → RETELL_TOOL_SECRET on voice-service). Retell documents no signature scheme for tool-call webhooks the way it does for the lifecycle ones, so this secret is what protects the seven tool endpoints."
   type        = string
   sensitive   = true
+  default     = ""
+}
+
+# ElevenLabs credentials used by the active voice-service integration.
+variable "elevenlabs_api_key" {
+  description = "ElevenLabs API key used by voice-service for conversation recordings."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "elevenlabs_webhook_secret" {
+  description = "ElevenLabs post-call webhook signing secret (ELEVENLABS_WEBHOOK_SECRET)."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "elevenlabs_initiation_secret" {
+  description = "Shared secret for the ElevenLabs call initiation webhook (ELEVENLABS_INITIATION_SECRET)."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "elevenlabs_tool_secret" {
+  description = "Shared secret for ElevenLabs tool webhooks (ELEVENLABS_TOOL_SECRET)."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "elevenlabs_public_base_url" {
+  description = "Public HTTPS gateway base URL used by the ElevenLabs setup tooling."
+  type        = string
   default     = ""
 }
 

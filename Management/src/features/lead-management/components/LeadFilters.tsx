@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import type { LifecycleStatus } from './LeadStatusBadge';
 
-type FilterKey = 'all' | LifecycleStatus;
+type FilterKey = 'all' | LifecycleStatus | 'NEEDS_REP_ATTENTION';
 
 // Subset of the 10 lifecycle statuses worth a quick filter tab; dot colors
 // reuse LeadStatusBadge's semantic grouping (muted/primary/success/destructive)
@@ -14,9 +14,10 @@ type FilterKey = 'all' | LifecycleStatus;
 const STATUSES: { key: FilterKey; label: string; shortLabel: string; dot: string }[] = [
   { key: 'all', label: 'All', shortLabel: 'All', dot: 'bg-muted-foreground' },
   { key: 'NEW', label: 'New', shortLabel: 'New', dot: 'bg-muted-foreground' },
-  { key: 'PENDING_VERIFICATION', label: 'Pending Verification', shortLabel: 'Pend.', dot: 'bg-warning' },
+  { key: 'NEEDS_REP_ATTENTION', label: 'Needs Rep Attention', shortLabel: 'Attention', dot: 'bg-amber-500' },
   { key: 'DRAFTING', label: 'Drafting', shortLabel: 'Draft', dot: 'bg-muted-foreground' },
   { key: 'QUOTED', label: 'Quoted', shortLabel: 'Quot.', dot: 'bg-primary' },
+  { key: 'REVISION', label: 'Revision', shortLabel: 'Rev.', dot: 'bg-warning' },
   { key: 'APPROVED', label: 'Approved', shortLabel: 'Appr.', dot: 'bg-success' },
   { key: 'BOOKING_IN_PROGRESS', label: 'Booking', shortLabel: 'Book', dot: 'bg-primary' },
   { key: 'CONFIRMED', label: 'Confirmed', shortLabel: 'Conf.', dot: 'bg-success' },

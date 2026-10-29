@@ -7,6 +7,7 @@ const INTAKE_TIMEOUT_MS = 15000;
 const LIVE_READ_TIMEOUT_MS = 3000;
 const LIVE_WRITE_TIMEOUT_MS = 8000;
 const ITINERARY_ADJUST_TIMEOUT_MS = 18000;
+const AUTO_QUOTE_TIMEOUT_MS = 45000;
 
 async function call(path, { method = 'POST', body, requestId, timeoutMs = LOOKUP_TIMEOUT_MS } = {}) {
   const token = process.env.INTERNAL_EVENTS_TOKEN;
@@ -53,19 +54,12 @@ export function logCallCommunication({ leadId, phone, notes, occurredAt }, reque
   });
 }
 
-/**
- * Caller lookup by verified carrier number only. Never by anything the caller
- * says — see docs/designs/voice-sales-agent.md Premise 5.
- */
 export function lookupLeadsByPhone(phone, requestId) {
   const q = encodeURIComponent(phone);
   return call(`/api/v1/leads/internal/by-phone?phone=${q}`, { method: 'GET', requestId });
 }
 
 // ─── Live in-call actions ────────────────────────────────────────
-// Every function below takes a leadId resolved server-side from the active
-// VoiceCall — never an id the agent supplied (see toolDispatch.controller.js).
-
 export function getTripBrief(leadId, requestId) {
   return call(`/api/v1/leads/internal/${leadId}/trip-brief`, { method: 'GET', requestId, timeoutMs: LIVE_READ_TIMEOUT_MS });
 }
@@ -89,5 +83,13 @@ export function adjustItinerary(leadId, changes, requestId) {
 export function previewPricing(leadId, requestId) {
   return call(`/api/v1/leads/internal/${leadId}/pricing/preview`, {
     method: 'POST', requestId, timeoutMs: LIVE_WRITE_TIMEOUT_MS,
+  });
+}
+
+export function issueVoiceQuotation(payload, requestId) {
+  return call('/api/v1/leads/internal/voice-auto-quote', {
+    body: payload,
+    requestId,
+    timeoutMs: AUTO_QUOTE_TIMEOUT_MS,
   });
 }

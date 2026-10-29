@@ -81,10 +81,46 @@ describe('LeadTable — PENDING_VERIFICATION claim action', () => {
     expect(onClaimClick).toHaveBeenCalledWith(pendingLead);
   });
 
-  it('renders the Pending Verification badge label for a PENDING_VERIFICATION row', () => {
+  it('renders Needs Rep Attention for a non-AI PENDING_VERIFICATION row', () => {
     renderTable({ viewMode: 'table' });
-    // The status badge label is source of truth from LIFECYCLE_STATUS_LABELS.
-    expect(screen.getAllByText('Pending Verification').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Needs Rep Attention').length).toBeGreaterThan(0);
+  });
+
+  it('hides the lifecycle pill for AI intake rows while retaining the AI badges and Claim action', async () => {
+    const user = userEvent.setup();
+    const aiPendingLead = { ...pendingLead, aiHandled: true, needsRepFollowup: true };
+    renderTable({ leads: [aiPendingLead], viewMode: 'table' });
+
+    expect(screen.queryByText('New Intake')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Needs Rep Attention' })).toHaveClass('bg-warning/10', 'text-warning');
+    expect(screen.getByLabelText('Created or updated by the voice agent')).toBeInTheDocument();
+    expect(screen.getByLabelText('The voice agent could not resolve something, or made changes awaiting approval')).toBeInTheDocument();
+    await openRowMenu(user, 'Chat Lead');
+    expect(screen.getByRole('button', { name: /claim lead/i })).toBeInTheDocument();
+  });
+
+  it('shows rep attention without hiding an existing lifecycle status', () => {
+    const quotedLead = {
+      ...newLead,
+      lifecycleStatus: 'QUOTED',
+      needsRepFollowup: true,
+    };
+    renderTable({ leads: [quotedLead], viewMode: 'table' });
+
+    expect(screen.getByText('Needs Rep Attention')).toBeInTheDocument();
+    expect(screen.getByText('Quoted')).toBeInTheDocument();
+  });
+
+  it('shows lifecycle status alongside rep attention in grid view', () => {
+    const quotedLead = {
+      ...newLead,
+      lifecycleStatus: 'QUOTED',
+      needsRepFollowup: true,
+    };
+    renderTable({ leads: [quotedLead], viewMode: 'grid' });
+
+    expect(screen.getByRole('button', { name: 'Quoted' })).toBeInTheDocument();
+    expect(screen.getByText('Needs Rep Attention')).toBeInTheDocument();
   });
 
   it('shows the Claim action only for PENDING_VERIFICATION cards in grid view', () => {

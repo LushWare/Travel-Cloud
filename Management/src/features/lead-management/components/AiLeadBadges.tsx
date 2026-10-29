@@ -4,6 +4,8 @@ import { cn } from '@/lib/utils';
 export interface AiLeadFlags {
   aiHandled?: boolean;
   needsRepFollowup?: boolean;
+  voiceNeedsRepReview?: boolean;
+  voiceReviewReason?: string | null;
   aiVerifiedAt?: string | null;
 }
 
@@ -12,7 +14,7 @@ export function isAiHandled(lead: AiLeadFlags | null | undefined) {
 }
 
 export function needsRepCheck(lead: AiLeadFlags | null | undefined) {
-  return Boolean(lead?.needsRepFollowup);
+  return Boolean(lead?.needsRepFollowup || lead?.voiceNeedsRepReview);
 }
 
 export function isAiVerified(lead: AiLeadFlags | null | undefined) {
@@ -35,6 +37,7 @@ export function AiLeadBadges({ lead, className, compact = false }: AiLeadBadgesP
 
   const verified = isAiVerified(lead);
   const needsCheck = needsRepCheck(lead);
+  const packageReview = Boolean(lead?.voiceNeedsRepReview);
 
   return (
     <span className={cn('inline-flex items-center gap-1 align-middle', className)}>
@@ -45,10 +48,21 @@ export function AiLeadBadges({ lead, className, compact = false }: AiLeadBadgesP
         compact={compact}
         tone="bg-purple-100 text-purple-700 dark:bg-purple-500/15 dark:text-purple-300"
       />
-      {needsCheck && (
+      {packageReview && (
         <Badge
           icon={AlertTriangle}
-          label="Needs check"
+          label="Rep review"
+          title={lead?.voiceReviewReason === 'package_changed_requires_repricing'
+            ? 'Package or price changed; review before proceeding'
+            : 'The voice booking requires rep review'}
+          compact={compact}
+          tone="bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300"
+        />
+      )}
+      {needsCheck && !packageReview && (
+        <Badge
+          icon={AlertTriangle}
+          label="Needs Rep Attention"
           title="The voice agent could not resolve something, or made changes awaiting approval"
           compact={compact}
           tone="bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300"

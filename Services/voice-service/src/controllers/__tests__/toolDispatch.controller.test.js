@@ -3,12 +3,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const mockVoiceCallFindUnique = vi.fn();
 const mockVoiceCallEventCreate = vi.fn();
 const mockVoiceCallEventCount = vi.fn();
+const mockVoiceCallEventFindMany = vi.fn();
 vi.mock('../../db/client.js', () => ({
   default: {
     voiceCall: { findUnique: (...a) => mockVoiceCallFindUnique(...a) },
     voiceCallEvent: {
       create: (...a) => mockVoiceCallEventCreate(...a),
       count: (...a) => mockVoiceCallEventCount(...a),
+      findMany: (...a) => mockVoiceCallEventFindMany(...a),
     },
   },
 }));
@@ -16,6 +18,7 @@ vi.mock('../../db/client.js', () => ({
 const mockSearchPackages = vi.fn();
 vi.mock('../../services/package.client.js', () => ({
   searchPackages: (...a) => mockSearchPackages(...a),
+  PACKAGE_PRICE_SNAPSHOT: Symbol.for('packagePriceSnapshot'),
 }));
 
 const mockGetTripBrief = vi.fn();
@@ -38,19 +41,33 @@ vi.mock('../../services/billing.client.js', () => ({
   resendDocument: (...a) => mockResendDocument(...a),
 }));
 
+const mockRequestVoiceBooking = vi.fn();
+vi.mock('../../services/booking.client.js', () => ({
+  requestVoiceBooking: (...a) => mockRequestVoiceBooking(...a),
+}));
+
 const {
   searchPackagesTool, getTripStatusTool, getPaymentStatusTool,
   attachPackageTool, adjustItineraryTool, previewPriceTool, resendDocumentTool,
+  requestBookingTool,
 } = await import('../toolDispatch.controller.js');
 
 const res = () => ({ json: vi.fn() });
 const next = vi.fn();
-const reqWith = (body) => ({ body, requestId: 'req-1', log: { error: vi.fn() } });
+const reqWith = (body, conversationId) => ({
+  body,
+  requestId: 'req-1',
+  log: { error: vi.fn() },
+  get: (name) => name === 'x-elevenlabs-conversation-id'
+    ? conversationId ?? body?.system__conversation_id ?? body?.conversation_id ?? body?.call?.call_id
+    : undefined,
+});
 
 beforeEach(() => {
   vi.clearAllMocks();
   mockVoiceCallEventCreate.mockResolvedValue({});
   mockVoiceCallEventCount.mockResolvedValue(0);
+  mockVoiceCallEventFindMany.mockResolvedValue([]);
 });
 
 describe('search_packages — needs no active lead', () => {
@@ -60,9 +77,30 @@ describe('search_packages — needs no active lead', () => {
     await searchPackagesTool(reqWith({ args: { query: 'maldives' } }), r, next);
     expect(r.json.mock.calls[0][0]).toEqual({ count: 1, packages: [{ packageId: 'p1', title: 'Maldives 5N' }] });
   });
+
+  it('keeps the price snapshot in the audit record but out of the response', async () => {
+    const packageResult = { packageId: 'pkg-1', title: 'Maldives 5N' };
+    Object.defineProperty(packageResult, Symbol.for('packagePriceSnapshot'), { value: 1950 });
+    mockSearchPackages.mockResolvedValue([packageResult]);
+    mockVoiceCallFindUnique.mockResolvedValue({ id: 'vc-1' });
+    const r = res();
+    await searchPackagesTool(reqWith({ args: { query: 'maldives' } }, 'conv-1'), r, next);
+    expect(JSON.stringify(r.json.mock.calls[0][0])).not.toContain('1950');
+    expect(mockVoiceCallEventCreate.mock.calls[0][0].data.result.packages).toEqual([
+      { packageId: 'pkg-1', priceSnapshot: 1950 },
+    ]);
+  });
 });
 
 describe('lead-bound tools — never trust an id from args', () => {
+  it('gets the conversation id from the provider header, not tool arguments', async () => {
+    mockVoiceCallFindUnique.mockResolvedValue({ id: 'vc-1', leadId: 'lead-real', disposition: 'IN_PROGRESS' });
+    mockGetTripBrief.mockResolvedValue({ statusClass: 'quote_sent' });
+    await getTripStatusTool(reqWith({ args: { conversation_id: 'untrusted' } }, 'conv_trusted'), res(), next);
+    expect(mockVoiceCallFindUnique).toHaveBeenCalledWith({ where: { conversationId: 'conv_trusted' } });
+    expect(mockGetTripBrief).toHaveBeenCalledWith('lead-real', 'req-1');
+  });
+
   it('get_trip_status resolves the lead from the call record, ignoring any lead id in args', async () => {
     mockVoiceCallFindUnique.mockResolvedValue({ id: 'vc-1', leadId: 'lead-real', disposition: 'IN_PROGRESS' });
     mockGetTripBrief.mockResolvedValue({ statusClass: 'quote_sent' });
@@ -114,6 +152,54 @@ describe('attach_package / adjust_itinerary — trip confirmation is required', 
     await adjustItineraryTool(reqWith({ call: { call_id: 'call_1' }, args: { add_nights: 2 } }), r, next);
     expect(r.json.mock.calls[0][0]).toEqual({ adjusted: false, reason: 'trip_not_confirmed' });
     expect(mockAdjustItinerary).not.toHaveBeenCalled();
+  });
+});
+
+describe('request_booking — exact package and caller consent are required', () => {
+  const bookingArgs = {
+    package_id: 'pkg-1', booking_confirmed: true, full_name: 'Jane Doe',
+    email: 'jane@example.com', travel_date: '2026-12-01', travelers: 2,
+  };
+
+  it('refuses without explicit booking consent', async () => {
+    mockVoiceCallFindUnique.mockResolvedValue({ id: 'vc-1', disposition: 'IN_PROGRESS' });
+    const r = res();
+    await requestBookingTool(reqWith({ call: { call_id: 'call_1' }, args: { ...bookingArgs, booking_confirmed: false } }), r, next);
+    expect(r.json.mock.calls[0][0]).toEqual({ created: false, reason: 'booking_not_confirmed' });
+    expect(mockRequestVoiceBooking).not.toHaveBeenCalled();
+  });
+
+  it('refuses a package not returned by an earlier package search on this call', async () => {
+    mockVoiceCallFindUnique.mockResolvedValue({ id: 'vc-1', disposition: 'IN_PROGRESS' });
+    const r = res();
+    await requestBookingTool(reqWith({ call: { call_id: 'call_1' }, args: bookingArgs }), r, next);
+    expect(r.json.mock.calls[0][0]).toEqual({ created: false, reason: 'package_not_presented_by_search' });
+    expect(mockRequestVoiceBooking).not.toHaveBeenCalled();
+  });
+
+  it('creates a pending booking using only the active call and searched package', async () => {
+    mockVoiceCallFindUnique.mockResolvedValue({ id: 'vc-1', disposition: 'IN_PROGRESS' });
+    mockVoiceCallEventFindMany.mockResolvedValue([{ result: { packages: [{ packageId: 'pkg-1', priceSnapshot: 1200 }] } }]);
+    mockRequestVoiceBooking.mockResolvedValue({ bookingId: 'booking-1', leadId: 'lead-1', alreadyCreated: false });
+    const r = res();
+    await requestBookingTool(reqWith({ call: { call_id: 'call_1' }, args: { ...bookingArgs, end_date: '2026-12-08' } }), r, next);
+    expect(mockRequestVoiceBooking).toHaveBeenCalledWith({
+      conversationId: 'call_1', packageId: 'pkg-1', searchPriceSnapshot: 1200, bookingConfirmed: true,
+      name: 'Jane Doe', email: 'jane@example.com', travelDate: '2026-12-01',
+      endDate: '2026-12-08', travelers: 2,
+    }, 'req-1');
+    expect(r.json.mock.calls[0][0]).toMatchObject({ created: true, bookingStatus: 'pending', bookingId: 'booking-1' });
+  });
+
+  it('routes a package or price mismatch to rep review without booking', async () => {
+    mockVoiceCallFindUnique.mockResolvedValue({ id: 'vc-1', disposition: 'IN_PROGRESS' });
+    mockVoiceCallEventFindMany.mockResolvedValue([{ result: { packages: [{ packageId: 'pkg-1', priceSnapshot: 1200 }] } }]);
+    mockRequestVoiceBooking.mockResolvedValue({ reviewRequired: true, reason: 'package_changed_requires_repricing' });
+    const r = res();
+    await requestBookingTool(reqWith({ call: { call_id: 'call_1' }, args: bookingArgs }), r, next);
+    expect(r.json.mock.calls[0][0]).toEqual({
+      created: false, requiresRepReview: true, reason: 'package_changed_requires_repricing',
+    });
   });
 });
 
@@ -313,12 +399,11 @@ describe('only the call in progress may act', () => {
     expect(mockGetTripBrief).not.toHaveBeenCalled();
   });
 
-  it('does not honour a call id arriving through args.call_id when that call has already completed', async () => {
-    mockVoiceCallFindUnique.mockResolvedValue({ id: 'vc-1', leadId: 'lead-1', disposition: 'COMPLETED' });
+  it('does not use a tool argument as a conversation id without the provider header', async () => {
     const r = res();
     await getTripStatusTool(reqWith({ args: { call_id: 'call_1' } }), r, next);
-    expect(mockVoiceCallFindUnique).toHaveBeenCalledWith({ where: { retellCallId: 'call_1' } });
     expect(r.json.mock.calls[0][0]).toEqual({ available: false });
+    expect(mockVoiceCallFindUnique).not.toHaveBeenCalled();
     expect(mockGetTripBrief).not.toHaveBeenCalled();
   });
 

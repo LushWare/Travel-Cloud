@@ -20,17 +20,14 @@ function renderFilters(props = {}) {
   );
 }
 
-describe('LeadFilters — PENDING_VERIFICATION', () => {
-  it('includes PENDING_VERIFICATION as a selectable status filter tab', async () => {
+describe('LeadFilters — Needs Rep Attention', () => {
+  it('includes the rep-attention queue as a selectable filter tab', async () => {
     const user = userEvent.setup();
     const setFilterStatus = vi.fn();
     renderFilters({ setFilterStatus });
-
-    const tab = screen.getByRole('tab', { name: /pending verification/i });
-    expect(tab).toBeInTheDocument();
-
+    const tab = screen.getByRole('tab', { name: /needs rep attention/i });
     await user.click(tab);
-    expect(setFilterStatus).toHaveBeenCalledWith('PENDING_VERIFICATION');
+    expect(setFilterStatus).toHaveBeenCalledWith('NEEDS_REP_ATTENTION');
   });
 });
 

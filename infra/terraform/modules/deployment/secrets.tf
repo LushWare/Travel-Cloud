@@ -1,5 +1,5 @@
-# Full Secret Manager table from the deployment plan (26 rows, logical ids
-# below, plus the voice agent's two). Actual secret ids are env-prefixed ("<env>-<logical id>") because
+# Full Secret Manager table from the deployment plan. Actual secret ids are
+# env-prefixed ("<env>-<logical id>") because
 # Secret Manager ids are unique per project and all three environments share
 # one GCP project — the second environment's apply must not collide.
 locals {
@@ -20,6 +20,7 @@ locals {
     facebook-verify-token      = var.facebook_verify_token
     facebook-app-secret        = var.facebook_app_secret
     facebook-page-access-token = var.facebook_page_access_token
+    google-ads-webhook-key     = var.google_ads_webhook_key
     duffel-access-token        = var.duffel_access_token
     duffel-webhook-secret      = var.duffel_webhook_secret
     travelport-client-id       = var.travelport_client_id
@@ -30,6 +31,10 @@ locals {
     liteapi-api-key            = var.liteapi_api_key
     retell-webhook-secret      = var.retell_webhook_secret
     retell-tool-secret         = var.retell_tool_secret
+    elevenlabs-api-key             = var.elevenlabs_api_key
+    elevenlabs-webhook-secret      = var.elevenlabs_webhook_secret
+    elevenlabs-initiation-secret   = var.elevenlabs_initiation_secret
+    elevenlabs-tool-secret         = var.elevenlabs_tool_secret
   }
 }
 

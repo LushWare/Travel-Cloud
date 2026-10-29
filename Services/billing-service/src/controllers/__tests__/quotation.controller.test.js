@@ -30,7 +30,7 @@ vi.mock('../../services/quotation.service.js', () => ({
   quotationTotals: vi.fn(),
 }));
 
-import { getAllQuotations, sendQuotation, createQuotationFromLead } from '../quotation.controller.js';
+import { getAllQuotations, sendQuotation, sendVoiceQuotation, createQuotationFromLead } from '../quotation.controller.js';
 
 const quotation = {
   id: 'q-1',
@@ -38,7 +38,13 @@ const quotation = {
   customerEmail: 'alice@test.com',
   customerPhone: '+15551234567',
   currency: 'USD',
+  subtotal: 1200,
   totalAmount: 1779.2,
+  status: 'draft',
+  leadId: 'lead-1',
+  packageId: 'pkg-1',
+  emailSent: false,
+  whatsappSent: false,
   items: [],
 };
 
@@ -149,6 +155,63 @@ describe('sendQuotation', () => {
   });
 });
 
+describe('sendVoiceQuotation', () => {
+  it('sends a new quotation to both email and WhatsApp', async () => {
+    const { res, nextErr } = await run(sendVoiceQuotation, { params: { id: 'q-1' }, body: { leadId: 'lead-1', packageId: 'pkg-1', expectedPackagePrice: 1200 } });
+
+    expect(nextErr).toBeUndefined();
+    expect(mockSendEmail).toHaveBeenCalledWith(expect.objectContaining({ recipientEmail: 'alice@test.com' }));
+    expect(mockSendWhatsapp).toHaveBeenCalledWith(expect.objectContaining({ phone: '+15551234567' }));
+    expect(res.json).toHaveBeenCalledWith({
+      success: true,
+      data: { email: 'sent', whatsapp: 'sent', allSent: true },
+    });
+  });
+
+  it('does not resend a channel that already received the quotation', async () => {
+    mockFindUnique.mockResolvedValue({ ...quotation, emailSent: true, status: 'sent' });
+    const { res, nextErr } = await run(sendVoiceQuotation, { params: { id: 'q-1' }, body: { leadId: 'lead-1', packageId: 'pkg-1', expectedPackagePrice: 1200 } });
+
+    expect(nextErr).toBeUndefined();
+    expect(mockSendEmail).not.toHaveBeenCalled();
+    expect(mockSendWhatsapp).toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledWith({
+      success: true,
+      data: { email: 'already_sent', whatsapp: 'sent', allSent: true },
+    });
+  });
+
+  it('reports partial delivery so the caller can flag rep follow-up', async () => {
+    mockSendWhatsapp.mockRejectedValue(new Error('WhatsApp unavailable'));
+    const { res, nextErr } = await run(sendVoiceQuotation, { params: { id: 'q-1' }, body: { leadId: 'lead-1', packageId: 'pkg-1', expectedPackagePrice: 1200 } });
+
+    expect(nextErr).toBeUndefined();
+    expect(res.json).toHaveBeenCalledWith({
+      success: true,
+      data: { email: 'sent', whatsapp: 'failed', allSent: false },
+    });
+  });
+
+  it('refuses to automatically deliver an accepted quotation', async () => {
+    mockFindUnique.mockResolvedValue({ ...quotation, status: 'accepted' });
+    const { nextErr } = await run(sendVoiceQuotation, { params: { id: 'q-1' }, body: { leadId: 'lead-1', packageId: 'pkg-1', expectedPackagePrice: 1200 } });
+    expect(nextErr.statusCode).toBe(409);
+    expect(mockSendEmail).not.toHaveBeenCalled();
+    expect(mockSendWhatsapp).not.toHaveBeenCalled();
+  });
+
+  it('does not send a quotation whose package subtotal differs from the verified package price', async () => {
+    const { res, nextErr } = await run(sendVoiceQuotation, { params: { id: 'q-1' }, body: { leadId: 'lead-1', packageId: 'pkg-1', expectedPackagePrice: 1300 } });
+    expect(nextErr).toBeUndefined();
+    expect(mockSendEmail).not.toHaveBeenCalled();
+    expect(mockSendWhatsapp).not.toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledWith({
+      success: true,
+      data: { email: 'not_sent', whatsapp: 'not_sent', allSent: false, reason: 'quotation_package_price_mismatch' },
+    });
+  });
+});
+
 describe('createQuotationFromLead (internal handoff)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -201,11 +264,11 @@ describe('createQuotationFromLead (internal handoff)', () => {
     expect(mockCreateOrVersion).toHaveBeenCalledWith(expect.objectContaining({ createdById: 'req-user' }));
   });
 
-  it('400s when neither a request user nor a body createdById is supplied', async () => {
+  it('allows a system-created quotation without attributing it to a rep', async () => {
     const req = { body: validSnapshotBody({ createdById: null }) };
     const { nextErr } = await run(createQuotationFromLead, req);
-    expect(nextErr.statusCode).toBe(400);
-    expect(mockCreateOrVersion).not.toHaveBeenCalled();
+    expect(nextErr).toBeUndefined();
+    expect(mockCreateOrVersion).toHaveBeenCalledWith(expect.objectContaining({ createdById: null }));
   });
 
   it('400s when the body fails LeadSnapshotForQuotation validation instead of reaching createOrVersionQuotation', async () => {

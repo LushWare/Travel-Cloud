@@ -100,7 +100,7 @@ function buildEmail({ call, slots, managementUrl }) {
  * The agent tells callers "one of our team will get back to you shortly", and
  * without this nothing acts on that promise — the lead is flagged and waits for
  * someone to notice a filter. Best-effort by design: a failure here is logged
- * and swallowed, never allowed to fail the webhook, because Retell would then
+ * and swallowed, never allowed to fail the webhook, because ElevenLabs would then
  * retry the whole call and duplicate the work.
  */
 export async function notifyRepsOfCallback({ call, slots = {}, leadId }, log, requestId) {

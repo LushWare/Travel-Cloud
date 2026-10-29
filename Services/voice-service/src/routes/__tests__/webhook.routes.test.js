@@ -1,387 +1,331 @@
+import crypto from 'node:crypto';
 import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest';
 import request from 'supertest';
-import { symmetric } from 'retell-sdk/lib/webhook_auth.js';
 
-const SECRET = 'test-secret';
-process.env.RETELL_WEBHOOK_SECRET = SECRET;
+const WEBHOOK_SECRET = 'elevenlabs-webhook-test-secret';
+const INITIATION_SECRET = 'elevenlabs-init-test-secret';
+process.env.ELEVENLABS_WEBHOOK_SECRET = WEBHOOK_SECRET;
+process.env.ELEVENLABS_INITIATION_SECRET = INITIATION_SECRET;
 
 const mockVoiceNumberFindFirst = vi.fn();
+const mockVoiceCallUpsert = vi.fn();
+const mockVoiceCallFindUnique = vi.fn();
 const mockVoiceCallCreate = vi.fn();
 const mockVoiceCallUpdate = vi.fn();
-const mockVoiceCallFindFirst = vi.fn();
-const mockVoiceCallFindMany = vi.fn();
-const mockVoiceCallCount = vi.fn();
-
+const mockVoiceCallEventFindFirst = vi.fn();
 vi.mock('../../db/client.js', () => ({
   default: {
-    voiceNumber: { findFirst: (...a) => mockVoiceNumberFindFirst(...a) },
+    voiceNumber: { findFirst: (...args) => mockVoiceNumberFindFirst(...args) },
     voiceCall: {
-      create: (...a) => mockVoiceCallCreate(...a),
-      update: (...a) => mockVoiceCallUpdate(...a),
-      findFirst: (...a) => mockVoiceCallFindFirst(...a),
-      findMany: (...a) => mockVoiceCallFindMany(...a),
-      count: (...a) => mockVoiceCallCount(...a),
+      upsert: (...args) => mockVoiceCallUpsert(...args),
+      findUnique: (...args) => mockVoiceCallFindUnique(...args),
+      create: (...args) => mockVoiceCallCreate(...args),
+      update: (...args) => mockVoiceCallUpdate(...args),
     },
+    voiceCallEvent: { findFirst: (...args) => mockVoiceCallEventFindFirst(...args) },
   },
 }));
 
 const mockLookup = vi.fn();
 const mockSubmitIntake = vi.fn();
+const mockIssueVoiceQuotation = vi.fn();
 vi.mock('../../services/lead.client.js', () => ({
-  lookupLeadsByPhone: (...a) => mockLookup(...a),
-  submitIntake: (...a) => mockSubmitIntake(...a),
+  lookupLeadsByPhone: (...args) => mockLookup(...args),
+  submitIntake: (...args) => mockSubmitIntake(...args),
+  issueVoiceQuotation: (...args) => mockIssueVoiceQuotation(...args),
   logCallCommunication: vi.fn(),
 }));
 
 const mockNotify = vi.fn();
 vi.mock('../../services/notify.service.js', () => ({
-  notifyRepsOfCallback: (...a) => mockNotify(...a),
+  notifyRepsOfCallback: (...args) => mockNotify(...args),
+}));
+
+const mockIsOverDailyCap = vi.fn();
+vi.mock('../../services/callVolume.service.js', () => ({
+  isOverDailyCap: (...args) => mockIsOverDailyCap(...args),
 }));
 
 const { default: app } = await import('../../app.js');
 
-// Retell's real format is `v=<timestamp>,d=<hmac of body+timestamp>`, so these
-// tests use the SDK's own signer rather than a hand-rolled HMAC over the body.
-const sign = (raw, secret = SECRET) => symmetric.sign(raw, secret);
+const sign = (raw, secret = WEBHOOK_SECRET, timestamp = Math.floor(Date.now() / 1000)) => {
+  const digest = crypto.createHmac('sha256', secret).update(`${timestamp}.${raw}`).digest('hex');
+  return `t=${timestamp},v0=${digest}`;
+};
 
-const post = async (path, body, { secret = SECRET, signature } = {}) => {
+const postCallBody = (overrides = {}) => ({
+  type: 'post_call_transcription',
+  event_timestamp: 1792933200,
+  data: {
+    conversation_id: 'conv_abc123',
+    agent_id: 'agent_live',
+    status: 'done',
+    has_audio: true,
+    transcript: [
+      { role: 'agent', message: 'Thanks for calling.' },
+      { role: 'user', message: 'I want to go to the Maldives in December.' },
+    ],
+    metadata: {
+      start_time_unix_secs: 1792932960,
+      call_duration_secs: 240,
+      cost_fiat: 1.25,
+      phone_call: { direction: 'inbound', external_number: '+94771234567', agent_number: '+94112223333' },
+    },
+    analysis: {
+      transcript_summary: 'New Maldives enquiry',
+      data_collection_results: {
+        destination: { value: 'Maldives' },
+        travelers: { value: 2 },
+        duration: { value: 7 },
+        needs_rep_followup: { value: true },
+        user_sentiment: { value: 'Positive' },
+      },
+    },
+    ...overrides,
+  },
+});
+
+const postSigned = async (path, body, { secret = WEBHOOK_SECRET, signature } = {}) => {
   const raw = JSON.stringify(body);
   return request(app)
     .post(path)
     .set('content-type', 'application/json')
-    .set('x-retell-signature', signature ?? (await sign(raw, secret)))
+    .set('elevenlabs-signature', signature ?? sign(raw, secret))
     .send(raw);
 };
 
-const inboundBody = (over = {}) => ({
-  event: 'call_inbound',
-  call_inbound: { from_number: '+94771234567', to_number: '+94112223333', ...over },
-});
-
-const postCallBody = (over = {}) => ({
-  event: 'call_analyzed',
-  call: {
-    call_id: 'call_abc123',
-    direction: 'inbound',
-    from_number: '+94771234567',
-    to_number: '+94112223333',
-    duration_ms: 240000,
-    transcript_object: [
-      { role: 'agent', content: 'Thanks for calling.' },
-      { role: 'user', content: 'I want to go to the Maldives in December.' },
-    ],
-    call_analysis: { call_summary: 'New Maldives enquiry', user_sentiment: 'Positive' },
-    ...over,
-  },
-});
+const postInitiation = async (body, secret = INITIATION_SECRET) => request(app)
+  .post('/api/v1/webhooks/voice/inbound')
+  .set('content-type', 'application/json')
+  .set('x-elevenlabs-init-secret', secret)
+  .send(body);
 
 beforeEach(() => {
   vi.clearAllMocks();
-  process.env.RETELL_WEBHOOK_SECRET = SECRET;
+  process.env.ELEVENLABS_WEBHOOK_SECRET = WEBHOOK_SECRET;
+  process.env.ELEVENLABS_INITIATION_SECRET = INITIATION_SECRET;
   mockVoiceNumberFindFirst.mockResolvedValue({
-    id: 'num-1', e164: '94112223333', retellAgentId: 'agent_live', label: 'Lushware Travel',
+    id: 'num-1', e164: '94112223333', agentId: 'agent_live', label: 'Lushware Travel',
     disclosureText: 'This call is recorded.',
   });
+  mockVoiceCallUpsert.mockResolvedValue({ id: 'vc-1', leadId: null });
+  mockVoiceCallFindUnique.mockResolvedValue({ id: 'vc-1', leadId: null, needsRepFollowup: false });
   mockVoiceCallCreate.mockResolvedValue({ id: 'vc-1', leadId: null });
   mockVoiceCallUpdate.mockResolvedValue({ id: 'vc-1' });
-  mockVoiceCallFindFirst.mockResolvedValue(null);
-  // The number-less adoption fallback reads candidates with findMany; with none
-  // it must decline to adopt rather than guess.
-  mockVoiceCallFindMany.mockResolvedValue([]);
-  mockVoiceCallCount.mockResolvedValue(0); // well under the daily cap by default
-  mockLookup.mockResolvedValue({ count: 0, matches: [] });
+  mockVoiceCallEventFindFirst.mockResolvedValue(null);
+  mockLookup.mockResolvedValue({ matches: [], samePerson: true });
   mockSubmitIntake.mockResolvedValue({ leadId: 'lead-9', created: true });
+  mockIssueVoiceQuotation.mockResolvedValue({ issued: true, delivery: { allSent: true } });
   mockNotify.mockResolvedValue({ notified: 2 });
+  mockIsOverDailyCap.mockResolvedValue({ overCap: false, count: 0, cap: 20 });
 });
 
-afterAll(() => { delete process.env.RETELL_WEBHOOK_SECRET; });
+afterAll(() => {
+  delete process.env.ELEVENLABS_WEBHOOK_SECRET;
+  delete process.env.ELEVENLABS_INITIATION_SECRET;
+});
 
 describe('POST /api/v1/webhooks/voice/inbound', () => {
-  it('rejects an unsigned request with 401', async () => {
-    const res = await request(app).post('/api/v1/webhooks/voice/inbound').send(inboundBody());
+  const body = {
+    caller_id: '+94771234567',
+    called_number: '+94112223333',
+    agent_id: 'agent_live',
+    conversation_id: 'conv_abc123',
+    call_sid: 'CA123',
+  };
+
+  it('rejects a missing initiation secret', async () => {
+    const res = await request(app).post('/api/v1/webhooks/voice/inbound').send(body);
     expect(res.status).toBe(401);
   });
 
-  it('rejects a request signed with the wrong secret with 401', async () => {
-    const res = await post('/api/v1/webhooks/voice/inbound', inboundBody(), { secret: 'wrong' });
+  it('rejects the wrong initiation secret', async () => {
+    const res = await postInitiation(body, 'wrong');
     expect(res.status).toBe(401);
   });
 
-  it('returns the agent id mapped to the dialled number', async () => {
-    const res = await post('/api/v1/webhooks/voice/inbound', inboundBody());
-    expect(res.body.call_inbound.override_agent_id).toBe('agent_live');
+  it('returns ElevenLabs initiation data with whitelisted caller variables', async () => {
+    mockLookup.mockResolvedValue({ matches: [{ leadId: 'lead-1', firstName: 'Nimal' }], samePerson: true });
+    const res = await postInitiation(body);
+    expect(res.status).toBe(200);
+    expect(res.body.type).toBe('conversation_initiation_client_data');
+    expect(res.body.dynamic_variables.caller_name).toBe('Nimal');
+    expect(JSON.stringify(res.body.dynamic_variables)).not.toContain('lead-1');
   });
 
-  it('looks the number up by its digits-only form', async () => {
-    await post('/api/v1/webhooks/voice/inbound', inboundBody());
-    expect(mockVoiceNumberFindFirst).toHaveBeenCalledWith({
-      where: { e164: '94112223333', isActive: true },
-    });
+  it('creates the in-progress call keyed by ElevenLabs conversation id', async () => {
+    await postInitiation(body);
+    expect(mockVoiceCallUpsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { conversationId: 'conv_abc123' },
+      create: expect.objectContaining({
+        conversationId: 'conv_abc123',
+        fromNumber: '94771234567',
+        toNumber: '94112223333',
+        numberId: 'num-1',
+      }),
+    }));
   });
 
-  it('returns 404 when the dialled number is not configured', async () => {
+  it('returns 404 when the dialled number is not registered', async () => {
     mockVoiceNumberFindFirst.mockResolvedValue(null);
-    const res = await post('/api/v1/webhooks/voice/inbound', inboundBody());
+    const res = await postInitiation(body);
     expect(res.status).toBe(404);
   });
 
-  it('marks an unrecognised caller as not known', async () => {
-    const res = await post('/api/v1/webhooks/voice/inbound', inboundBody());
-    expect(res.body.call_inbound.dynamic_variables.caller_known).toBe('false');
+  it('rejects an agent that does not match the number registration', async () => {
+    const res = await postInitiation({ ...body, agent_id: 'agent_other' });
+    expect(res.status).toBe(409);
+    expect(mockVoiceCallUpsert).not.toHaveBeenCalled();
   });
 
-  it('greets a single-match caller by first name', async () => {
-    mockLookup.mockResolvedValue({
-      count: 1,
-      matches: [{ leadId: 'lead-1', firstName: 'Nimal', statusClass: 'quote_sent', destination: 'Maldives' }],
-    });
-    const res = await post('/api/v1/webhooks/voice/inbound', inboundBody());
-    expect(res.body.call_inbound.dynamic_variables.caller_name).toBe('Nimal');
-  });
-
-  it('records the matched leadId on the call', async () => {
-    mockLookup.mockResolvedValue({
-      count: 1,
-      matches: [{ leadId: 'lead-1', firstName: 'Nimal', statusClass: 'quote_sent', destination: 'Maldives' }],
-    });
-    await post('/api/v1/webhooks/voice/inbound', inboundBody());
-    expect(mockVoiceCallCreate.mock.calls[0][0].data.leadId).toBe('lead-1');
-  });
-
-  it('withholds the caller name when two leads share the number', async () => {
-    mockLookup.mockResolvedValue({
-      count: 2,
-      matches: [
-        { leadId: 'lead-1', firstName: 'Nimal', statusClass: 'quote_sent' },
-        { leadId: 'lead-2', firstName: 'Kamal', statusClass: 'confirmed' },
-      ],
-    });
-    const res = await post('/api/v1/webhooks/voice/inbound', inboundBody());
-    expect(res.body.call_inbound.dynamic_variables.caller_name).toBe('');
-  });
-
-  it('records an ambiguous match outcome when two leads share the number', async () => {
-    mockLookup.mockResolvedValue({
-      count: 2,
-      matches: [{ leadId: 'lead-1', firstName: 'Nimal' }, { leadId: 'lead-2', firstName: 'Kamal' }],
-    });
-    await post('/api/v1/webhooks/voice/inbound', inboundBody());
-    expect(mockVoiceCallCreate.mock.calls[0][0].data.matchOutcome).toBe('AMBIGUOUS');
-  });
-
-  it('still answers the call when the caller lookup fails', async () => {
-    mockLookup.mockRejectedValue(new Error('lead-service down'));
-    const res = await post('/api/v1/webhooks/voice/inbound', inboundBody());
-    expect(res.status).toBe(200);
-    expect(res.body.call_inbound.dynamic_variables.caller_known).toBe('false');
-  });
-
-  it('never exposes a leadId in the dynamic variables', async () => {
-    mockLookup.mockResolvedValue({
-      count: 1, matches: [{ leadId: 'lead-secret', firstName: 'Nimal', statusClass: 'quote_sent' }],
-    });
-    const res = await post('/api/v1/webhooks/voice/inbound', inboundBody());
-    expect(JSON.stringify(res.body.call_inbound.dynamic_variables)).not.toContain('lead-secret');
-  });
-
-  it('rejects a payload missing the caller number with 400', async () => {
-    const res = await post('/api/v1/webhooks/voice/inbound', { call_inbound: { to_number: '+94112223333' } });
+  it('rejects an invalid initiation body', async () => {
+    const res = await postInitiation({ ...body, called_number: undefined });
     expect(res.status).toBe(400);
   });
 
-  it('skips the caller lookup once a number is over its daily call cap', async () => {
-    mockVoiceCallCount.mockResolvedValue(20); // == the default cap
-    await post('/api/v1/webhooks/voice/inbound', inboundBody());
-    expect(mockLookup).not.toHaveBeenCalled();
-  });
-
-  it('still answers the call for a number over its daily call cap', async () => {
-    mockVoiceCallCount.mockResolvedValue(20);
-    const res = await post('/api/v1/webhooks/voice/inbound', inboundBody());
+  it('skips identity lookup when the caller is over the daily cap', async () => {
+    mockIsOverDailyCap.mockResolvedValue({ overCap: true, count: 20, cap: 20 });
+    const res = await postInitiation(body);
     expect(res.status).toBe(200);
-    expect(res.body.call_inbound.override_agent_id).toBe('agent_live');
-  });
-
-  it('treats a caller over the daily call cap as unknown', async () => {
-    mockVoiceCallCount.mockResolvedValue(20);
-    const res = await post('/api/v1/webhooks/voice/inbound', inboundBody());
-    expect(res.body.call_inbound.dynamic_variables.caller_known).toBe('false');
-  });
-
-  it('still performs the lookup for a number one call under the cap', async () => {
-    mockVoiceCallCount.mockResolvedValue(19);
-    await post('/api/v1/webhooks/voice/inbound', inboundBody());
-    expect(mockLookup).toHaveBeenCalled();
+    expect(mockLookup).not.toHaveBeenCalled();
+    expect(res.body.dynamic_variables.caller_known).toBe('false');
   });
 });
 
 describe('POST /api/v1/webhooks/voice/post-call', () => {
-  it('rejects an unsigned request with 401', async () => {
+  it('rejects an unsigned transcription webhook', async () => {
     const res = await request(app).post('/api/v1/webhooks/voice/post-call').send(postCallBody());
     expect(res.status).toBe(401);
   });
 
-  it('stores the call under its Retell call id', async () => {
-    await post('/api/v1/webhooks/voice/post-call', postCallBody());
-    expect(mockVoiceCallCreate.mock.calls[0][0].data.retellCallId).toBe('call_abc123');
+  it('rejects a signature made with the wrong secret', async () => {
+    const res = await postSigned('/api/v1/webhooks/voice/post-call', postCallBody(), { secret: 'wrong' });
+    expect(res.status).toBe(401);
   });
 
-  it('converts the duration from milliseconds to seconds', async () => {
-    await post('/api/v1/webhooks/voice/post-call', postCallBody());
-    expect(mockVoiceCallCreate.mock.calls[0][0].data.durationSec).toBe(240);
+  it('rejects a signature older than the ElevenLabs replay window', async () => {
+    const raw = JSON.stringify(postCallBody());
+    const stale = sign(raw, WEBHOOK_SECRET, Math.floor(Date.now() / 1000) - 31 * 60);
+    const res = await postSigned('/api/v1/webhooks/voice/post-call', postCallBody(), { signature: stale });
+    expect(res.status).toBe(401);
   });
 
-  it('stores the AI summary', async () => {
-    await post('/api/v1/webhooks/voice/post-call', postCallBody());
-    expect(mockVoiceCallCreate.mock.calls[0][0].data.summary).toBe('New Maldives enquiry');
-  });
-
-  it('marks a call with no transcript as abandoned', async () => {
-    await post('/api/v1/webhooks/voice/post-call', postCallBody({ transcript_object: [] }));
-    expect(mockVoiceCallCreate.mock.calls[0][0].data.disposition).toBe('ABANDONED');
-  });
-
-  it('submits intake on the voice channel keyed by the call id', async () => {
-    await post('/api/v1/webhooks/voice/post-call', postCallBody());
+  it('stores the call and normalizes the transcript and billing metadata', async () => {
+    await postSigned('/api/v1/webhooks/voice/post-call', postCallBody());
+    expect(mockVoiceCallUpdate.mock.calls[0][0]).toMatchObject({
+      where: { id: 'vc-1' },
+      data: {
+        durationSec: 240,
+        costCents: 125,
+        summary: 'New Maldives enquiry',
+        sentiment: 'Positive',
+        disposition: 'COMPLETED',
+        recordingUrl: 'elevenlabs',
+      },
+    });
     expect(mockSubmitIntake.mock.calls[0][0]).toMatchObject({
-      channel: 'voice',
-      sessionId: 'call_abc123',
-      contact: { phone: '94771234567' },
+      channel: 'voice', sessionId: 'conv_abc123', contact: { phone: '94771234567' },
+      slots: { destination: 'Maldives', travelers: 2, duration: 7 },
     });
   });
 
-  it('passes the extracted destination through to intake', async () => {
-    await post('/api/v1/webhooks/voice/post-call', postCallBody({
-      call_analysis: { call_summary: 's', custom_analysis_data: { destination: 'Maldives', travelers: 2 } },
-    }));
-    expect(mockSubmitIntake.mock.calls[0][0].slots).toEqual({ destination: 'Maldives', travelers: 2 });
-  });
-
-  it('drops an out-of-range traveller count rather than sending it to intake', async () => {
-    await post('/api/v1/webhooks/voice/post-call', postCallBody({
-      call_analysis: { call_summary: 's', custom_analysis_data: { travelers: 900 } },
-    }));
-    expect(mockSubmitIntake.mock.calls[0][0].slots).toEqual({});
-  });
-
-  it('skips intake for a call with no transcript', async () => {
-    await post('/api/v1/webhooks/voice/post-call', postCallBody({ transcript_object: [] }));
-    expect(mockSubmitIntake).not.toHaveBeenCalled();
-  });
-
-  it('links the call to the lead intake created', async () => {
-    await post('/api/v1/webhooks/voice/post-call', postCallBody());
-    expect(mockVoiceCallUpdate).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ leadId: 'lead-9' }),
-    }));
-  });
-
-  it('flags the call for a rep when the agent left something unresolved', async () => {
-    await post('/api/v1/webhooks/voice/post-call', postCallBody());
-    expect(mockVoiceCallUpdate).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ needsRepFollowup: true }),
-    }));
-  });
-
-  it('does not flag a call the agent reported as fully resolved', async () => {
+  it('persists confirmed identity and dates and clears follow-up only for a created booking', async () => {
     const body = postCallBody();
-    body.call.call_analysis.custom_analysis_data = { needs_rep_followup: false };
-    await post('/api/v1/webhooks/voice/post-call', body);
-    expect(mockVoiceCallUpdate).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ needsRepFollowup: false }),
-    }));
+    body.data.analysis.data_collection_results = {
+      full_name: { value: 'Jane Doe' },
+      email: { value: 'jane@example.com' },
+      travel_date: { value: '2026-12-01' },
+      end_date: { value: '2026-12-08' },
+      travelers: { value: 2 },
+      selected_package_id: { value: '11111111-1111-4111-8111-111111111111' },
+      booking_confirmed: { value: true },
+      needs_rep_followup: { value: false },
+    };
+    mockVoiceCallEventFindFirst.mockResolvedValue({ result: {
+      created: true,
+      bookingStatus: 'pending',
+      bookingId: 'booking-1',
+      leadId: 'booked-lead-1',
+      packageId: '11111111-1111-4111-8111-111111111111',
+      searchPriceSnapshot: 1200,
+    } });
+    mockVoiceCallUpdate.mockResolvedValueOnce({ id: 'vc-1', leadId: 'booked-lead-1' });
+    await postSigned('/api/v1/webhooks/voice/post-call', body);
+    expect(mockSubmitIntake).not.toHaveBeenCalled();
+    expect(mockIssueVoiceQuotation).toHaveBeenCalledWith({
+      leadId: 'booked-lead-1',
+      bookingId: 'booking-1',
+      packageId: '11111111-1111-4111-8111-111111111111',
+      searchPriceSnapshot: 1200,
+    }, expect.any(String));
+    expect(mockVoiceCallUpdate.mock.calls.at(-1)[0].data.leadId).toBe('booked-lead-1');
+    expect(mockVoiceCallUpdate.mock.calls.at(-1)[0].data.needsRepFollowup).toBe(false);
   });
 
-  it('still acknowledges the webhook when intake fails', async () => {
-    mockSubmitIntake.mockRejectedValue(new Error('lead-service down'));
-    const res = await post('/api/v1/webhooks/voice/post-call', postCallBody());
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({ received: true });
+  it('flags a successful booking for rep follow-up when automatic quote delivery fails', async () => {
+    const body = postCallBody();
+    mockVoiceCallEventFindFirst.mockResolvedValue({ result: {
+      created: true,
+      bookingStatus: 'pending',
+      bookingId: 'booking-1',
+      leadId: 'booked-lead-1',
+      packageId: '11111111-1111-4111-8111-111111111111',
+      searchPriceSnapshot: 1200,
+    } });
+    mockVoiceCallUpdate.mockResolvedValueOnce({ id: 'vc-1', leadId: 'booked-lead-1' });
+    mockIssueVoiceQuotation.mockResolvedValue({ issued: false, needsRepFollowup: true, reason: 'auto_quote_delivery_failed' });
+
+    await postSigned('/api/v1/webhooks/voice/post-call', body);
+
+    expect(mockVoiceCallUpdate.mock.calls.at(-1)[0].data.needsRepFollowup).toBe(true);
+    expect(mockNotify).toHaveBeenCalled();
   });
 
-  it('updates the existing in-progress row rather than creating a second call', async () => {
-    mockVoiceCallFindFirst.mockResolvedValue({ id: 'vc-existing', leadId: null });
-    await post('/api/v1/webhooks/voice/post-call', postCallBody());
+  it('flags a new voice lead for rep review when the booking price changed during the call', async () => {
+    const body = postCallBody();
+    body.data.analysis.data_collection_results = {
+      full_name: { value: 'Jane Doe' },
+      email: { value: 'jane@example.com' },
+      selected_package_id: { value: '11111111-1111-4111-8111-111111111111' },
+      needs_rep_followup: { value: false },
+    };
+    mockVoiceCallEventFindFirst.mockResolvedValue({ result: {
+      created: false, requiresRepReview: true, reason: 'package_price_changed_since_search',
+    } });
+    await postSigned('/api/v1/webhooks/voice/post-call', body);
+    expect(mockSubmitIntake.mock.calls[0][0].voiceReviewReason).toBe('package_price_changed_since_search');
+    expect(mockVoiceCallUpdate.mock.calls.at(-1)[0].data.needsRepFollowup).toBe(true);
+  });
+
+  it('updates the call row created during initiation instead of creating another', async () => {
+    mockVoiceCallFindUnique.mockResolvedValue({ id: 'vc-existing', leadId: null, needsRepFollowup: false });
+    await postSigned('/api/v1/webhooks/voice/post-call', postCallBody());
     expect(mockVoiceCallCreate).not.toHaveBeenCalled();
     expect(mockVoiceCallUpdate.mock.calls[0][0].where).toEqual({ id: 'vc-existing' });
   });
 
-  describe('call_started event', () => {
-    const callStartedBody = () => ({
-      event: 'call_started',
-      call: {
-        call_id: 'call_abc123',
-        direction: 'inbound',
-        from_number: '+94771234567',
-        to_number: '+94112223333',
-        transcript_object: [],
-      },
-    });
-
-    it('adopts the pending row’s real call id as soon as it is known', async () => {
-      mockVoiceCallFindFirst.mockResolvedValue({ id: 'vc-pending', retellCallId: 'pending:x:y:1' });
-      await post('/api/v1/webhooks/voice/post-call', callStartedBody());
-      expect(mockVoiceCallUpdate).toHaveBeenCalledWith({
-        where: { id: 'vc-pending' },
-        data: { retellCallId: 'call_abc123' },
-      });
-    });
-
-    it('does not run the full post-call pipeline for a call_started event', async () => {
-      mockVoiceCallFindFirst.mockResolvedValue({ id: 'vc-pending', retellCallId: 'pending:x:y:1' });
-      await post('/api/v1/webhooks/voice/post-call', callStartedBody());
-      expect(mockSubmitIntake).not.toHaveBeenCalled();
-      expect(mockNotify).not.toHaveBeenCalled();
-      expect(mockVoiceCallCreate).not.toHaveBeenCalled();
-    });
-
-    it('does not re-adopt a call already carrying its real id', async () => {
-      mockVoiceCallFindFirst.mockResolvedValue({ id: 'vc-real', retellCallId: 'call_abc123' });
-      await post('/api/v1/webhooks/voice/post-call', callStartedBody());
-      expect(mockVoiceCallUpdate).not.toHaveBeenCalled();
-    });
-
-    it('acknowledges the webhook even when no pending row is found yet', async () => {
-      mockVoiceCallFindFirst.mockResolvedValue(null);
-      const res = await post('/api/v1/webhooks/voice/post-call', callStartedBody());
-      expect(res.status).toBe(200);
-      expect(mockVoiceCallUpdate).not.toHaveBeenCalled();
-    });
-  });
-
-  it('rejects a payload with no call id with 400', async () => {
-    const res = await post('/api/v1/webhooks/voice/post-call', { call: { from_number: '+94771234567' } });
-    expect(res.status).toBe(400);
-  });
-
-  it('does not submit lead intake once a number is over its daily call cap', async () => {
-    mockVoiceCallCount.mockResolvedValue(20);
-    await post('/api/v1/webhooks/voice/post-call', postCallBody());
+  it('does not submit intake when no transcript was captured', async () => {
+    const body = postCallBody();
+    body.data.transcript = [];
+    await postSigned('/api/v1/webhooks/voice/post-call', body);
     expect(mockSubmitIntake).not.toHaveBeenCalled();
   });
 
-  it('does not notify the team once a number is over its daily call cap', async () => {
-    mockVoiceCallCount.mockResolvedValue(20);
-    await post('/api/v1/webhooks/voice/post-call', postCallBody());
-    expect(mockNotify).not.toHaveBeenCalled();
+  it('treats an omitted follow-up result as requiring a rep callback', async () => {
+    const body = postCallBody();
+    delete body.data.analysis.data_collection_results.needs_rep_followup;
+    await postSigned('/api/v1/webhooks/voice/post-call', body);
+    expect(mockVoiceCallUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ needsRepFollowup: true }),
+    }));
+    expect(mockNotify).toHaveBeenCalled();
   });
 
-  it('still records the call itself even when the number is over its daily cap', async () => {
-    mockVoiceCallCount.mockResolvedValue(20);
-    await post('/api/v1/webhooks/voice/post-call', postCallBody());
-    expect(mockVoiceCallCreate.mock.calls[0][0].data.retellCallId).toBe('call_abc123');
-  });
-
-  it('still acknowledges the webhook for a number over its daily cap', async () => {
-    mockVoiceCallCount.mockResolvedValue(20);
-    const res = await post('/api/v1/webhooks/voice/post-call', postCallBody());
+  it('acknowledges non-transcription events without creating calls', async () => {
+    const body = { type: 'post_call_audio', data: { conversation_id: 'conv_abc123' } };
+    const res = await postSigned('/api/v1/webhooks/voice/post-call', body);
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ received: true });
-  });
-
-  it('still submits intake for a number one call under the cap', async () => {
-    mockVoiceCallCount.mockResolvedValue(19);
-    await post('/api/v1/webhooks/voice/post-call', postCallBody());
-    expect(mockSubmitIntake).toHaveBeenCalled();
+    expect(mockVoiceCallUpdate).not.toHaveBeenCalled();
+    expect(mockVoiceCallCreate).not.toHaveBeenCalled();
   });
 });

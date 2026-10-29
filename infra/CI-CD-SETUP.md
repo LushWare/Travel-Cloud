@@ -30,7 +30,7 @@ gcloud iam workload-identity-pools create github-actions-pool \
   --project=travelcrm-506818 \
   --location=global \
   --display-name="GitHub Actions Pool" \
-  --description="Federates GitHub Actions OIDC tokens for LushWare-Org/Travel-CRM CI/CD"
+  --description="Federates GitHub Actions OIDC tokens for LushWare/Travel-Cloud CI/CD"
 ```
 
 **Console:** IAM & Admin → Workload Identity Federation → *Create Pool*
@@ -114,12 +114,12 @@ gcloud projects add-iam-policy-binding travelcrm-506818 \
 ### 1.6 Let the WIF pool impersonate both service accounts
 
 This is the actual federation link: it tells GCP "a GitHub Actions run from
-`LushWare-Org/Travel-CRM` may mint short-lived tokens as this SA." Scoped to this one
+`LushWare/Travel-Cloud` may mint short-lived tokens as this SA." Scoped to this one
 repo via the `attribute.repository` condition — no other repo can use it.
 
 ```bash
 PROJECT_NUMBER=288052100062
-REPO="LushWare-Org/Travel-CRM"
+REPO="LushWare/Travel-Cloud"
 MEMBER="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/github-actions-pool/attribute.repository/${REPO}"
 
 gcloud iam service-accounts add-iam-policy-binding \
@@ -200,13 +200,13 @@ CLI form (run from repo root, each prompts for the secret value on stdin so it n
 appears in shell history or `ps`):
 
 ```bash
-gh secret set GCP_WIF_PROVIDER --repo LushWare-Org/Travel-CRM
-gh secret set GCP_DEPLOY_SA --repo LushWare-Org/Travel-CRM
-gh secret set SUPABASE_DIRECT_URL --repo LushWare-Org/Travel-CRM
+gh secret set GCP_WIF_PROVIDER --repo LushWare/Travel-Cloud
+gh secret set GCP_DEPLOY_SA --repo LushWare/Travel-Cloud
+gh secret set SUPABASE_DIRECT_URL --repo LushWare/Travel-Cloud
 
-gh variable set GCP_PROJECT_ID --repo LushWare-Org/Travel-CRM --body "travelcrm-506818"
-gh variable set GCP_REGION --repo LushWare-Org/Travel-CRM --body "asia-south1"
-gh variable set GATEWAY_URL --repo LushWare-Org/Travel-CRM --body "https://dev-gateway-fbystisnzq-el.a.run.app/api/v1"
+gh variable set GCP_PROJECT_ID --repo LushWare/Travel-Cloud --body "travelcrm-506818"
+gh variable set GCP_REGION --repo LushWare/Travel-Cloud --body "asia-south1"
+gh variable set GATEWAY_URL --repo LushWare/Travel-Cloud --body "https://dev-gateway-fbystisnzq-el.a.run.app/api/v1"
 ```
 
 `FIREBASE_SERVICE_ACCOUNT` (used by today's `deploy-hosting` job) is **not needed** if
@@ -272,7 +272,7 @@ done
 
 ```bash
 PROJECT_NUMBER=288052100062
-MEMBER="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/github-actions-pool/attribute.repository/LushWare-Org/Travel-CRM"
+MEMBER="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/github-actions-pool/attribute.repository/LushWare/Travel-Cloud"
 gcloud iam service-accounts add-iam-policy-binding terraform-deployer@travelcrm-506818.iam.gserviceaccount.com \
   --project=travelcrm-506818 --role="roles/iam.workloadIdentityUser" --member="$MEMBER"
 ```
@@ -281,12 +281,23 @@ gcloud iam service-accounts add-iam-policy-binding terraform-deployer@travelcrm-
 
 | Name | Value |
 |---|---|
+| `GCP_WIF_PROVIDER` | The provider resource name from step 1.7; required by `google-github-actions/auth@v2`. |
 | `GCP_TERRAFORM_SA` | `terraform-deployer@travelcrm-506818.iam.gserviceaccount.com` |
 | `TF_VARS_DEV` | the entire contents of `infra/terraform/deployments/dev/terraform.tfvars` (gitignored locally) — CI writes it to disk verbatim before `terraform init`. Extending to staging/prod later is just adding `TF_VARS_STAGING`/`TF_VARS_PROD` the same way. |
 
+`TF_VARS_*` must use Terraform HCL syntax, not `.env` syntax. For example, write
+`elevenlabs_public_base_url = "https://api.lushtravelcloud.com"`; do not write
+`ELEVENLABS_PUBLIC_BASE_URL=https://api.lushtravelcloud.com`.
+
+If the auth action says neither `workload_identity_provider` nor `credentials_json`
+was provided, `GCP_WIF_PROVIDER` is missing or unavailable to that run. This workflow
+uses Workload Identity Federation, not a JSON key. Set the secrets on the
+`LushWare/Travel-Cloud` repository, and ensure the provider and service-account IAM
+binding both trust the `LushWare/Travel-Cloud` repository claim.
+
 ```bash
-gh secret set GCP_TERRAFORM_SA --repo LushWare-Org/Travel-CRM --body "terraform-deployer@travelcrm-506818.iam.gserviceaccount.com"
-gh secret set TF_VARS_DEV --repo LushWare-Org/Travel-CRM < infra/terraform/deployments/dev/terraform.tfvars
+gh secret set GCP_TERRAFORM_SA --repo LushWare/Travel-Cloud --body "terraform-deployer@travelcrm-506818.iam.gserviceaccount.com"
+gh secret set TF_VARS_DEV --repo LushWare/Travel-Cloud < infra/terraform/deployments/dev/terraform.tfvars
 ```
 
 ### 5.5 The pipeline itself (`.github/workflows/terraform.yml`)

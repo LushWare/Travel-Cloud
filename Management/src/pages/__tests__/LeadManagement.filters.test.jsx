@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const {
@@ -68,32 +68,58 @@ function lastParams() {
   return calls[calls.length - 1][0];
 }
 
-describe('LeadManagement — PENDING_VERIFICATION filter wiring', () => {
-  it('fires getAllLeads with lifecycleStatus=PENDING_VERIFICATION when the filter is selected', async () => {
+describe('LeadManagement status filter wiring', () => {
+  it('shows the combined rep-attention count from lead stats', async () => {
+    mockGetLeadStats.mockResolvedValue({
+      success: true,
+      summary: { total: 8, needsRepAttention: 3 },
+      data: [{ _id: 'REVISION', count: 2 }],
+    });
+    render(<LeadManagement />);
+
+    const tab = await screen.findByRole('tab', { name: /needs rep attention/i });
+    expect(within(tab).getByText('3')).toBeInTheDocument();
+    expect(within(await screen.findByRole('tab', { name: /revision/i })).getByText('2')).toBeInTheDocument();
+  });
+
+  it('filters rep attention without treating it as a lifecycle status', async () => {
     const user = userEvent.setup();
     render(<LeadManagement />);
     await waitFor(() => expect(mockGetAllLeads).toHaveBeenCalled());
 
-    const tab = await screen.findByRole('tab', { name: /pending verification/i });
-    await user.click(tab);
+    await user.click(await screen.findByRole('tab', { name: /needs rep attention/i }));
 
     await waitFor(() => {
-      expect(lastParams()).toMatchObject({ lifecycleStatus: 'PENDING_VERIFICATION' });
+      expect(lastParams()).toMatchObject({ needsRepAttention: 'true' });
+      expect(lastParams()).not.toHaveProperty('status');
+      expect(lastParams()).not.toHaveProperty('lifecycleStatus');
     });
   });
 
-  it('keeps using the status param for non-PENDING_VERIFICATION statuses', async () => {
+  it('keeps using the status param for normal lifecycle tabs', async () => {
     const user = userEvent.setup();
     render(<LeadManagement />);
     await waitFor(() => expect(mockGetAllLeads).toHaveBeenCalled());
 
-    const tab = await screen.findByRole('tab', { name: /drafting/i });
-    await user.click(tab);
+    await user.click(await screen.findByRole('tab', { name: /drafting/i }));
 
     await waitFor(() => {
       const params = lastParams();
       expect(params).toMatchObject({ status: 'DRAFTING' });
       expect(params).not.toHaveProperty('lifecycleStatus');
+    });
+  });
+
+  it('filters Revision using the lifecycle status parameter', async () => {
+    const user = userEvent.setup();
+    render(<LeadManagement />);
+    await waitFor(() => expect(mockGetAllLeads).toHaveBeenCalled());
+
+    await user.click(await screen.findByRole('tab', { name: /revision/i }));
+
+    await waitFor(() => {
+      expect(lastParams()).toMatchObject({ status: 'REVISION' });
+      expect(lastParams()).not.toHaveProperty('lifecycleStatus');
     });
   });
 });

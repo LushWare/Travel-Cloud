@@ -20,7 +20,7 @@ module "deployment" {
   whatsapp_phone_number_id     = var.whatsapp_phone_number_id
   whatsapp_business_account_id = var.whatsapp_business_account_id
 
-  # Secret Manager secrets (26 rows of the plan table)
+  # Secret Manager secrets (27 rows of the plan table)
   database_url               = var.database_url
   direct_url                 = var.direct_url
   jwt_secret                 = var.jwt_secret
@@ -37,6 +37,7 @@ module "deployment" {
   facebook_verify_token      = var.facebook_verify_token
   facebook_app_secret        = var.facebook_app_secret
   facebook_page_access_token = var.facebook_page_access_token
+  google_ads_webhook_key     = var.google_ads_webhook_key
   duffel_access_token        = var.duffel_access_token
   travelport_client_id       = var.travelport_client_id
   travelport_client_secret   = var.travelport_client_secret
@@ -47,10 +48,15 @@ module "deployment" {
   # LiteAPI hotel-search key
   liteapi_api_key = var.liteapi_api_key
 
-  # Voice agent (Retell AI) signing secrets. Empty until this environment's
-  # TF_VARS_* secret carries them — the service fails closed meanwhile.
+  # Legacy Retell secrets are retained during migration; ElevenLabs secrets
+  # below are the active voice-service credentials.
   retell_webhook_secret = var.retell_webhook_secret
   retell_tool_secret    = var.retell_tool_secret
+  elevenlabs_api_key           = var.elevenlabs_api_key
+  elevenlabs_webhook_secret    = var.elevenlabs_webhook_secret
+  elevenlabs_initiation_secret = var.elevenlabs_initiation_secret
+  elevenlabs_tool_secret       = var.elevenlabs_tool_secret
+  elevenlabs_public_base_url   = var.elevenlabs_public_base_url
 
   # Branding / invoice / bank / admin-email plain config
   company_name                  = var.company_name

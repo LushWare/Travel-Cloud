@@ -27,6 +27,7 @@ const {
   mockRefreshSelection,
   mockRecomputeSelectionPricing,
   mockSnapshotSelectionQuotation,
+  mockSendVoiceQuotation,
   mockSyncLeadBudgetFromSelection,
   mockApplyLeadSelectionItinerary,
   mockSerializeLeadDays,
@@ -60,6 +61,7 @@ const {
   mockRefreshSelection: vi.fn(),
   mockRecomputeSelectionPricing: vi.fn(),
   mockSnapshotSelectionQuotation: vi.fn(),
+  mockSendVoiceQuotation: vi.fn(),
   mockSyncLeadBudgetFromSelection: vi.fn(),
   mockApplyLeadSelectionItinerary: vi.fn(),
   mockSerializeLeadDays: vi.fn(),
@@ -96,6 +98,7 @@ vi.mock('../../services/lead-selection.service.js', () => ({
   refreshSelection: mockRefreshSelection,
   recomputeSelectionPricing: mockRecomputeSelectionPricing,
   snapshotSelectionQuotation: mockSnapshotSelectionQuotation,
+  sendVoiceQuotation: mockSendVoiceQuotation,
   syncLeadBudgetFromSelection: mockSyncLeadBudgetFromSelection,
 }));
 
@@ -116,6 +119,7 @@ import {
   deletePackageSelection,
   refreshPackageSelection,
   quotePackageSelection,
+  autoQuoteVoiceBooking,
   calculateSelectionPricing,
   addSelectionFlight,
   deleteSelectionFlight,
@@ -136,6 +140,7 @@ const resetAll = () => {
     mockCostLineDeleteMany, mockCostLineCreateMany, mockPricingUpdate, mockTransaction, mockFetchPackage,
     mockDeriveSelectionView, mockToEditorDays, mockIsSelectionMaterialized, mockMaterializeSelection,
     mockRefreshSelection, mockRecomputeSelectionPricing, mockSnapshotSelectionQuotation, mockApplyLeadSelectionItinerary,
+    mockSendVoiceQuotation,
     mockSerializeLeadDays, mockBuildAutoCostLines, mockValidateTransition, mockGatekeeperInputs,
   ]) m.mockReset();
   mockTransaction.mockImplementation(async (ops) => Promise.all(ops));
@@ -457,6 +462,115 @@ describe('quotePackageSelection', () => {
       expect.objectContaining({ status: 'DRAFTING' }),
       expect.objectContaining({ status: 'QUOTED' }),
     ]);
+  });
+});
+
+describe('autoQuoteVoiceBooking', () => {
+  beforeEach(resetAll);
+
+  const body = {
+    leadId: 'lead-1',
+    bookingId: 'booking-1',
+    packageId: 'pkg-1',
+    searchPriceSnapshot: 1200,
+  };
+
+  function eligibleVoiceLead(overrides = {}) {
+    return {
+      id: 'lead-1',
+      convertedBookingId: 'booking-1',
+      lifecycleStatus: 'PENDING_VERIFICATION',
+      voiceExactPackageMatch: true,
+      voiceCustomerIdentityConfirmed: true,
+      voiceAiBookingAllowed: true,
+      voicePriceChanged: false,
+      voiceNeedsRepReview: false,
+      ...overrides,
+    };
+  }
+
+  it('creates and sends an exact-price quotation, recording valid system transitions', async () => {
+    mockLeadFindUnique.mockResolvedValue(eligibleVoiceLead());
+    mockSelectionFindFirst.mockResolvedValue({ id: 'sel-1', currentQuoteId: null, pendingAiChange: null });
+    mockFetchPackage.mockResolvedValue({ isActive: true, sellPrice: 1200 });
+    mockIsSelectionMaterialized.mockResolvedValue(true);
+    mockSelectionFindUnique.mockResolvedValue({ id: 'sel-1', leadId: 'lead-1', pricing: {}, costLines: [] });
+    mockGatekeeperInputs.mockReturnValue({ sellSubtotal: 1200 });
+    mockSnapshotSelectionQuotation.mockResolvedValue({ id: 'quote-1', subtotal: 1200, totalAmount: 1416 });
+    mockSendVoiceQuotation.mockResolvedValue({ allSent: true, email: 'sent', whatsapp: 'sent' });
+
+    const { req, res, next } = buildReqRes({ body });
+    await autoQuoteVoiceBooking(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(mockSnapshotSelectionQuotation).toHaveBeenCalledWith('sel-1');
+    expect(mockSendVoiceQuotation).toHaveBeenCalledWith('quote-1', {
+      leadId: 'lead-1', packageId: 'pkg-1', expectedPackagePrice: 1200,
+    }, undefined);
+    expect(mockLeadUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'lead-1' },
+      data: expect.objectContaining({
+        lifecycleStatus: 'QUOTED',
+        needsRepFollowup: false,
+        statusHistory: { create: [
+          expect.objectContaining({ status: 'NEW', actor: 'SYSTEM' }),
+          expect.objectContaining({ status: 'DRAFTING', actor: 'SYSTEM' }),
+          expect.objectContaining({ status: 'QUOTED', actor: 'SYSTEM' }),
+        ] },
+      }),
+    }));
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ issued: true }),
+    }));
+  });
+
+  it('flags a package-price change for rep review without creating a quotation', async () => {
+    mockLeadFindUnique.mockResolvedValue(eligibleVoiceLead());
+    mockSelectionFindFirst.mockResolvedValue({ id: 'sel-1', currentQuoteId: null, pendingAiChange: null });
+    mockFetchPackage.mockResolvedValue({ isActive: true, sellPrice: 1201 });
+
+    const { req, res, next } = buildReqRes({ body });
+    await autoQuoteVoiceBooking(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(mockSnapshotSelectionQuotation).not.toHaveBeenCalled();
+    expect(mockSendVoiceQuotation).not.toHaveBeenCalled();
+    expect(mockLeadUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        needsRepFollowup: true,
+        voiceNeedsRepReview: true,
+        voiceReviewReason: 'package_price_changed_since_search',
+      }),
+    }));
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ issued: false, needsRepFollowup: true }),
+    }));
+  });
+
+  it('flags the lead for rep follow-up when either quote channel fails', async () => {
+    mockLeadFindUnique.mockResolvedValue(eligibleVoiceLead());
+    mockSelectionFindFirst.mockResolvedValue({ id: 'sel-1', currentQuoteId: null, pendingAiChange: null });
+    mockFetchPackage.mockResolvedValue({ isActive: true, sellPrice: 1200 });
+    mockIsSelectionMaterialized.mockResolvedValue(true);
+    mockSelectionFindUnique.mockResolvedValue({ id: 'sel-1', leadId: 'lead-1', pricing: {}, costLines: [] });
+    mockGatekeeperInputs.mockReturnValue({ sellSubtotal: 1200 });
+    mockSnapshotSelectionQuotation.mockResolvedValue({ id: 'quote-1', subtotal: 1200, totalAmount: 1416 });
+    mockSendVoiceQuotation.mockResolvedValue({ allSent: false, email: 'sent', whatsapp: 'failed' });
+
+    const { req, res, next } = buildReqRes({ body });
+    await autoQuoteVoiceBooking(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(mockLeadUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        needsRepFollowup: true,
+        voiceNeedsRepReview: true,
+        voiceReviewReason: 'auto_quote_delivery_failed',
+      }),
+    }));
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ issued: false, needsRepFollowup: true }),
+    }));
   });
 });
 

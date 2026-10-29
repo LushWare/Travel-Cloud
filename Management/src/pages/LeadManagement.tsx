@@ -31,7 +31,7 @@ import LeadDetailPane from "../features/lead-management/components/LeadDetailPan
 import ActiveSalesRepsDialog from "../features/lead-management/components/ActiveSalesRepsDialog";
 import { LIFECYCLE_STATUS_COLORS, LIFECYCLE_STATUS_LABELS } from "../features/lead-management/components/LeadStatusBadge";
 import type { LifecycleStatus } from "../features/lead-management/components/LeadStatusBadge";
-type FilterKey = 'all' | LifecycleStatus;
+type FilterKey = 'all' | LifecycleStatus | 'NEEDS_REP_ATTENTION';
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { apiErrorMessage } from '@/lib/apiErrorMessage';
@@ -211,6 +211,7 @@ const LeadManagement = () => {
       if (response.success) {
         setStatsSummary(response.summary || null);
         const transformedCounts: Record<string, number> = { all: response.summary?.total || 0 };
+        transformedCounts.NEEDS_REP_ATTENTION = response.summary?.needsRepAttention || 0;
         (response.data || []).forEach((item: any) => {
           transformedCounts[item._id] = item.count;
         });
@@ -231,7 +232,9 @@ const LeadManagement = () => {
 
       if (!idsParam) {
         if (debouncedSearch) params.query = debouncedSearch; // The backend uses ?query= for search
-        if (filterStatus !== "all") {
+        if (filterStatus === 'NEEDS_REP_ATTENTION') {
+          params.needsRepAttention = 'true';
+        } else if (filterStatus !== "all") {
           // PENDING_VERIFICATION is a carve-out visible to any salesRep — the
           // backend gates it behind ?lifecycleStatus= (design doc #8), not the
           // ownership-filtered ?status= path.
@@ -245,7 +248,8 @@ const LeadManagement = () => {
         if (filterTravelDateEnd) params['travelDate[lte]'] = filterTravelDateEnd;
         if (filterSources.length > 0) params.source = filterSources.join(',');
         if (filterAi.includes('aiHandled')) params.aiHandled = 'true';
-        if (filterAi.includes('needsRepFollowup')) params.needsRepFollowup = 'true';
+        if (filterAi.includes('needsRepAttention')) params.needsRepAttention = 'true';
+        if (filterAi.includes('voiceNeedsRepReview')) params.voiceNeedsRepReview = 'true';
         if (filterAi.includes('aiVerified')) params.aiVerified = 'true';
       }
 

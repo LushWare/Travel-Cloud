@@ -64,7 +64,7 @@ function unknownCallerVariables() {
 }
 
 /**
- * Dynamic variables handed to Retell. Deliberately a whitelist built from
+ * Dynamic variables handed to ElevenLabs. Deliberately a whitelist built from
  * scratch rather than a spread of the lead — a field that is never assembled
  * cannot be spoken by the agent.
  */

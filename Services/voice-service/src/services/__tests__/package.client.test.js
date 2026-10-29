@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { searchPackages } from '../package.client.js';
+import { searchPackages, PACKAGE_PRICE_SNAPSHOT } from '../package.client.js';
 
 const okJson = (data) => ({ ok: true, json: async () => ({ success: true, data }) });
 
@@ -39,6 +39,13 @@ describe('searchPackages', () => {
     vi.stubGlobal('fetch', vi.fn(async () => okJson([rawPackage()])));
     const result = await searchPackages('maldives');
     expect(JSON.stringify(result)).not.toMatch(/1500|1950/);
+  });
+
+  it('keeps the price snapshot non-serializable for internal booking validation', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => okJson([rawPackage()])));
+    const result = await searchPackages('maldives');
+    expect(result[0][PACKAGE_PRICE_SNAPSHOT]).toBe(1950);
+    expect(JSON.stringify(result)).not.toContain('1950');
   });
 
   it('maps the fields the agent may use', async () => {

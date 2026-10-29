@@ -142,7 +142,7 @@ export const getLeads = asyncHandler(async (req, res) => {
   const { user } = req;
   const {
     page = 1, limit = 10, ids, search, status, lifecycleStatus, source, platform,
-    aiHandled, needsRepFollowup, aiVerified,
+    aiHandled, needsRepFollowup, needsRepAttention, voiceNeedsRepReview, aiVerified,
     sortBy = 'createdAt', order = 'desc',
   } = req.query;
 
@@ -155,7 +155,19 @@ export const getLeads = asyncHandler(async (req, res) => {
   // behave identically — these are two aliases for the same DB column.
   const statusFilter = lifecycleStatus || status;
   const isPendingVerificationQueue = statusFilter === 'PENDING_VERIFICATION';
-  if (user.role === 'salesRep' && !isPendingVerificationQueue) where.AND.push({ assignedToId: user.id });
+  const isRepAttentionQueue = needsRepAttention === 'true';
+  if (user.role === 'salesRep') {
+    if (isPendingVerificationQueue || isRepAttentionQueue) {
+      where.AND.push({
+        OR: [
+          { assignedToId: user.id },
+          { lifecycleStatus: 'PENDING_VERIFICATION', convertedBookingId: null },
+        ],
+      });
+    } else {
+      where.AND.push({ assignedToId: user.id });
+    }
+  }
   if (statusFilter) where.AND.push({ lifecycleStatus: statusFilter });
   // Comma-separated multi-select, matching how filterSources/filterPlatforms
   // are sent from Management's LeadFilters chips.
@@ -167,7 +179,17 @@ export const getLeads = asyncHandler(async (req, res) => {
   // already-loaded rows (as the platform chips do) because AI-touched leads
   // become the majority once the agent is live.
   if (aiHandled === 'true') where.AND.push({ aiHandled: true });
+  if (needsRepAttention === 'true') {
+    where.AND.push({
+      OR: [
+        { needsRepFollowup: true },
+        { voiceNeedsRepReview: true },
+        { lifecycleStatus: 'PENDING_VERIFICATION', convertedBookingId: null },
+      ],
+    });
+  }
   if (needsRepFollowup === 'true') where.AND.push({ needsRepFollowup: true });
+  if (voiceNeedsRepReview === 'true') where.AND.push({ voiceNeedsRepReview: true });
   if (aiVerified === 'true') where.AND.push({ aiVerifiedAt: { not: null } });
   if (aiVerified === 'false') where.AND.push({ aiHandled: true, aiVerifiedAt: null });
 
@@ -509,11 +531,22 @@ export const getLeadStats = asyncHandler(async (req, res) => {
   const where = user.role === 'salesRep'
     ? { OR: [{ assignedToId: user.id }, { lifecycleStatus: 'PENDING_VERIFICATION' }] }
     : {};
-  const [byStatus, totals, assigned, confirmed] = await Promise.all([
+  const [byStatus, totals, assigned, confirmed, needsRepAttention] = await Promise.all([
     prisma.lead.groupBy({ by: ['lifecycleStatus'], _count: true, where }),
     prisma.lead.aggregate({ _count: true, where }),
     prisma.lead.count({ where: { AND: [where, { assignedToId: { not: null } }] } }),
     prisma.lead.count({ where: { ...where, lifecycleStatus: 'CONFIRMED' } }),
+    prisma.lead.count({
+      where: {
+        AND: [where, {
+          OR: [
+            { needsRepFollowup: true },
+            { voiceNeedsRepReview: true },
+            { lifecycleStatus: 'PENDING_VERIFICATION', convertedBookingId: null },
+          ],
+        }],
+      },
+    }),
   ]);
   const total = totals._count;
   const mapped = (byStatus || []).map(item => ({
@@ -525,7 +558,7 @@ export const getLeadStats = asyncHandler(async (req, res) => {
   res.json({
     success: true,
     data: mapped,
-    summary: { total, byStatus: mapped, assigned, unassigned, converted: confirmed, conversionRate },
+    summary: { total, byStatus: mapped, assigned, unassigned, converted: confirmed, conversionRate, needsRepAttention },
   });
 });
 

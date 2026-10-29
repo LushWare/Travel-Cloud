@@ -235,6 +235,57 @@ describe('POST /api/v1/leads/internal/intake', () => {
     });
   });
 
+  it('persists the voice caller name and confirmed travel dates', async () => {
+    mockLeadFindUnique.mockResolvedValue(null);
+    mockLeadUpsert.mockResolvedValue({ id: 'voice-lead-1', lifecycleStatus: 'PENDING_VERIFICATION' });
+    mockLeadCommLogFindMany.mockResolvedValue([]);
+    mockLeadCommLogCreateMany.mockResolvedValue({ count: 2 });
+
+    const res = await request(app)
+      .post('/api/v1/leads/internal/intake')
+      .set('x-internal-token', process.env.INTERNAL_EVENTS_TOKEN)
+      .send(validBody({
+        channel: 'voice',
+        contact: { name: 'Jane Doe', email: 'jane@example.com', phone: '+1 555 010 0100' },
+        slots: {
+          destination: 'Bali',
+          travelDate: '2026-12-01T00:00:00.000Z',
+          endDate: '2026-12-08T00:00:00.000Z',
+          travelers: 2,
+        },
+      }));
+
+    expect(res.status).toBe(200);
+    expect(mockLeadUpsert.mock.calls[0][0].create).toMatchObject({
+      name: 'Jane Doe',
+      email: 'jane@example.com',
+      travelDate: new Date('2026-12-01T00:00:00.000Z'),
+      endDate: new Date('2026-12-08T00:00:00.000Z'),
+    });
+  });
+
+  it('marks a voice lead for rep review when booking must stop for a price change', async () => {
+    mockLeadFindUnique.mockResolvedValue(null);
+    mockLeadUpsert.mockResolvedValue({ id: 'voice-review-lead', lifecycleStatus: 'PENDING_VERIFICATION' });
+    mockLeadCommLogFindMany.mockResolvedValue([]);
+    mockLeadCommLogCreateMany.mockResolvedValue({ count: 2 });
+
+    const res = await request(app)
+      .post('/api/v1/leads/internal/intake')
+      .set('x-internal-token', process.env.INTERNAL_EVENTS_TOKEN)
+      .send(validBody({ channel: 'voice', voiceReviewReason: 'package_price_changed_since_search' }));
+
+    expect(res.status).toBe(200);
+    expect(mockLeadUpsert.mock.calls[0][0].create).toMatchObject({
+      aiHandled: true,
+      needsRepFollowup: true,
+      voicePriceChanged: true,
+      voiceNeedsRepReview: true,
+      voiceReviewReason: 'package_price_changed_since_search',
+      voiceAiBookingAllowed: false,
+    });
+  });
+
   it('merges slots and appends only new-by-id messages on a still-PENDING repeat call in the same session', async () => {
     mockLeadFindUnique.mockResolvedValue({
       id: 'lead-1',

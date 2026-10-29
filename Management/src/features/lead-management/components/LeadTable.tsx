@@ -58,9 +58,17 @@ interface LeadTableProps {
 
 const docActionClass = 'p-2 transition-colors bg-muted rounded-lg hover:bg-accent';
 const docIconClass = 'w-4 h-4 text-muted-foreground';
+const attentionStatusClass = 'bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30';
+const bookingPendingStatusClass = 'bg-primary/10 text-primary border border-primary/20';
 
 const menuItemClass =
   'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-muted';
+
+const needsRepAttention = (lead: any) => Boolean(
+  lead?.needsRepFollowup
+  || lead?.voiceNeedsRepReview
+  || (lead?.lifecycleStatus === 'PENDING_VERIFICATION' && !lead?.convertedBookingId)
+);
 
 /**
  * In-cell assignment control, deliberately one 32px trigger so the Sales Rep
@@ -275,8 +283,14 @@ const LeadTable = ({
             const isHighlighted = highlightedLeadId && leadId === highlightedLeadId;
             const packageInfo = getPackageDisplay(lead);
             const displayStatus = lead.lifecycleStatus;
-            const statusColor = statusColors[displayStatus] || statusColors.new;
-            const statusLabel = statusLabels[displayStatus] || 'New';
+            const showRepAttention = needsRepAttention(lead);
+            const bookingPending = displayStatus === 'PENDING_VERIFICATION' && Boolean(lead.convertedBookingId);
+            const statusColor = bookingPending
+              ? bookingPendingStatusClass
+              : statusColors[displayStatus] || statusColors.new;
+            const statusLabel = bookingPending
+              ? 'Booking Pending'
+              : statusLabels[displayStatus] || 'New';
 
             return (
               <div
@@ -294,7 +308,7 @@ const LeadTable = ({
                         <h3 className="font-semibold text-foreground text-lg truncate group-hover:text-primary transition-colors">
                           {lead.name}
                         </h3>
-                        <AiLeadBadges lead={lead} />
+                        <AiLeadBadges lead={lead} compact />
                       </div>
                       <p className="text-xs text-muted-foreground font-mono">
                         ID: {leadId?.slice(-8)}
@@ -310,6 +324,11 @@ const LeadTable = ({
                       >
                         {statusLabel}
                       </button>
+                      {showRepAttention && displayStatus !== 'PENDING_VERIFICATION' && (
+                        <span className={`px-3 py-1.5 rounded-lg text-xs font-semibold shrink-0 ${attentionStatusClass}`}>
+                          Needs Rep Attention
+                        </span>
+                      )}
                       {displayStatus === 'PENDING_VERIFICATION' && onClaimClick && (
                         <button
                           onClick={(e) => {
@@ -580,7 +599,14 @@ const LeadTable = ({
           <TableBody>
             {leads.map((lead) => {
               const displayStatus = lead.lifecycleStatus;
-              const statusColor = (statusColors && statusColors[displayStatus]) || 'bg-muted text-muted-foreground';
+              const showRepAttention = needsRepAttention(lead);
+              const bookingPending = displayStatus === 'PENDING_VERIFICATION' && Boolean(lead.convertedBookingId);
+              const statusColor = bookingPending
+                ? bookingPendingStatusClass
+                : (statusColors && statusColors[displayStatus]) || 'bg-muted text-muted-foreground';
+              const statusLabel = bookingPending
+                ? 'Booking Pending'
+                : (statusLabels && statusLabels[displayStatus]) || lead.lifecycleStatus || 'N/A';
               const leadId = (lead._id || lead.id)?.toString();
               const repLabel = repLabelFor(lead.assignedToId, salesReps);
               const isHighlighted = highlightedLeadId && leadId === highlightedLeadId.toString();
@@ -678,13 +704,20 @@ const LeadTable = ({
                     className="px-4 py-2 whitespace-nowrap border-r border-border sticky right-[172px] bg-card group-hover:bg-muted z-10 shadow-[2px_0_4px_rgba(0,0,0,0.1)]"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    <button
-                      className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full cursor-pointer hover:opacity-80 transition-opacity ${statusColor}`}
-                      onClick={(e) => handleStatusClick(e, lead)}
-                      title="Click to change status"
-                    >
-                      {(statusLabels && statusLabels[displayStatus]) || lead.lifecycleStatus || 'N/A'}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      {showRepAttention && displayStatus !== 'PENDING_VERIFICATION' && (
+                        <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${attentionStatusClass}`}>
+                          Needs Rep Attention
+                        </span>
+                      )}
+                      <button
+                        className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full cursor-pointer hover:opacity-80 transition-opacity ${statusColor}`}
+                        onClick={(e) => handleStatusClick(e, lead)}
+                        title="Click to change status"
+                      >
+                        {statusLabel}
+                      </button>
+                    </div>
                   </TableCell>
                   <TableCell
                     className="w-[172px] px-4 py-2 text-sm text-muted-foreground sticky right-0 bg-card group-hover:bg-muted z-10 shadow-[-2px_0_4px_rgba(0,0,0,0.1)]"
