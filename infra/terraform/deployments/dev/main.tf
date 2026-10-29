@@ -66,6 +66,7 @@ module "deployment" {
   elevenlabs_webhook_secret    = var.elevenlabs_webhook_secret
   elevenlabs_initiation_secret = var.elevenlabs_initiation_secret
   elevenlabs_tool_secret       = var.elevenlabs_tool_secret
+  elevenlabs_public_base_url   = var.elevenlabs_public_base_url
 
   # Branding / invoice / bank / admin-email plain config
   company_name                  = var.company_name

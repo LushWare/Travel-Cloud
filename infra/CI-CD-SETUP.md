@@ -285,6 +285,10 @@ gcloud iam service-accounts add-iam-policy-binding terraform-deployer@travelcrm-
 | `GCP_TERRAFORM_SA` | `terraform-deployer@travelcrm-506818.iam.gserviceaccount.com` |
 | `TF_VARS_DEV` | the entire contents of `infra/terraform/deployments/dev/terraform.tfvars` (gitignored locally) — CI writes it to disk verbatim before `terraform init`. Extending to staging/prod later is just adding `TF_VARS_STAGING`/`TF_VARS_PROD` the same way. |
 
+`TF_VARS_*` must use Terraform HCL syntax, not `.env` syntax. For example, write
+`elevenlabs_public_base_url = "https://api.lushtravelcloud.com"`; do not write
+`ELEVENLABS_PUBLIC_BASE_URL=https://api.lushtravelcloud.com`.
+
 If the auth action says neither `workload_identity_provider` nor `credentials_json`
 was provided, `GCP_WIF_PROVIDER` is missing or unavailable to that run. This workflow
 uses Workload Identity Federation, not a JSON key. Set the secrets on the

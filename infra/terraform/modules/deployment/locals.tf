@@ -254,6 +254,7 @@ locals {
         # The sales-team email and the record deep-links both point at the
         # Management portal, so this service needs that URL too.
         MANAGEMENT_URL = local.management_url
+        ELEVENLABS_PUBLIC_BASE_URL = var.elevenlabs_public_base_url
         # Calls from one number acted on per rolling 24h. The provider has no
         # documented way to refuse a call already ringing, so the call is
         # answered either way — past the cap this only stops the forwarding

@@ -55,6 +55,7 @@ elevenlabs_api_key           = "<elevenlabs-api-key>"
 elevenlabs_webhook_secret    = "<elevenlabs-webhook-secret>"
 elevenlabs_initiation_secret = "<elevenlabs-initiation-secret>"
 elevenlabs_tool_secret       = "<elevenlabs-tool-secret>"
+elevenlabs_public_base_url   = "public"
 
 # Branding / invoice / bank / admin-email plain config
 company_name                  = "<company-name>"

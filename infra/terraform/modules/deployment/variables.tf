@@ -472,6 +472,12 @@ variable "elevenlabs_tool_secret" {
   default     = ""
 }
 
+variable "elevenlabs_public_base_url" {
+  description = "Public HTTPS gateway base URL used by the ElevenLabs setup tooling."
+  type        = string
+  default     = ""
+}
+
 
 variable "client_url" {
   description = "Public origin of the Client SPA. Empty keeps the per-env default (https://lush-ware-client-<env>.web.app)."

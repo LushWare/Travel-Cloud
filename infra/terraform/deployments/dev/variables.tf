@@ -446,3 +446,9 @@ variable "elevenlabs_tool_secret" {
   default     = ""
 }
 
+variable "elevenlabs_public_base_url" {
+  description = "Public HTTPS gateway base URL used by the ElevenLabs setup tooling."
+  type        = string
+  default     = ""
+}
+
