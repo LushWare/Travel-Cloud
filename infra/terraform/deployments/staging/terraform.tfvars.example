@@ -51,6 +51,10 @@ travelport_access_group    = "<travelport-access-group>"
 
 # LiteAPI hotel-search key
 liteapi_api_key = "<liteapi-api-key>"
+elevenlabs_api_key           = "<elevenlabs-api-key>"
+elevenlabs_webhook_secret    = "<elevenlabs-webhook-secret>"
+elevenlabs_initiation_secret = "<elevenlabs-initiation-secret>"
+elevenlabs_tool_secret       = "<elevenlabs-tool-secret>"
 
 # Branding / invoice / bank / admin-email plain config
 company_name                  = "<company-name>"

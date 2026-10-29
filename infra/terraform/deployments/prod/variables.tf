@@ -382,7 +382,7 @@ variable "admin_emails" {
   description = "Admin emails (plain env var ADMIN_EMAILS on career)."
   type        = string
 }
-# ── Voice agent (Retell AI) ────────────────────────────────────────────────
+# Legacy Retell inputs retained during the voice-provider migration.
 # Both are empty until this environment's TF_VARS_* secret carries them; the
 # service rejects every webhook (503) and every tool call until then.
 variable "retell_webhook_secret" {
@@ -394,6 +394,35 @@ variable "retell_webhook_secret" {
 
 variable "retell_tool_secret" {
   description = "Shared secret the Retell CustomTools send in their headers field (RETELL_TOOL_SECRET on voice-service). Falls back to retell_webhook_secret when empty."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+# ElevenLabs credentials used by the active voice-service integration.
+variable "elevenlabs_api_key" {
+  description = "ElevenLabs API key used by voice-service for conversation recordings."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "elevenlabs_webhook_secret" {
+  description = "ElevenLabs post-call webhook signing secret."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "elevenlabs_initiation_secret" {
+  description = "Shared secret for the ElevenLabs call initiation webhook."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "elevenlabs_tool_secret" {
+  description = "Shared secret for ElevenLabs tool webhooks."
   type        = string
   sensitive   = true
   default     = ""

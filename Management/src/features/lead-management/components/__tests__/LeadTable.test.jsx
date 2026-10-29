@@ -92,7 +92,7 @@ describe('LeadTable — PENDING_VERIFICATION claim action', () => {
     renderTable({ leads: [aiPendingLead], viewMode: 'table' });
 
     expect(screen.queryByText('New Intake')).not.toBeInTheDocument();
-    expect(screen.getByText('Needs Rep Attention').closest('span')).toHaveClass('bg-amber-100', 'text-amber-800');
+    expect(screen.getByRole('button', { name: 'Needs Rep Attention' })).toHaveClass('bg-warning/10', 'text-warning');
     expect(screen.getByLabelText('Created or updated by the voice agent')).toBeInTheDocument();
     expect(screen.getByLabelText('The voice agent could not resolve something, or made changes awaiting approval')).toBeInTheDocument();
     await openRowMenu(user, 'Chat Lead');
@@ -109,6 +109,18 @@ describe('LeadTable — PENDING_VERIFICATION claim action', () => {
 
     expect(screen.getByText('Needs Rep Attention')).toBeInTheDocument();
     expect(screen.getByText('Quoted')).toBeInTheDocument();
+  });
+
+  it('shows lifecycle status alongside rep attention in grid view', () => {
+    const quotedLead = {
+      ...newLead,
+      lifecycleStatus: 'QUOTED',
+      needsRepFollowup: true,
+    };
+    renderTable({ leads: [quotedLead], viewMode: 'grid' });
+
+    expect(screen.getByRole('button', { name: 'Quoted' })).toBeInTheDocument();
+    expect(screen.getByText('Needs Rep Attention')).toBeInTheDocument();
   });
 
   it('shows the Claim action only for PENDING_VERIFICATION cards in grid view', () => {

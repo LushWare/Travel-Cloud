@@ -48,8 +48,8 @@ module "deployment" {
   # LiteAPI hotel-search key
   liteapi_api_key = var.liteapi_api_key
 
-  # Voice agent (Retell AI) signing secrets. Empty until this environment's
-  # TF_VARS_* secret carries them — the service fails closed meanwhile.
+  # Legacy Retell secrets are retained during migration; ElevenLabs secrets
+  # below are the active voice-service credentials.
   api_domain                   = var.api_domain
   client_url                   = var.client_url
   management_url               = var.management_url
@@ -58,6 +58,10 @@ module "deployment" {
 
   retell_webhook_secret = var.retell_webhook_secret
   retell_tool_secret    = var.retell_tool_secret
+  elevenlabs_api_key           = var.elevenlabs_api_key
+  elevenlabs_webhook_secret    = var.elevenlabs_webhook_secret
+  elevenlabs_initiation_secret = var.elevenlabs_initiation_secret
+  elevenlabs_tool_secret       = var.elevenlabs_tool_secret
 
   # Branding / invoice / bank / admin-email plain config
   company_name                  = var.company_name

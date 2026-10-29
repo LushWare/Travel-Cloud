@@ -131,7 +131,7 @@ resource "google_cloud_run_v2_service_iam_member" "gateway_invoker_notification"
 }
 # The voice webhooks and the CustomTool endpoints both arrive through the
 # gateway (`/api/v1/webhooks/voice/*`), which is the only path that authenticates
-# them — Retell calls the public gateway host, never this service directly.
+# them — ElevenLabs calls the public gateway host, never this service directly.
 resource "google_cloud_run_v2_service_iam_member" "gateway_invoker_voice" {
   project  = var.project_id
   location = var.region

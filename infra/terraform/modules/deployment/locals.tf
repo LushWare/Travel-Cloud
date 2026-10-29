@@ -236,14 +236,25 @@ locals {
       name    = "${var.env}-voice-service"
       memory  = "512Mi"
       cpu     = "1"
-      secrets = ["${var.env}-database-url", "${var.env}-direct-url", "${var.env}-internal-service-key", "${var.env}-internal-events-token", "${var.env}-retell-webhook-secret", "${var.env}-retell-tool-secret"]
+      secrets = [
+        "${var.env}-database-url",
+        "${var.env}-direct-url",
+        "${var.env}-internal-service-key",
+        "${var.env}-internal-events-token",
+        "${var.env}-retell-webhook-secret",
+        "${var.env}-retell-tool-secret",
+        "${var.env}-elevenlabs-api-key",
+        "${var.env}-elevenlabs-webhook-secret",
+        "${var.env}-elevenlabs-initiation-secret",
+        "${var.env}-elevenlabs-tool-secret",
+      ]
       plain_env = {
         NODE_ENV   = "production"
         CLIENT_URL = local.client_url
         # The sales-team email and the record deep-links both point at the
         # Management portal, so this service needs that URL too.
         MANAGEMENT_URL = local.management_url
-        # Calls from one number acted on per rolling 24h. Retell has no
+        # Calls from one number acted on per rolling 24h. The provider has no
         # documented way to refuse a call already ringing, so the call is
         # answered either way — past the cap this only stops the forwarding
         # into lead-service/notification-service.

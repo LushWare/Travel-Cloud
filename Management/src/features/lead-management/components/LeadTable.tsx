@@ -285,12 +285,12 @@ const LeadTable = ({
             const displayStatus = lead.lifecycleStatus;
             const showRepAttention = needsRepAttention(lead);
             const bookingPending = displayStatus === 'PENDING_VERIFICATION' && Boolean(lead.convertedBookingId);
-            const statusColor = showRepAttention
-              ? attentionStatusClass
-              : bookingPending ? bookingPendingStatusClass : statusColors[displayStatus] || statusColors.new;
-            const statusLabel = showRepAttention
-              ? 'Needs Rep Attention'
-              : bookingPending ? 'Booking Pending' : statusLabels[displayStatus] || 'New';
+            const statusColor = bookingPending
+              ? bookingPendingStatusClass
+              : statusColors[displayStatus] || statusColors.new;
+            const statusLabel = bookingPending
+              ? 'Booking Pending'
+              : statusLabels[displayStatus] || 'New';
 
             return (
               <div
@@ -324,6 +324,11 @@ const LeadTable = ({
                       >
                         {statusLabel}
                       </button>
+                      {showRepAttention && displayStatus !== 'PENDING_VERIFICATION' && (
+                        <span className={`px-3 py-1.5 rounded-lg text-xs font-semibold shrink-0 ${attentionStatusClass}`}>
+                          Needs Rep Attention
+                        </span>
+                      )}
                       {displayStatus === 'PENDING_VERIFICATION' && onClaimClick && (
                         <button
                           onClick={(e) => {
@@ -596,16 +601,12 @@ const LeadTable = ({
               const displayStatus = lead.lifecycleStatus;
               const showRepAttention = needsRepAttention(lead);
               const bookingPending = displayStatus === 'PENDING_VERIFICATION' && Boolean(lead.convertedBookingId);
-              const statusColor = showRepAttention
-                ? attentionStatusClass
-                : bookingPending
-                  ? bookingPendingStatusClass
-                  : (statusColors && statusColors[displayStatus]) || 'bg-muted text-muted-foreground';
-              const statusLabel = showRepAttention
-                ? 'Needs Rep Attention'
-                : bookingPending
-                  ? 'Booking Pending'
-                  : (statusLabels && statusLabels[displayStatus]) || lead.lifecycleStatus || 'N/A';
+              const statusColor = bookingPending
+                ? bookingPendingStatusClass
+                : (statusColors && statusColors[displayStatus]) || 'bg-muted text-muted-foreground';
+              const statusLabel = bookingPending
+                ? 'Booking Pending'
+                : (statusLabels && statusLabels[displayStatus]) || lead.lifecycleStatus || 'N/A';
               const leadId = (lead._id || lead.id)?.toString();
               const repLabel = repLabelFor(lead.assignedToId, salesReps);
               const isHighlighted = highlightedLeadId && leadId === highlightedLeadId.toString();
@@ -703,13 +704,20 @@ const LeadTable = ({
                     className="px-4 py-2 whitespace-nowrap border-r border-border sticky right-[172px] bg-card group-hover:bg-muted z-10 shadow-[2px_0_4px_rgba(0,0,0,0.1)]"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    <button
-                      className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full cursor-pointer hover:opacity-80 transition-opacity ${statusColor}`}
-                      onClick={(e) => handleStatusClick(e, lead)}
-                      title="Click to change status"
-                    >
-                      {statusLabel}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      {showRepAttention && displayStatus !== 'PENDING_VERIFICATION' && (
+                        <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${attentionStatusClass}`}>
+                          Needs Rep Attention
+                        </span>
+                      )}
+                      <button
+                        className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full cursor-pointer hover:opacity-80 transition-opacity ${statusColor}`}
+                        onClick={(e) => handleStatusClick(e, lead)}
+                        title="Click to change status"
+                      >
+                        {statusLabel}
+                      </button>
+                    </div>
                   </TableCell>
                   <TableCell
                     className="w-[172px] px-4 py-2 text-sm text-muted-foreground sticky right-0 bg-card group-hover:bg-muted z-10 shadow-[-2px_0_4px_rgba(0,0,0,0.1)]"

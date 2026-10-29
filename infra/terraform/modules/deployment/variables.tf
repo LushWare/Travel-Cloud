@@ -420,7 +420,7 @@ variable "management_notifications_enabled" {
   type        = string
   default     = "false"
 }
-# ── Voice agent (Retell AI) ────────────────────────────────────────────────
+# Legacy Retell inputs retained during the voice-provider migration.
 # Empty is fail-closed, not inert: without the webhook secret the two lifecycle
 # webhooks answer 503 and nothing is ever recorded; without the tool secret
 # (or its webhook-secret fallback) every CustomTool call is rejected. That is
@@ -438,6 +438,35 @@ variable "retell_webhook_secret" {
 
 variable "retell_tool_secret" {
   description = "Shared secret the Retell CustomTools carry in their own `headers` field (secret id <env>-retell-tool-secret → RETELL_TOOL_SECRET on voice-service). Retell documents no signature scheme for tool-call webhooks the way it does for the lifecycle ones, so this secret is what protects the seven tool endpoints."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+# ElevenLabs credentials used by the active voice-service integration.
+variable "elevenlabs_api_key" {
+  description = "ElevenLabs API key used by voice-service for conversation recordings."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "elevenlabs_webhook_secret" {
+  description = "ElevenLabs post-call webhook signing secret (ELEVENLABS_WEBHOOK_SECRET)."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "elevenlabs_initiation_secret" {
+  description = "Shared secret for the ElevenLabs call initiation webhook (ELEVENLABS_INITIATION_SECRET)."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "elevenlabs_tool_secret" {
+  description = "Shared secret for ElevenLabs tool webhooks (ELEVENLABS_TOOL_SECRET)."
   type        = string
   sensitive   = true
   default     = ""
