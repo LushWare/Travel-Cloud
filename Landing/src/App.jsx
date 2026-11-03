@@ -7,7 +7,8 @@ import HomePage from './pages/HomePage';
 import TravelSolutionsPage from './pages/TravelSolutionsPage';
 import ManagementPortalPage from './pages/ManagementPortalPage';
 import WhyUsPage from './pages/WhyUsPage';
-import PricingPage from './pages/PricingPage';
+// Pricing is hidden for now; /pricing falls through to the home page via the catch-all route.
+// import PricingPage from './pages/PricingPage';
 import ContactPage from './pages/ContactPage';
 
 function SmoothScroll() {
@@ -125,7 +126,7 @@ function AppContent() {
               element={<ManagementPortalPage onBookConsultation={handleBookConsultation} />}
             />
             <Route path="/why-us" element={<WhyUsPage />} />
-            <Route path="/pricing" element={<PricingPage onBookConsultation={handleBookConsultation} />} />
+            {/* <Route path="/pricing" element={<PricingPage onBookConsultation={handleBookConsultation} />} /> */}
             <Route path="/contact" element={null} />
             <Route path="*" element={<HomePage onBookConsultation={handleBookConsultation} />} />
           </Routes>

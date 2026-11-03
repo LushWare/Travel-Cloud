@@ -82,6 +82,9 @@ bind "$DEPLOY_SA" roles/artifactregistry.writer
 bind "$DEPLOY_SA" roles/iam.serviceAccountUser
 # Ships the three frontends.
 bind "$FIREBASE_SA" roles/firebasehosting.admin
+# firebase-tools reads the API's enablement before deploying; without this the
+# job fails with "Permission denied to get service [firebasehosting.googleapis.com]".
+bind "$FIREBASE_SA" roles/serviceusage.serviceUsageConsumer
 # Reshapes infrastructure -- deliberately a separate identity from the deployer.
 bind "$TERRAFORM_SA" roles/editor
 bind "$TERRAFORM_SA" roles/run.admin

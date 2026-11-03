@@ -9,7 +9,8 @@ const exploreLinks = [
 
 const detailLinks = [
   { label: 'Why Us', path: '/why-us' },
-  { label: 'Pricing', path: '/pricing' },
+  // Pricing is hidden for now; restore this entry and the route in App.jsx to bring it back.
+  // { label: 'Pricing', path: '/pricing' },
   { label: 'Contact', path: '/contact' },
 ];
 
