@@ -1,7 +1,7 @@
 {
   "projects": {
     "default": "travelcrm-506818",
-    "prod": "lush-travel-cloud-prod"
+    "prod": "lushtravelcloud-prod"
   },
   "targets": {
     "travelcrm-506818": {
@@ -17,16 +17,16 @@
         ]
       }
     },
-    "lush-travel-cloud-prod": {
+    "lushtravelcloud-prod": {
       "hosting": {
         "client-prod": [
-          "lush-travel-cloud-client"
+          "lushtravelcloud-client"
         ],
         "management-prod": [
-          "lush-travel-cloud-management"
+          "lushtravelcloud-management"
         ],
         "landing-prod": [
-          "lush-travel-cloud-landing"
+          "lushtravelcloud-landing"
         ]
       }
     }

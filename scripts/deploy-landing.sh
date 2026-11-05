@@ -26,7 +26,7 @@ esac
 
 # prod lives in its own GCP project; dev/staging stay in the original one.
 if [[ "$TARGET_ENV" == "prod" ]]; then
-  PROJECT="lush-travel-cloud-prod"
+  PROJECT="lushtravelcloud-prod"
 else
   PROJECT="travelcrm-506818"
 fi

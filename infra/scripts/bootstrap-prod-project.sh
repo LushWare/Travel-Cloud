@@ -17,11 +17,11 @@
 # Owner of the new project). Pass DRY_RUN=1 to print the commands only.
 set -euo pipefail
 
-PROJECT_ID="${PROJECT_ID:-lush-travel-cloud-prod}"
+PROJECT_ID="${PROJECT_ID:-lushtravelcloud-prod}"
 PROJECT_NAME="${PROJECT_NAME:-Travel-Cloud}"
 REGION="${REGION:-asia-south1}"
 GITHUB_REPO="${GITHUB_REPO:-LushWare/Travel-Cloud}"
-STATE_BUCKET="${STATE_BUCKET:-lush-travel-cloud-prod-tfstate}"
+STATE_BUCKET="${STATE_BUCKET:-lushtravelcloud-prod-tfstate}"
 STATE_LOCATION="${STATE_LOCATION:-asia-southeast1}"
 : "${BILLING_ACCOUNT:?set BILLING_ACCOUNT to the billing account id (gcloud billing accounts list)}"
 
@@ -30,7 +30,9 @@ PROVIDER="github-actions-provider"
 DEPLOY_SA="github-actions-deployer"
 FIREBASE_SA="firebase-hosting-deployer"
 TERRAFORM_SA="terraform-deployer"
-SITES=(lush-travel-cloud-client lush-travel-cloud-management lush-travel-cloud-landing)
+# Hosting site ids are global across all of Firebase, so they carry a prefix of their own.
+SITE_PREFIX="${SITE_PREFIX:-lushtravelcloud}"
+SITES=("${SITE_PREFIX}-client" "${SITE_PREFIX}-management" "${SITE_PREFIX}-landing")
 
 run() {
   if [[ "${DRY_RUN:-0}" == "1" ]]; then echo "+ $*"; else "$@"; fi

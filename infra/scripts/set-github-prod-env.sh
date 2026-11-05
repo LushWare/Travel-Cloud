@@ -15,8 +15,8 @@ set -euo pipefail
 
 REPO="${REPO:-LushWare/Travel-Cloud}"
 ENVIRONMENT="prod"
-PROJECT_ID="${PROJECT_ID:-lush-travel-cloud-prod}"
-PROJECT_NUMBER="${PROJECT_NUMBER:-237831598037}"
+PROJECT_ID="${PROJECT_ID:-lushtravelcloud-prod}"
+PROJECT_NUMBER="${PROJECT_NUMBER:-1066474225527}"
 REGION="${REGION:-asia-south1}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 TFVARS="$ROOT/infra/terraform/deployments/prod/terraform.tfvars"
