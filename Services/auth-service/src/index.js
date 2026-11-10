@@ -8,6 +8,9 @@ import authRoutes from './routes/auth.routes.js';
 import errorHandler from './middleware/errorHandler.js';
 import { correlationId, requestLogger } from './middleware/requestLogger.js';
 import logger from './config/logger.js';
+import { assertSigningKeyConfigured } from './config/jwtKeys.js';
+
+assertSigningKeyConfigured();
 
 const app = express();
 

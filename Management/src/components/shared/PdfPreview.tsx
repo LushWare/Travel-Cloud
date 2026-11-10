@@ -3,7 +3,7 @@ import { X, Download, Loader2, ArrowLeft, ChevronLeft, ChevronRight, ExternalLin
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://api.lushtravelcloud.com/api/v1';
+import { API_BASE_URL, authFetch } from '@/lib/authFetch';
 
 // Large enough to feel like a real document viewer instead of a cramped
 // modal, capped so it doesn't stretch unreasonably wide on ultra-wide
@@ -53,20 +53,12 @@ export function usePdfPreview({ isOpen, pdfUrl, pdfBlob }: UsePdfPreviewArgs): U
       setLoading(true);
       setBlobUrl(null);
 
-      const token = localStorage.getItem('token') || sessionStorage.getItem('token');
       const fullUrl = pdfUrl.startsWith('http') ? pdfUrl : `${API_BASE_URL}${pdfUrl}`;
-
-      if (!token) {
-        console.error('No authentication token found. Please login again.');
-        setLoading(false);
-        setError(true);
-        return undefined;
-      }
 
       let cancelled = false;
       let url: string | null = null;
 
-      fetch(fullUrl, { headers: { Authorization: `Bearer ${token}` } })
+      authFetch(fullUrl)
         .then((response) => {
           if (!response.ok) throw new Error(`Failed to load PDF (HTTP ${response.status})`);
           return response.blob();

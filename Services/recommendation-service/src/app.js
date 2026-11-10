@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import pino from 'pino';
 import pinoHttp from 'pino-http';
 import recommendationsRoutes from './routes/recommendations.routes.js';
+import { installTenantFetch, tenantMiddleware } from '../../shared/tenancy/src/index.js';
 
 const app = express();
 const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
@@ -11,6 +12,10 @@ const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 app.use(helmet());
 app.use(express.json({ limit: '32kb' }));
 app.use(pinoHttp({ logger, autoLogging: false }));
+// Every request runs inside the agency the gateway took from the login.
+app.use(tenantMiddleware);
+// Calls to our other services carry the same agency.
+installTenantFetch();
 app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'recommendation-service' }));
 app.use('/api/v1/recommendations', recommendationsRoutes);
 app.use((req, res) => res.status(404).json({ success: false, message: `Route not found: ${req.path}` }));

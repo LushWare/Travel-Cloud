@@ -3,7 +3,7 @@
  * Handles all admin-related API calls including user management, admin operations, and settings
  */
 
-import api from './api';
+import api, { authAPI } from './api';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://api.lushtravelcloud.com/api/v1';
 
@@ -199,8 +199,7 @@ class AdminService {
    */
   async resetUserPassword(userId) {
     try {
-      const response = await this.api.post(`/admin/users/${userId}/reset-password`);
-      return response;
+      return await authAPI.sendSetPasswordLink(userId);
     } catch (error) {
       console.error(`Error resetting password for user ${userId}:`, error);
       throw error;

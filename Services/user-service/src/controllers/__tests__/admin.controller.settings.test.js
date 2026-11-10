@@ -6,15 +6,16 @@ const { mockFindFirst, mockCreate, mockUpdate } = vi.hoisted(() => ({
   mockUpdate: vi.fn(),
 }));
 
-vi.mock('../../db/client.js', () => ({
-  default: {
+vi.mock('../../db/client.js', () => {
+  const client = {
     organizationSettings: {
       findFirst: mockFindFirst,
       create: mockCreate,
       update: mockUpdate,
     },
-  },
-}));
+  };
+  return { default: client, identityPrisma: client };
+});
 
 import {
   getSettings, updateSettings, getInternalOrganizationSettings, getOrganizationBranding,

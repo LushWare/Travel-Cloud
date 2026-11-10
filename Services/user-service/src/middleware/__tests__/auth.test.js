@@ -25,8 +25,17 @@ describe('extractUser', () => {
       name: 'Test Admin',
       permissions: ['manage_users'],
       isSuperAdmin: false,
+      tenantId: null,
     });
     expect(next).toHaveBeenCalled();
+  });
+
+  it('reads the agency the gateway took from the login', () => {
+    const req = { headers: { 'x-user-id': 'user-123', 'x-tenant-id': '11111111-1111-4111-8111-111111111111' } };
+
+    extractUser(req, {}, vi.fn());
+
+    expect(req.user.tenantId).toBe('11111111-1111-4111-8111-111111111111');
   });
 
   it('parses isSuperAdmin as boolean true', () => {

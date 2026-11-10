@@ -3,6 +3,7 @@ import { PackageCategory } from '@prisma/client';
 import { z } from 'zod';
 import prisma from '../db/client.js';
 import { calculateBasePrice, computeMargin } from '../../../shared/pricing-engine/src/index.js';
+import { requireTenantId } from '../../../shared/tenancy/src/index.js';
 
 const packageIdFilterSchema = z.string().min(1).max(255).regex(/^[a-zA-Z0-9_-]+$/);
 
@@ -333,7 +334,7 @@ export async function resolveActivityCatalogIds(days) {
   }));
 
   await Promise.all([...defaultCostByName.keys()].map(async (name) => {
-    const existing = await prisma.activityCatalog.findUnique({ where: { name } });
+    const existing = await prisma.activityCatalog.findUnique({ where: { tenantId_name: { tenantId: requireTenantId(), name } } });
     if (existing) {
       infoByName.set(name, { id: existing.id, cost: Number(existing.defaultCost) });
     } else {

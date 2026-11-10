@@ -31,6 +31,7 @@ datasource db {
 
 model AssistantEvent {
   id        String   @id @default(uuid())
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
   sessionId String
   turnId    String?
   eventType String
@@ -42,6 +43,7 @@ model AssistantEvent {
   @@index([sessionId])
   @@index([sessionId, turnId])
   @@index([createdAt])
+  @@index([tenantId])
   @@schema("crm_assistant")
 }
 
@@ -53,14 +55,15 @@ model AssistantEvent {
 
 model ManagementLastSeen {
   id               String   @id @default(uuid())
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
   actorId          String
   pageKey          String
   scopeFingerprint String
   lastSeenAt       DateTime
   updatedAt        DateTime @updatedAt
-
-  @@unique([actorId, pageKey, scopeFingerprint])
   @@index([actorId])
+  @@index([tenantId])
+  @@unique([tenantId, actorId, pageKey, scopeFingerprint])
   @@schema("crm_assistant")
 }
 
@@ -80,6 +83,7 @@ model ManagementLastSeen {
 // developer's array order into stored state.
 model InsightState {
   id                String    @id @default(uuid())
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
   actorId           String
   pageKey           String
   scopeFingerprint  String
@@ -92,9 +96,9 @@ model InsightState {
   lastMaterialValue String?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
-
-  @@unique([actorId, pageKey, scopeFingerprint, insightKey])
   @@index([actorId, pageKey])
+  @@index([tenantId])
+  @@unique([tenantId, actorId, pageKey, scopeFingerprint, insightKey])
   @@schema("crm_assistant")
 }
 
@@ -103,6 +107,7 @@ model InsightState {
 // is business-wide; actorId supplies the per-user read/dismiss lifecycle.
 model BusinessNotificationState {
   id                String    @id @default(uuid())
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
   actorId           String
   notificationKey   String
   firstSeenAt       DateTime  @default(now())
@@ -113,9 +118,9 @@ model BusinessNotificationState {
   lastMaterialValue String?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
-
-  @@unique([actorId, notificationKey])
   @@index([actorId])
+  @@index([tenantId])
+  @@unique([tenantId, actorId, notificationKey])
   @@schema("crm_assistant")
 }
 
@@ -133,6 +138,7 @@ model BusinessNotificationState {
 // by ids that may refer to rows in other services' schemas.
 model InsightDecision {
   id               String   @id @default(uuid())
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
   requestId        String?
   actorId          String
   pageKey          String
@@ -150,6 +156,7 @@ model InsightDecision {
 
   @@index([actorId, pageKey, createdAt])
   @@index([requestId])
+  @@index([tenantId])
   @@schema("crm_assistant")
 }
 
@@ -167,6 +174,7 @@ model InsightDecision {
 // a second "yes" from writing twice.
 model AssistantSession {
   id               String   @id
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
   createdAt        DateTime @default(now())
   lastSeenAt       DateTime
   shownPackageIds  String[] @default([])
@@ -181,6 +189,7 @@ model AssistantSession {
   turnCount        Int      @default(0)
 
   @@index([lastSeenAt])
+  @@index([tenantId])
   @@schema("crm_assistant")
 }
 
@@ -193,6 +202,7 @@ model AssistantSession {
 // turn are written together.
 model AssistantMessage {
   id        String   @id
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
   sessionId String
   seq       Int
   role      String
@@ -201,5 +211,6 @@ model AssistantMessage {
 
   @@unique([sessionId, seq])
   @@index([sessionId, seq])
+  @@index([tenantId])
   @@schema("crm_assistant")
 }

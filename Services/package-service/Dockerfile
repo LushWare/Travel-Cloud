@@ -13,6 +13,9 @@ COPY shared/constants ./shared/constants
 COPY shared/pricing-engine ./shared/pricing-engine
 COPY shared/contracts ./shared/contracts
 COPY shared/lead-pricing-engine ./shared/lead-pricing-engine
+# No runtime dependencies, so no install step.
+COPY shared/tenancy/src ./shared/tenancy/src
+COPY shared/tenancy/package.json ./shared/tenancy/package.json
 COPY shared/policy-retrieval ./shared/policy-retrieval
 RUN npm ci --prefix ./shared/constants \
     && npm ci --prefix ./shared/pricing-engine \

@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+// These tests call handlers directly, so they run as one fixed agency.
+vi.mock('../../../../shared/tenancy/src/index.js', async (original) => ({
+  ...(await original()),
+  requireTenantId: () => '11111111-1111-4111-8111-111111111111',
+}));
+
 const { mockPrisma } = vi.hoisted(() => ({
   mockPrisma: {
     activityCatalog: { findUnique: vi.fn(), create: vi.fn() },

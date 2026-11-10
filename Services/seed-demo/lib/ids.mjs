@@ -75,14 +75,30 @@ const CATEGORY = {
   otp: '57',
 };
 
+// Which test agency the rows being written belong to: 0 = lush-demo, 1 = acme-tours, 2 = globe-dmc.
+// It is part of every id, so each agency's rows are told apart (and cleared) by prefix alone.
+let currentAgency = 0;
+export function setAgencyIndex(index) {
+  if (!Number.isInteger(index) || index < 0 || index > 9) throw new Error(`agency index out of range: ${index}`);
+  currentAgency = index;
+}
+const agencyPart = (agency) => String(agency).padStart(6, '0');
+
+/** The id prefix one category owns for the current agency, e.g. '3b000001-' for acme-tours bookings. */
+export function ownedPrefix(category, agency = currentAgency) {
+  const cat = CATEGORY[category];
+  if (!cat) throw new Error(`ownedPrefix(): unknown category "${category}"`);
+  return `${cat}${agencyPart(agency)}-`;
+}
+
 /** `id('lead', 42)` → '2a000000-0000-4000-8000-000000000042' */
-export function id(category, n) {
+export function id(category, n, agency = currentAgency) {
   const cat = CATEGORY[category];
   if (!cat) throw new Error(`id(): unknown category "${category}"`);
   if (!Number.isInteger(n) || n < 1 || n > 999_999_999_999) {
     throw new Error(`id(): index out of range for "${category}": ${n}`);
   }
-  return `${cat}000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+  return `${cat}${agencyPart(agency)}-0000-4000-8000-${String(n).padStart(12, '0')}`;
 }
 
 /**

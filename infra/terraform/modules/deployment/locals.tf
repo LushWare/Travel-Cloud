@@ -22,7 +22,8 @@ locals {
       name    = "${var.env}-gateway"
       memory  = "512Mi"
       cpu     = "1"
-      secrets = ["${var.env}-jwt-secret"]
+      # jwt-secret only lets logins issued before the key-pair switch finish; remove it 7 days after.
+      secrets = ["${var.env}-jwt-public-keys", "${var.env}-jwt-secret"]
       plain_env = {
         NODE_ENV       = "production"
         CLIENT_URL     = local.client_url
@@ -34,8 +35,10 @@ locals {
       name                  = "${var.env}-auth-service"
       memory                = "512Mi"
       cpu                   = "1"
-      secrets               = ["${var.env}-database-url", "${var.env}-direct-url", "${var.env}-jwt-secret", "${var.env}-internal-events-token"]
-      plain_env             = { NODE_ENV = "production", CLIENT_URL = local.client_url }
+      # jwt-secret is unused; dropping its access grant is a delete, which the automatic prod deploy refuses. Remove with the gateway's.
+      secrets               = ["${var.env}-database-url", "${var.env}-direct-url", "${var.env}-jwt-private-key", "${var.env}-jwt-secret", "${var.env}-internal-events-token"]
+      # dev/staging serve Management (web.app) and the API (run.app) from different sites.
+      plain_env             = { NODE_ENV = "production", CLIENT_URL = local.client_url, MANAGEMENT_URL = local.management_url, AUTH_COOKIE_SAMESITE = var.env == "prod" ? "strict" : "none" }
       allow_unauthenticated = false
     }
     user-service = {

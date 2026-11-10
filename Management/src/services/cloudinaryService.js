@@ -5,17 +5,7 @@
 
 import Swal from 'sweetalert2';
 import { apiErrorMessage } from '@/lib/apiErrorMessage';
-
-// API Configuration
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://api.lushtravelcloud.com/api/v1';
-
-/**
- * Get authentication token from localStorage
- * @returns {string|null} JWT token
- */
-const getAuthToken = () => {
-  return localStorage.getItem('token');
-};
+import { API_BASE_URL, authFetch } from '@/lib/authFetch';
 
 /**
  * Upload image to Cloudinary via backend
@@ -29,16 +19,8 @@ export const uploadImage = async (file, preset = 'default') => {
   formData.append('preset', preset);
 
   try {
-    const token = getAuthToken();
-    if (!token) {
-      throw new Error('Authentication required. Please login.');
-    }
-
-    const response = await fetch(`${API_BASE_URL}/upload/single`, {
+    const response = await authFetch(`${API_BASE_URL}/upload/single`, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-      },
       body: formData,
     });
 
@@ -77,18 +59,10 @@ export const uploadMultipleImages = async (files, preset = 'default', onProgress
   formData.append('preset', preset);
 
   try {
-    const token = getAuthToken();
-    if (!token) {
-      throw new Error('Authentication required. Please login.');
-    }
-
     // Note: For progress tracking, you might want to use XMLHttpRequest
     // or a library like axios that supports upload progress
-    const response = await fetch(`${API_BASE_URL}/upload/multiple`, {
+    const response = await authFetch(`${API_BASE_URL}/upload/multiple`, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-      },
       body: formData,
     });
 
@@ -129,16 +103,8 @@ export const uploadPackageImages = async (files, onProgress = () => {}) => {
   });
 
   try {
-    const token = getAuthToken();
-    if (!token) {
-      throw new Error('Authentication required. Please login.');
-    }
-
-    const response = await fetch(`${API_BASE_URL}/upload/package`, {
+    const response = await authFetch(`${API_BASE_URL}/upload/package`, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-      },
       body: formData,
     });
 
@@ -194,16 +160,8 @@ export const uploadItineraryImages = async (files, onProgress = () => {}) => {
   });
 
   try {
-    const token = getAuthToken();
-    if (!token) {
-      throw new Error('Authentication required. Please login.');
-    }
-
-    const response = await fetch(`${API_BASE_URL}/upload/itinerary`, {
+    const response = await authFetch(`${API_BASE_URL}/upload/itinerary`, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-      },
       body: formData,
     });
 
@@ -245,16 +203,8 @@ export const uploadProfileImage = async (file) => {
   formData.append('image', file);
 
   try {
-    const token = getAuthToken();
-    if (!token) {
-      throw new Error('Authentication required. Please login.');
-    }
-
-    const response = await fetch(`${API_BASE_URL}/upload/profile`, {
+    const response = await authFetch(`${API_BASE_URL}/upload/profile`, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-      },
       body: formData,
     });
 
@@ -279,17 +229,9 @@ export const uploadProfileImage = async (file) => {
  */
 export const deleteImage = async (publicId) => {
   try {
-    const token = getAuthToken();
-    if (!token) {
-      throw new Error('Authentication required. Please login.');
-    }
-
     const encodedPublicId = encodeURIComponent(publicId);
-    const response = await fetch(`${API_BASE_URL}/upload/${encodedPublicId}`, {
+    const response = await authFetch(`${API_BASE_URL}/upload/${encodedPublicId}`, {
       method: 'DELETE',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-      },
     });
 
     if (!response.ok) {
@@ -311,15 +253,9 @@ export const deleteImage = async (publicId) => {
  */
 export const deleteMultipleImages = async (publicIds) => {
   try {
-    const token = getAuthToken();
-    if (!token) {
-      throw new Error('Authentication required. Please login.');
-    }
-
-    const response = await fetch(`${API_BASE_URL}/upload/delete-multiple`, {
+    const response = await authFetch(`${API_BASE_URL}/upload/delete-multiple`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ publicIds }),
@@ -350,7 +286,7 @@ export const getOptimizedImageUrl = async (publicId, options = {}) => {
       ...options,
     });
 
-    const response = await fetch(`${API_BASE_URL}/upload/optimize?${params}`);
+    const response = await authFetch(`${API_BASE_URL}/upload/optimize?${params}`);
 
     if (!response.ok) {
       const error = await response.json();

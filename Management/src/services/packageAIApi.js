@@ -4,6 +4,7 @@
  */
 
 import apiService from './api.js';
+import { API_BASE_URL, authFetch } from '../lib/authFetch';
 
 const packageAIApi = {
   /**
@@ -49,16 +50,7 @@ const packageAIApi = {
    * @returns {Promise<Blob>} PDF blob
    */
   downloadPDF: async (packageId) => {
-    const baseURL = import.meta.env.VITE_API_URL || 'https://api.lushtravelcloud.com/api/v1';
-    const response = await fetch(
-      `${baseURL}/packages/${packageId}/ai-pdf`,
-      {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
-        },
-      }
-    );
+    const response = await authFetch(`${API_BASE_URL}/packages/${packageId}/ai-pdf`);
 
     if (!response.ok) {
       throw new Error('Failed to download PDF');

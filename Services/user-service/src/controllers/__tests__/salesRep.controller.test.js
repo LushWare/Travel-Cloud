@@ -10,8 +10,8 @@ const { mockFindUnique, mockFindFirst, mockFindMany, mockCount, mockCreate, mock
   mockDelete: vi.fn(),
 }));
 
-vi.mock('../../db/client.js', () => ({
-  default: {
+vi.mock('../../db/client.js', () => {
+  const client = {
     user: {
       findUnique: mockFindUnique,
       findFirst: mockFindFirst,
@@ -21,17 +21,18 @@ vi.mock('../../db/client.js', () => ({
       update: mockUpdate,
       delete: mockDelete,
     },
-  },
-}));
+  };
+  return { default: client, identityPrisma: client };
+});
 
 import {
   getAllSalesReps, getSalesRepById, createSalesRep, updateSalesRep, deleteSalesRep,
-  getSalesRepStats, toggleSalesRepStatus, resetSalesRepPassword, getSalesRepPerformance,
+  getSalesRepStats, toggleSalesRepStatus, getSalesRepPerformance,
   updateSalesRepCommission, getOnlineSalesReps,
 } from '../salesRep.controller.js';
 
 const ID = '11111111-1111-4111-8111-111111111111';
-const ACTOR = { id: '22222222-2222-4222-8222-222222222222', role: 'admin' };
+const ACTOR = { id: '22222222-2222-4222-8222-222222222222', role: 'admin', tenantId: '00000000-0000-4000-8000-000000000001' };
 
 function buildReqRes({ body = {}, params = {}, query = {}, user = ACTOR } = {}) {
   const req = { body, params, query, user };
@@ -61,7 +62,7 @@ describe('getAllSalesReps', () => {
     expect(mockFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: { role: 'salesRep' } }));
     expect(res.json).toHaveBeenCalledWith({
       status: 'success',
-      data: [{ id: ID, role: 'salesRep' }],
+      data: [{ id: ID, role: 'salesRep', commissionRate: null }],
       pagination: { total: 1, page: 1, limit: 10, pages: 1 },
     });
   });
@@ -106,12 +107,43 @@ describe('createSalesRep', () => {
 
 describe('updateSalesRep', () => {
   it('updates the provided fields', async () => {
+    mockFindFirst.mockResolvedValue({ id: ID, role: 'salesRep' });
     mockUpdate.mockResolvedValue({ id: ID, name: 'Updated Rep' });
     const { req, res, next } = buildReqRes({ params: { id: ID }, body: { name: 'Updated Rep' } });
 
     await updateSalesRep(req, res, next);
 
     expect(mockUpdate).toHaveBeenCalledWith({ where: { id: ID }, data: { name: 'Updated Rep' } });
+  });
+
+  it('only reaches sales rep accounts', async () => {
+    mockFindFirst.mockResolvedValue({ id: ID, role: 'salesRep' });
+    mockUpdate.mockResolvedValue({ id: ID });
+    const { req, res, next } = buildReqRes({ params: { id: ID }, body: { name: 'x' } });
+
+    await updateSalesRep(req, res, next);
+
+    expect(mockFindFirst.mock.calls[0][0].where).toEqual({ id: ID, role: 'salesRep' });
+  });
+
+  it('returns 404 instead of editing an account that is not a sales rep', async () => {
+    mockFindFirst.mockResolvedValue(null);
+    const { req, res, next } = buildReqRes({ params: { id: ID }, body: { email: 'attacker@evil.com' } });
+
+    await updateSalesRep(req, res, next);
+
+    expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 404 }));
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it('stops a normal admin from changing a super admin\'s email through this endpoint', async () => {
+    mockFindFirst.mockResolvedValue({ id: ID, role: 'salesRep', isSuperAdmin: true });
+    const { req, res, next } = buildReqRes({ params: { id: ID }, body: { email: 'attacker@evil.com' }, user: { id: '99999999-9999-4999-8999-999999999999', role: 'admin', isSuperAdmin: false } });
+
+    await updateSalesRep(req, res, next);
+
+    expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 403 }));
+    expect(mockUpdate).not.toHaveBeenCalled();
   });
 });
 
@@ -159,17 +191,6 @@ describe('toggleSalesRepStatus', () => {
   });
 });
 
-describe('resetSalesRepPassword', () => {
-  it('returns a temp password', async () => {
-    mockUpdate.mockResolvedValue({ id: ID });
-    const { req, res, next } = buildReqRes({ params: { id: ID } });
-
-    await resetSalesRepPassword(req, res, next);
-
-    expect(res.json.mock.calls[0][0].data.tempPassword).toBeTruthy();
-  });
-});
-
 describe('getSalesRepPerformance (documented stub)', () => {
   it('returns a placeholder note instead of real metrics', async () => {
     mockFindFirst.mockResolvedValue({ id: ID, name: 'Priya Nair', role: 'salesRep' });
@@ -184,14 +205,16 @@ describe('getSalesRepPerformance (documented stub)', () => {
   });
 });
 
-describe('updateSalesRepCommission (documented stub)', () => {
-  it('validates the id but does not persist anything', async () => {
+describe('updateSalesRepCommission', () => {
+  it('saves the new commission rate', async () => {
+    mockFindFirst.mockResolvedValue({ id: ID, role: 'salesRep' });
+    mockUpdate.mockResolvedValue({ id: ID, role: 'salesRep', commissionRate: 15 });
     const { req, res, next } = buildReqRes({ params: { id: ID }, body: { commissionRate: 15 } });
 
     await updateSalesRepCommission(req, res, next);
 
-    expect(mockUpdate).not.toHaveBeenCalled();
-    expect(res.json).toHaveBeenCalledWith({ status: 'success', message: 'Commission rate updated', data: {} });
+    expect(mockUpdate).toHaveBeenCalledWith({ where: { id: ID }, data: { commissionRate: 15 } });
+    expect(res.json.mock.calls[0][0].data.salesRep.commissionRate).toBe(15);
   });
 
   it('still rejects a malformed id with 400', async () => {

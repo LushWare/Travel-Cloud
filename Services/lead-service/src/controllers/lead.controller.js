@@ -12,6 +12,7 @@ import { gatekeeperInputs, loadPrimarySelection } from '../services/gatekeeper.s
 import { normalizePhone, phoneMatchWhere } from '../utils/phone.js';
 import { handleLeadEvent } from '../services/lead-events.service.js';
 import { serializeLeadDays } from '../services/lead-itinerary.service.js';
+import { requireTenantId } from '../../../shared/tenancy/src/index.js';
 
 // ─── Auto-assignment helper ────────────────────────────────────
 // Must run inside the same transaction as the lead create it feeds, so the
@@ -20,7 +21,7 @@ import { serializeLeadDays } from '../services/lead-itinerary.service.js';
 // index and skip/duplicate a rep's turn).
 async function autoAssignSalesRep(tx, leadData) {
   const settings = await tx.settings.upsert({
-    where: { singletonKey: 1 },
+    where: { tenantId_singletonKey: { tenantId: requireTenantId(), singletonKey: 1 } },
     update: {},
     create: { singletonKey: 1 },
   });

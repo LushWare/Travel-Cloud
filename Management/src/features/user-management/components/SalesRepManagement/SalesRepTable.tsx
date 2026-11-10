@@ -101,7 +101,7 @@ const SalesRepTable = ({
                   </Badge>
                 </td>
                 <td className="border-r border-border px-4 py-3 text-sm font-mono font-semibold tabular-nums text-foreground">
-                  {rep.commissionRate}%
+                  {rep.commissionRate ?? 10}%
                 </td>
                 <td className="border-r border-border px-4 py-3 text-sm">
                   <Badge variant="secondary" className={STATUS_COLORS[rep.status] || STATUS_COLORS.verified}>

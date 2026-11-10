@@ -24,6 +24,7 @@ vi.mock('../../config/orgSettings.js', async () => {
   const actual = await vi.importActual('../../config/orgSettings.js');
   return { ...actual, getOrgSettings: mockGetOrgSettings };
 });
+vi.mock('../../utils/docNumber.js', () => ({ nextInvoiceNumber: vi.fn().mockResolvedValue('INV-202611-00001'), nextQuotationNumber: vi.fn() }));
 vi.mock('../../utils/quotationPDFGenerator.js', () => ({ generateQuotationPDF: vi.fn() }));
 vi.mock('../../utils/emailService.js', () => ({ sendQuotationEmail: vi.fn() }));
 vi.mock('../../utils/whatsappService.js', () => ({ sendQuotationWhatsapp: vi.fn() }));

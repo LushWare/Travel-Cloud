@@ -1,16 +1,8 @@
-import { API_BASE_URL } from './api.js';
+import { API_BASE_URL, authFetch } from '../lib/authFetch';
 
 export const NOTIFICATIONS_CLIENT_TIMEOUT_MS = 20_000;
 export const NOTIFICATIONS_ABORT_CODE = 'NOTIFICATIONS_ABORTED';
 export const NOTIFICATIONS_TIMEOUT_CODE = 'NOTIFICATIONS_TIMEOUT';
-
-function authHeaders() {
-  const token = localStorage.getItem('token') || sessionStorage.getItem('token');
-  return {
-    'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
-}
 
 function abortError() {
   const error = new Error('Notification request cancelled');
@@ -48,9 +40,9 @@ async function request(path, payload, signal) {
   signal?.addEventListener?.('abort', forwardAbort);
 
   try {
-    const response = await fetch(`${API_BASE_URL}${path}`, {
+    const response = await authFetch(`${API_BASE_URL}${path}`, {
       method: 'POST',
-      headers: authHeaders(),
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
       signal: controller.signal,
     });

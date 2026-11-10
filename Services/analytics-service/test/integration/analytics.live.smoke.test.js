@@ -16,6 +16,8 @@ beforeAll(() => {
 
 const analyticsController = await import('../../src/controllers/analytics.controller.js');
 const dashboardController = await import('../../src/controllers/dashboard.controller.js');
+const { runWithTenant } = await import('../../../shared/tenancy/src/index.js');
+const { DEMO_TENANT_ID } = await import('../../../shared/constants/src/index.js');
 
 function invoke(handler, req) {
   return new Promise((resolvePromise, reject) => {
@@ -24,7 +26,8 @@ function invoke(handler, req) {
       status(code) { statusCode = code; return this; },
       json(body) { resolvePromise({ statusCode, body }); return this; },
     };
-    Promise.resolve(handler(req, res, reject)).catch(reject);
+    // Runs as the demo agency; needs the Phase 1 tenancy migrations applied to the database.
+    runWithTenant(DEMO_TENANT_ID, () => Promise.resolve(handler(req, res, reject))).catch(reject);
   });
 }
 

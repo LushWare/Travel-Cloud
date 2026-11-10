@@ -16,6 +16,8 @@ import Login from "./pages/Login";
 import SalesRepLogin from "./pages/SalesRepLogin";
 import SalesRepLoginOTP from "./pages/SalesRepLoginOTP";
 import ResetPassword from "./pages/ResetPassword";
+import SetPassword from "./pages/SetPassword";
+import ChooseAgency from "./pages/ChooseAgency";
 import ProtectedRoute from "./components/ProtectedRoute";
 import HomeRoute from "./components/HomeRoute";
 import { useAuth } from "./contexts/AuthContext";
@@ -62,6 +64,8 @@ function AppContent() {
       <Route path="/sales-rep-login" element={<SalesRepLogin />} />
       <Route path="/sales-rep-login-otp" element={<SalesRepLoginOTP />} />
       <Route path="/reset-password" element={<ResetPassword />} />
+      <Route path="/set-password/:token" element={<SetPassword />} />
+      <Route path="/choose-agency" element={<ChooseAgency />} />
       
       <Route
         path="/*"

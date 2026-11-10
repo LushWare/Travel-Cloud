@@ -50,6 +50,7 @@ enum TravelerType {
 
 model FlightBooking {
   id                  String              @id @default(uuid())
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
 
   pnr                 String?             // airline record locator, once confirmed
   travelportOrderId   String?             // Travelport's order / universal-record id
@@ -93,6 +94,7 @@ model FlightBooking {
   @@index([status])
   @@index([leadId])
   @@index([leadId, dayNumber])
+  @@index([tenantId])
   @@schema("crm_flights")
 }
 
@@ -100,6 +102,7 @@ model FlightBooking {
 
 model FlightSegment {
   id                String        @id @default(uuid())
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
   flightBookingId   String
   flightBooking     FlightBooking @relation(fields: [flightBookingId], references: [id], onDelete: Cascade)
 
@@ -116,6 +119,7 @@ model FlightSegment {
   stops             Int           @default(0)
 
   @@index([flightBookingId])
+  @@index([tenantId])
   @@schema("crm_flights")
 }
 
@@ -123,6 +127,7 @@ model FlightSegment {
 
 model FlightTraveler {
   id                  String        @id @default(uuid())
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
   flightBookingId     String
   flightBooking       FlightBooking @relation(fields: [flightBookingId], references: [id], onDelete: Cascade)
 
@@ -138,5 +143,6 @@ model FlightTraveler {
   frequentFlyerNumber String?
 
   @@index([flightBookingId])
+  @@index([tenantId])
   @@schema("crm_flights")
 }

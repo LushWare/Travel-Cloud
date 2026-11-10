@@ -2,7 +2,7 @@ import express from 'express';
 import { requireAuth, authorize } from '../middleware/auth.js';
 import {
   getAllVendors, getVendorById, createVendor, updateVendor, deleteVendor,
-  getVendorStats, toggleVendorStatus, resetVendorPassword, getVendorPerformance,
+  getVendorStats, toggleVendorStatus, getVendorPerformance,
   updateVendorStatus, updateVendorRating, getVendorsByServiceType,
 } from '../controllers/vendor.controller.js';
 
@@ -19,7 +19,6 @@ router.put('/:id', updateVendor);
 router.patch('/:id/status', updateVendorStatus);
 router.patch('/:id/rating', updateVendorRating);
 router.patch('/:id/toggle-status', toggleVendorStatus);
-router.post('/:id/reset-password', resetVendorPassword);
 router.delete('/:id', deleteVendor);
 
 export default router;

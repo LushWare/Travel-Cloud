@@ -10,6 +10,7 @@ export const extractUser = (req, res, next) => {
       name: req.headers['x-user-name'],
       permissions: JSON.parse(req.headers['x-user-permissions'] || '[]'),
       isSuperAdmin: req.headers['x-user-is-super-admin'] === 'true',
+      tenantId: req.headers['x-tenant-id'] || null,
     };
   }
   next();

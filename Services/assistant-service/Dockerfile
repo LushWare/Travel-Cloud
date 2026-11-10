@@ -12,6 +12,11 @@ WORKDIR /app
 # wire schemas).
 COPY shared/policy-retrieval ./shared/policy-retrieval
 COPY shared/contracts ./shared/contracts
+# No runtime dependencies, so no install step.
+COPY shared/tenancy/src ./shared/tenancy/src
+COPY shared/constants/src ./shared/constants/src
+COPY shared/constants/package.json ./shared/constants/package.json
+COPY shared/tenancy/package.json ./shared/tenancy/package.json
 RUN npm ci --prefix ./shared/policy-retrieval \
     && npm ci --prefix ./shared/contracts
 

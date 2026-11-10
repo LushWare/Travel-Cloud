@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
-import prisma from '../db/client.js';
+import prisma, { identityPrisma } from '../db/client.js';
 import AppError from '../utils/appError.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import { idParamSchema, formatZodError, SERVICE_TYPES } from '../validators/common.js';
@@ -9,6 +9,9 @@ import {
   updateVendorRatingSchema, listVendorsQuerySchema,
 } from '../validators/vendor.validator.js';
 import { z } from 'zod';
+import { findManageableUser, newMembership } from '../utils/accountGuard.js';
+
+const findVendor = (req, id) => findManageableUser(req.user, id, { role: 'vendor', notFound: 'Vendor not found' });
 
 const safeUser = (u) => { if (!u) return null; const { password, ...r } = u; return r; };
 
@@ -48,10 +51,10 @@ export const getVendorById = asyncHandler(async (req, res) => {
 });
 
 export const createVendor = asyncHandler(async (req, res) => {
-  const { name, email, phone, businessName, serviceType, businessRegistrationNumber,
+  const { name, email, phone, phoneCountry, businessName, serviceType, businessRegistrationNumber,
     taxIdentificationNumber, address, contactPerson, bankDetails } = parseOrThrow(createVendorSchema, req.body);
 
-  const existing = await prisma.user.findUnique({ where: { email } });
+  const existing = await identityPrisma.user.findUnique({ where: { email } });
   if (existing) throw new AppError('User with this email already exists', 400);
 
   const tempPassword = crypto.randomBytes(8).toString('hex');
@@ -59,8 +62,9 @@ export const createVendor = asyncHandler(async (req, res) => {
 
   const vendor = await prisma.user.create({
     data: {
-      name, email, phone: phone || null,
+      name, email, phone: phone || null, ...(phoneCountry && { phoneCountry }),
       password: hashed, role: 'vendor',
+      memberships: newMembership(req.user, 'vendor'),
       createdById: req.user.id,
       isTempPassword: true, mustChangePassword: true,
       vendorProfile: {
@@ -89,16 +93,17 @@ export const createVendor = asyncHandler(async (req, res) => {
     },
     include: { vendorProfile: true },
   });
-  res.status(201).json({ status: 'success', data: { vendor: safeUser(vendor), tempPassword } });
+  res.status(201).json({ status: 'success', data: { vendor: safeUser(vendor) } });
 });
 
 export const updateVendor = asyncHandler(async (req, res) => {
   const { id } = parseOrThrow(idParamSchema, req.params);
-  const { name, phone, businessName, serviceType, address, contactPerson, bankDetails, taxIdentificationNumber } = parseOrThrow(updateVendorSchema, req.body);
+  const { name, phone, phoneCountry, businessName, serviceType, address, contactPerson, bankDetails, taxIdentificationNumber } = parseOrThrow(updateVendorSchema, req.body);
+  await findVendor(req, id);
   const vendor = await prisma.user.update({
     where: { id },
     data: {
-      ...(name && { name }), ...(phone !== undefined && { phone }),
+      ...(name && { name }), ...(phone !== undefined && { phone }), ...(phoneCountry && { phoneCountry }),
       vendorProfile: {
         update: {
           ...(businessName !== undefined && { businessName }),
@@ -142,14 +147,6 @@ export const toggleVendorStatus = asyncHandler(async (req, res) => {
   res.json({ status: 'success', data: { vendor: safeUser(updated) } });
 });
 
-export const resetVendorPassword = asyncHandler(async (req, res) => {
-  const { id } = parseOrThrow(idParamSchema, req.params);
-  const tempPassword = crypto.randomBytes(8).toString('hex');
-  const hashed = await bcrypt.hash(tempPassword, 12);
-  await prisma.user.update({ where: { id }, data: { password: hashed, isTempPassword: true, mustChangePassword: true } });
-  res.json({ status: 'success', message: 'Password reset', data: { tempPassword } });
-});
-
 export const getVendorPerformance = asyncHandler(async (req, res) => {
   const { id } = parseOrThrow(idParamSchema, req.params);
   const vendor = await prisma.user.findFirst({ where: { id, role: 'vendor' }, include: { vendorProfile: true } });
@@ -160,6 +157,7 @@ export const getVendorPerformance = asyncHandler(async (req, res) => {
 export const updateVendorStatus = asyncHandler(async (req, res) => {
   const { id } = parseOrThrow(idParamSchema, req.params);
   const { vendorStatus } = parseOrThrow(updateVendorStatusSchema, req.body);
+  await findVendor(req, id);
   const profile = await prisma.vendorProfile.update({ where: { userId: id }, data: { vendorStatus } });
   res.json({ status: 'success', data: { vendorProfile: profile } });
 });
@@ -167,6 +165,7 @@ export const updateVendorStatus = asyncHandler(async (req, res) => {
 export const updateVendorRating = asyncHandler(async (req, res) => {
   const { id } = parseOrThrow(idParamSchema, req.params);
   const { rating } = parseOrThrow(updateVendorRatingSchema, req.body);
+  await findVendor(req, id);
   const profile = await prisma.vendorProfile.update({ where: { userId: id }, data: { rating } });
   res.json({ status: 'success', data: { vendorProfile: profile } });
 });

@@ -9,6 +9,7 @@ import toast from '@/lib/toast';
 import { CATEGORY_OPTIONS } from '../../utils/constants';
 import DestinationSelector from '../DestinationSelector';
 import packageAIApi from '../../../../services/packageAIApi';
+import { API_BASE_URL, authFetch } from '@/lib/authFetch';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
@@ -45,13 +46,7 @@ const BasicPackageInfo = ({ formData, onChange }: BasicPackageInfoProps) => {
   useEffect(() => {
     const checkAIStatus = async () => {
       try {
-        const token = localStorage.getItem('token') || sessionStorage.getItem('token');
-        if (!token) { setAiConfigured(false); return; }
-
-        const apiBaseUrl = import.meta.env.VITE_API_URL || 'https://api.lushtravelcloud.com/api/v1';
-        const response = await fetch(`${apiBaseUrl}/packages/ai-status`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const response = await authFetch(`${API_BASE_URL}/packages/ai-status`);
 
         if (!response.ok) {
           if (response.status === 401 || response.status === 403) { setAiConfigured(null); return; }
@@ -95,12 +90,6 @@ const BasicPackageInfo = ({ formData, onChange }: BasicPackageInfoProps) => {
 
   const generateAIContent = async (title: string) => {
     if (!title || title.trim() === '') {
-      return;
-    }
-
-    const token = localStorage.getItem('token');
-    if (!token) {
-      toast.error('Please login to use AI features');
       return;
     }
 
@@ -177,12 +166,6 @@ const BasicPackageInfo = ({ formData, onChange }: BasicPackageInfoProps) => {
   const handleAIGenerate = async () => {
     if (!formData.title || formData.title.trim() === '') {
       toast.error('Please enter a package name first');
-      return;
-    }
-
-    const token = localStorage.getItem('token');
-    if (!token) {
-      toast.error('Please login to use AI features');
       return;
     }
 

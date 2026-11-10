@@ -188,11 +188,11 @@ export async function refreshSelection({ selectionId, force = false, prismaClien
     );
   }
 
-  await prismaClient.$transaction([
-    prismaClient.leadItineraryDay.deleteMany({ where: { leadPackageSelectionId: selectionId } }),
-    prismaClient.leadCostLine.deleteMany({ where: { leadPackageSelectionId: selectionId } }),
-    prismaClient.leadPricing.deleteMany({ where: { leadPackageSelectionId: selectionId } }),
-  ]);
+  await prismaClient.$transaction(async (tx) => {
+    await tx.leadItineraryDay.deleteMany({ where: { leadPackageSelectionId: selectionId } });
+    await tx.leadCostLine.deleteMany({ where: { leadPackageSelectionId: selectionId } });
+    await tx.leadPricing.deleteMany({ where: { leadPackageSelectionId: selectionId } });
+  });
 
   return prismaClient.leadPackageSelection.update({
     where: { id: selectionId },

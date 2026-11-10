@@ -13,7 +13,7 @@ datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
-  schemas   = ["crm_users"]
+  schemas   = ["crm_users", "crm_platform"]
 }
 
 enum UserRole {
@@ -62,6 +62,7 @@ model User {
   role                     UserRole       @default(customer)
   isSuperAdmin             Boolean        @default(false)
   permissions              String[]       // validated against allowed list in service layer
+  commissionRate           Decimal?       @db.Decimal(5, 2) // sales reps only, percent 0–100
 
   avatarPublicId           String?
   avatarUrl                String?
@@ -86,6 +87,7 @@ model User {
   createdUsers             User[]         @relation("UserCreatedBy")
 
   vendorProfile            VendorProfile?
+  memberships              Membership[]
 
   createdAt                DateTime       @default(now())
   updatedAt                DateTime       @updatedAt
@@ -96,13 +98,14 @@ model User {
 }
 
 model VendorProfile {
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
   id                          String       @id @default(uuid())
   userId                      String       @unique
   user                        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   businessName                String?
   serviceType                 ServiceType?
-  businessRegistrationNumber  String?      @unique
+  businessRegistrationNumber  String?     
   taxIdentificationNumber     String?
 
   // Address (flattened from Mongoose embedded object)
@@ -133,6 +136,10 @@ model VendorProfile {
   createdAt                   DateTime     @default(now())
   updatedAt                   DateTime     @updatedAt
 
+  @@index([tenantId])
+
+  @@unique([tenantId, businessRegistrationNumber])
+
   @@schema("crm_users")
 }
 
@@ -141,6 +148,7 @@ model VendorProfile {
 // same convention as lead-service's Settings model. Replaces the env-var-driven
 // branding.js config previously duplicated in billing-service and Management.
 model OrganizationSettings {
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
   id String @id @default(uuid())
 
   // Company identity
@@ -195,6 +203,10 @@ model OrganizationSettings {
   updatedAt DateTime @updatedAt
   // Only one row allowed — enforced by getOrCreateSingleton() in service layer
 
+  @@index([tenantId])
+
+  @@unique([tenantId])
+
   @@schema("crm_users")
 }
 
@@ -206,6 +218,7 @@ model OrganizationSettings {
 // Owner of editing these docs is the same admin/superAdmin role that already
 // edits cancellationPolicy via PUT /admin/settings — no new role.
 model PolicyDocument {
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
   id    String @id @default(uuid())
   title String @db.VarChar(255)
   body  String @db.Text
@@ -216,5 +229,63 @@ model PolicyDocument {
   updatedAt DateTime @updatedAt
 
   @@index([title])
+  @@index([tenantId])
+  @@schema("crm_users")
+}
+
+// ─── Agencies (tenants) and who belongs to them ───────────────
+// crm_platform is the tenant registry: not tenant-owned, so never under tenant RLS.
+
+enum TenantStatus {
+  trial
+  active
+  past_due
+  suspended
+  pending_deletion
+  deleted
+
+  @@schema("crm_platform")
+}
+
+model Tenant {
+  id          String       @id @default(uuid()) @db.Uuid
+  slug        String       @unique @db.VarChar(63)
+  name        String       @db.VarChar(120)
+  status      TenantStatus @default(trial)
+  region      String       @default("ap-southeast-1") @db.VarChar(32)
+  memberships Membership[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  deletedAt   DateTime?
+
+  @@schema("crm_platform")
+}
+
+enum MembershipStatus {
+  invited
+  active
+  suspended
+
+  @@schema("crm_users")
+}
+
+/// A person's access to one agency. The same User can belong to several agencies, with a role in each.
+model Membership {
+  id          String           @id @default(uuid())
+  tenantId    String           @db.Uuid
+  tenant      Tenant           @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  userId      String
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role        UserRole
+  permissions String[]
+  isOwner     Boolean          @default(false)
+  status      MembershipStatus @default(invited)
+  invitedById String?
+  joinedAt    DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@unique([tenantId, userId])
+  @@index([userId])
   @@schema("crm_users")
 }

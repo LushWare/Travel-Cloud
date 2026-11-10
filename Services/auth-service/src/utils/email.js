@@ -59,6 +59,28 @@ export const sendPasswordReset = (user, token) => {
   return send({ to: user.email, subject: 'Password Reset Request', html, text });
 };
 
+/** Staff invite or admin-requested reset: a one-time link to choose a password in Management. */
+export const sendSetPasswordLink = (user, token, { invite, hours }) => {
+  const url = `${process.env.MANAGEMENT_URL || 'http://localhost:5174'}/set-password/${token}`;
+  const heading = invite ? "You've been invited" : 'Set a new password';
+  const intro = invite
+    ? `Hi ${escapeHtml(user.name)}, an account has been created for you. Click below to choose your password and sign in:`
+    : `Hi ${escapeHtml(user.name)}, an administrator asked for your password to be reset. Click below to choose a new one:`;
+  const html = renderEmailLayout({
+    title: heading,
+    preheader: invite ? 'Set your password to start using LushTravel.' : 'Choose a new LushTravel password.',
+    bodyHtml: `
+      <h2 style="margin:0 0 12px;font-size:20px;">${heading}</h2>
+      <p style="margin:0 0 8px;">${intro}</p>
+      ${renderButton({ href: url, label: 'Set Password' })}
+      <p style="margin:16px 0 0;color:#64748B;font-size:13px;">Or paste this link into your browser:<br/><a href="${url}" style="color:#0578A2;">${url}</a></p>
+      <p style="margin:12px 0 0;color:#64748B;font-size:13px;">This link works once and expires in ${hours} hours.</p>`,
+  });
+  const text = `${heading}\n\n${intro.replace(/<[^>]+>/g, '')}\n${url}\n\nThis link works once and expires in ${hours} hours.${FOOTER_TEXT}`;
+
+  return send({ to: user.email, subject: invite ? "You've been invited to LushTravel" : 'Set a new password', html, text });
+};
+
 export const sendPasswordChanged = (user) => {
   const html = renderEmailLayout({
     title: 'Password changed',
@@ -112,6 +134,7 @@ export default {
   sendWelcomeEmail,
   sendEmailVerification,
   sendPasswordReset,
+  sendSetPasswordLink,
   sendPasswordChanged,
   sendOTPEmail,
   sendLoginNotification,

@@ -7,6 +7,7 @@ import { attachPackageToLead } from '../services/lead-selection.service.js';
 import { normalizePhone } from '../utils/phone.js';
 import { toStatusClass } from '../constants/voice-status-class.js';
 import { classifyTripRecency, isSamePerson } from '../utils/trip-recency.js';
+import { requireTenantId } from '../../../shared/tenancy/src/index.js';
 
 // ─── Slot / contact mapping helpers ─────────────────────────────
 // `Lead.run` maps wizard slots onto Lead columns. `duration` has no Lead
@@ -177,7 +178,7 @@ export const intakeLead = asyncHandler(async (req, res) => {
   const { channel, sessionId, contact, slots = {}, transcript, selectedPackageId, voiceReviewReason } = parsed.data;
   const cleanContact = normalizeContact(contact);
   const sessionKey = {
-    intakeChannel_intakeSessionId: { intakeChannel: channel, intakeSessionId: sessionId },
+    tenantId_intakeChannel_intakeSessionId: { tenantId: requireTenantId(), intakeChannel: channel, intakeSessionId: sessionId },
   };
 
   const result = await prisma.$transaction(async (tx) => {

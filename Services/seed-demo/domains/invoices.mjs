@@ -10,7 +10,7 @@
  * summary, the quotation and the invoice all quote the same figure.
  */
 import { addDays, isoDay, money } from '../lib/rng.mjs';
-import { CATEGORIES } from '../lib/ids.mjs';
+import { CATEGORIES, ownedPrefix } from '../lib/ids.mjs';
 import { AGENCY } from '../lib/fixtures.mjs';
 
 /** Leads that were billed. A lost lead never gets an invoice. */
@@ -71,7 +71,7 @@ export async function seed(ctx) {
     ['voucher', `DELETE FROM crm_billing."Voucher" WHERE id LIKE $1`],
   ];
   for (const [category, sql] of OWNED) {
-    await db.sql.query(sql, [`${CATEGORIES[category]}000000-%`]);
+    await db.sql.query(sql, [`${ownedPrefix(category)}%`]);
   }
 
   const invoices = [];

@@ -143,7 +143,8 @@ const resetAll = () => {
     mockSendVoiceQuotation,
     mockSerializeLeadDays, mockBuildAutoCostLines, mockValidateTransition, mockGatekeeperInputs,
   ]) m.mockReset();
-  mockTransaction.mockImplementation(async (ops) => Promise.all(ops));
+  // Interactive transactions get the same client as the tx.
+  mockTransaction.mockImplementation(async function (arg) { return typeof arg === 'function' ? arg(this) : Promise.all(arg); });
 };
 
 describe('listPackageSelections', () => {

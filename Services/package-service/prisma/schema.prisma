@@ -94,8 +94,9 @@ enum HotelBookingStatus {
 
 model Package {
   id           String          @id @default(uuid())
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
   title        String          @default("") @db.VarChar(255)
-  slug         String?         @unique
+  slug         String?        
   description  String?         @db.Text
   destination  String?         @db.VarChar(255) // denormalized search/filter aid
   durationDays Int             @default(1) @map("duration_days")
@@ -149,6 +150,8 @@ model Package {
   @@index([isActive, category])
   @@index([isActive, sellPrice])
   @@index([isActive, isFeatured])
+  @@index([tenantId])
+  @@unique([tenantId, slug])
   @@schema("crm_packages")
 }
 
@@ -156,6 +159,7 @@ model Package {
 
 model PackageImage {
   id         String  @id @default(uuid())
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
   packageId  String
   package    Package @relation(fields: [packageId], references: [id], onDelete: Cascade)
   url        String?
@@ -165,6 +169,7 @@ model PackageImage {
 
   @@index([packageId])
   @@map("Package_Image")
+  @@index([tenantId])
   @@schema("crm_packages")
 }
 
@@ -172,6 +177,7 @@ model PackageImage {
 
 model ItineraryDay {
   id          String  @id @default(uuid())
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
   packageId   String
   package     Package @relation(fields: [packageId], references: [id], onDelete: Cascade)
   dayNumber   Int     @map("day_number")
@@ -196,6 +202,7 @@ model ItineraryDay {
   @@unique([packageId, dayNumber])
   @@index([packageId])
   @@map("Itinerary_Day")
+  @@index([tenantId])
   @@schema("crm_packages")
 }
 
@@ -203,7 +210,8 @@ model ItineraryDay {
 
 model Place {
   id          String    @id @default(uuid())
-  name        String    @unique @db.VarChar(255)
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
+  name        String    @db.VarChar(255)
   type        PlaceType
   defaultCost Decimal?  @map("default_cost") @db.Decimal(10, 2)
 
@@ -215,6 +223,8 @@ model Place {
   updatedAt DateTime @updatedAt
 
   @@index([type])
+  @@index([tenantId])
+  @@unique([tenantId, name])
   @@schema("crm_packages")
 }
 
@@ -222,6 +232,7 @@ model Place {
 
 model PackageDayPlace {
   id             String       @id @default(uuid())
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
   itineraryDayId String
   itineraryDay   ItineraryDay @relation(fields: [itineraryDayId], references: [id], onDelete: Cascade)
   placeId        String?
@@ -233,6 +244,7 @@ model PackageDayPlace {
   @@index([itineraryDayId])
   @@index([placeId])
   @@map("Package_Day_Place")
+  @@index([tenantId])
   @@schema("crm_packages")
 }
 
@@ -240,7 +252,8 @@ model PackageDayPlace {
 
 model ActivityCatalog {
   id          String  @id @default(uuid())
-  name        String  @unique @db.VarChar(255)
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
+  name        String  @db.VarChar(255)
   description String? @db.Text
   defaultCost Decimal @map("default_cost") @db.Decimal(10, 2)
   vendorId    String? @map("vendor_id") // cross-schema ref → users.User.id
@@ -251,6 +264,8 @@ model ActivityCatalog {
   updatedAt DateTime @updatedAt
 
   @@map("Activity_Catalog")
+  @@index([tenantId])
+  @@unique([tenantId, name])
   @@schema("crm_packages")
 }
 
@@ -258,6 +273,7 @@ model ActivityCatalog {
 
 model PackageDayActivity {
   id             String          @id @default(uuid())
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
   itineraryDayId String
   itineraryDay   ItineraryDay    @relation(fields: [itineraryDayId], references: [id], onDelete: Cascade)
   activityId     String
@@ -269,6 +285,7 @@ model PackageDayActivity {
   @@index([itineraryDayId])
   @@index([activityId])
   @@map("Package_Day_Activity")
+  @@index([tenantId])
   @@schema("crm_packages")
 }
 
@@ -276,6 +293,7 @@ model PackageDayActivity {
 
 model PackageDayTransport {
   id                 String        @id @default(uuid())
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
   itineraryDayId     String
   itineraryDay       ItineraryDay  @relation(fields: [itineraryDayId], references: [id], onDelete: Cascade)
   routeType          RouteType     @map("route_type")
@@ -290,6 +308,7 @@ model PackageDayTransport {
 
   @@index([itineraryDayId])
   @@map("Package_Day_Transport")
+  @@index([tenantId])
   @@schema("crm_packages")
 }
 
@@ -297,6 +316,7 @@ model PackageDayTransport {
 
 model Review {
   id         String  @id @default(uuid())
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
   packageId  String
   package    Package @relation(fields: [packageId], references: [id], onDelete: Cascade)
   authorId   String? // cross-schema ref → users.User.id (null = guest review)
@@ -311,6 +331,7 @@ model Review {
   updatedAt DateTime @updatedAt
 
   @@index([packageId, createdAt])
+  @@index([tenantId])
   @@schema("crm_packages")
 }
 
@@ -318,6 +339,7 @@ model Review {
 
 model HotelBooking {
   id                 String             @id @default(uuid())
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
   liteapiBookingId   String?
   hotelId            String
   hotelName          String
@@ -353,5 +375,6 @@ model HotelBooking {
   @@index([status])
   @@index([leadId])
   @@index([leadId, dayNumber])
+  @@index([tenantId])
   @@schema("crm_packages")
 }

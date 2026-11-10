@@ -506,10 +506,10 @@ export const applySelectionPricing = asyncHandler(async (req, res) => {
       optionalFlightId: line.optionalFlightId ?? null,
       orderIndex: line.orderIndex ?? i,
     }));
-    await prisma.$transaction([
-      prisma.leadCostLine.deleteMany({ where: { leadPackageSelectionId: selection.id } }),
-      prisma.leadCostLine.createMany({ data: rows.map((r) => ({ ...r, leadPackageSelectionId: selection.id })) }),
-    ]);
+    await prisma.$transaction(async (tx) => {
+      await tx.leadCostLine.deleteMany({ where: { leadPackageSelectionId: selection.id } });
+      await tx.leadCostLine.createMany({ data: rows.map((r) => ({ ...r, leadPackageSelectionId: selection.id })) });
+    });
   }
 
   if (settings && Object.keys(settings).length) {
@@ -619,10 +619,10 @@ export const deleteSelectionFlight = asyncHandler(async (req, res) => {
   const flight = await prisma.leadOptionalFlight.findUnique({ where: { id: flightId } });
   if (!flight || flight.leadPackageSelectionId !== selection.id) throw new AppError('Flight not found', 404);
 
-  await prisma.$transaction([
-    prisma.leadCostLine.deleteMany({ where: { leadPackageSelectionId: selection.id, optionalFlightId: flightId } }),
-    prisma.leadOptionalFlight.delete({ where: { id: flightId } }),
-  ]);
+  await prisma.$transaction(async (tx) => {
+    await tx.leadCostLine.deleteMany({ where: { leadPackageSelectionId: selection.id, optionalFlightId: flightId } });
+    await tx.leadOptionalFlight.delete({ where: { id: flightId } });
+  });
   await recomputeSelectionPricing(selection.id);
   await syncLeadBudgetFromSelection(id, selection.id, prisma);
   res.json({ success: true, data: {} });

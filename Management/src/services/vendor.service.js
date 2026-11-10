@@ -1,4 +1,4 @@
-import api from './api';
+import api, { authAPI } from './api';
 import { apiErrorMessage } from '../lib/apiErrorMessage';
 
 /**
@@ -203,10 +203,7 @@ class VendorService {
    */
   async resetVendorPassword(vendorId) {
     try {
-      const response = await this.api.post(
-        `${this.endpoint}/${vendorId}/reset-password`
-      );
-      return response;
+      return await authAPI.sendSetPasswordLink(vendorId);
     } catch (error) {
       console.error(`Error sending password reset for vendor ${vendorId}:`, error);
       throw this.handleError(error);

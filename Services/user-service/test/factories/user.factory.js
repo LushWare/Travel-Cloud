@@ -70,5 +70,6 @@ export function authHeaders(overrides = {}) {
     'x-user-name': overrides.name || 'Test Actor',
     'x-user-permissions': JSON.stringify(overrides.permissions || []),
     'x-user-is-super-admin': String(overrides.isSuperAdmin ?? false),
+    'x-tenant-id': overrides.tenantId || '00000000-0000-4000-8000-000000000001',
   };
 }

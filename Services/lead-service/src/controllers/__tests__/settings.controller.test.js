@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+// These tests call handlers directly, so they run as one fixed agency.
+vi.mock('../../../../shared/tenancy/src/index.js', async (original) => ({
+  ...(await original()),
+  requireTenantId: () => '11111111-1111-4111-8111-111111111111',
+}));
+
 const { mockSettingsUpsert, mockSettingsUpdate } = vi.hoisted(() => ({
   mockSettingsUpsert: vi.fn(),
   mockSettingsUpdate: vi.fn(),
@@ -36,7 +42,7 @@ describe('getAssignmentSettings', () => {
 
     expect(next).not.toHaveBeenCalled();
     expect(mockSettingsUpsert).toHaveBeenCalledWith({
-      where: { singletonKey: 1 },
+      where: { tenantId_singletonKey: { tenantId: '11111111-1111-4111-8111-111111111111', singletonKey: 1 } },
       update: {},
       create: { singletonKey: 1 },
     });

@@ -1,6 +1,10 @@
 import prisma from '../db/client.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import AppError from '../utils/appError.js';
+import { requireTenantId } from '../../../shared/tenancy/src/index.js';
+
+// Hand-written SQL is not filtered automatically: every statement names the agency itself.
+const agency = () => requireTenantId();
 
 // ─── GET /internal/leads/:leadId/latest-document ────────────────
 const DOCUMENT_TYPES = [
@@ -134,7 +138,7 @@ export const getPaymentMethodBreakdown = asyncHandler(async (req, res) => {
   const rows = await prisma.$queryRaw`
     SELECT "paymentMethod"::text AS method, COUNT(*) AS count, SUM(amount) AS total
     FROM crm_billing."PaymentReceipt"
-    WHERE "receiptStatus" != 'cancelled'
+    WHERE "tenantId" = ${agency()}::uuid AND "receiptStatus" != 'cancelled'
     GROUP BY "paymentMethod"
   `;
   res.json({ success: true, data: rows });
@@ -147,7 +151,7 @@ export const getRevenueTrends = asyncHandler(async (req, res) => {
            SUM("totalAmount") AS revenue,
            SUM("paidAmount") AS collected
     FROM crm_billing."Invoice"
-    WHERE status != 'cancelled'
+    WHERE "tenantId" = ${agency()}::uuid AND status != 'cancelled'
       AND "createdAt" >= NOW() - (${Number(months)} || ' months')::INTERVAL
     GROUP BY month
     ORDER BY month ASC
@@ -163,7 +167,7 @@ export const getTopCustomers = asyncHandler(async (req, res) => {
            SUM("totalAmount") AS "totalBilled",
            SUM("paidAmount") AS "totalPaid"
     FROM crm_billing."Invoice"
-    WHERE status != 'cancelled'
+    WHERE "tenantId" = ${agency()}::uuid AND status != 'cancelled'
     GROUP BY "customerName", "customerEmail"
     ORDER BY "totalBilled" DESC
     LIMIT ${Number(limit)}

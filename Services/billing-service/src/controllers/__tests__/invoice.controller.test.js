@@ -31,6 +31,9 @@ vi.mock('../../services/events.client.js', () => ({ logLeadCommunication: mockLo
 
 import { downloadInvoicePDF, getAllInvoices, getInvoiceStats, sendInvoice } from '../invoice.controller.js';
 import AppError from '../../utils/appError.js';
+import { runWithTenant } from '../../../../shared/tenancy/src/index.js';
+
+const AGENCY = '11111111-1111-4111-8111-111111111111';
 
 const invoice = {
   id: 'inv-1',
@@ -104,10 +107,12 @@ describe('getInvoiceStats', () => {
     mockCount.mockResolvedValue(0);
     mockAggregate.mockResolvedValue({ _sum: { totalAmount: 0, paidAmount: 0, outstandingAmount: 0 } });
 
-    await run(getInvoiceStats, {
+    await runWithTenant(AGENCY, () => run(getInvoiceStats, {
       query: {},
       user: { id: 'rep-7', role: 'salesRep', isSuperAdmin: false },
-    });
+    }));
+
+    expect(mockQueryRaw.mock.calls[0].slice(1)).toEqual(['rep-7', AGENCY]);
 
     expect(mockAggregate.mock.calls[2][0].where.leadId).toEqual({ in: ['lead-7'] });
   });
@@ -165,7 +170,7 @@ describe('sendInvoice', () => {
   it('uploads the PDF and sends over WhatsApp with the media URL', async () => {
     const { res } = await run(sendInvoice, { params: { id: 'inv-1' }, body: { channel: 'whatsapp' } });
 
-    expect(mockUpload).toHaveBeenCalledWith(expect.any(Buffer), 'invoice-INV-202608-00001');
+    expect(mockUpload).toHaveBeenCalledWith(expect.any(Buffer));
     expect(mockSendWhatsapp).toHaveBeenCalledWith(expect.objectContaining({
       phone: '+15551234567',
       mediaUrl: 'https://cdn.example.com/invoices/inv.pdf',

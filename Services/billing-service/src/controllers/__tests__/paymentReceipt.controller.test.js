@@ -226,7 +226,7 @@ describe('sendPaymentReceipt', () => {
   it('uploads the PDF and sends over WhatsApp with the media URL', async () => {
     const { res } = await run(sendPaymentReceipt, { params: { id: 'rec-1' }, body: { channel: 'whatsapp' } });
 
-    expect(mockUpload).toHaveBeenCalledWith(expect.any(Buffer), 'receipt-REC-202608-00001');
+    expect(mockUpload).toHaveBeenCalledWith(expect.any(Buffer));
     expect(mockSendWhatsapp).toHaveBeenCalledWith(expect.objectContaining({
       phone: '+15551234567',
       mediaUrl: 'https://cdn.example.com/receipts/rec.pdf',

@@ -2,11 +2,20 @@
 # env-prefixed ("<env>-<logical id>") because
 # Secret Manager ids are unique per project and all three environments share
 # one GCP project — the second environment's apply must not collide.
+# Login signing key pair, generated per environment. Replace with
+# `terraform apply -replace=module.deployment.tls_private_key.jwt`; staff sessions renew on their own.
+resource "tls_private_key" "jwt" {
+  algorithm   = "ECDSA"
+  ecdsa_curve = "P256"
+}
+
 locals {
   secrets = {
     database-url               = var.database_url
     direct-url                 = var.direct_url
     jwt-secret                 = var.jwt_secret
+    jwt-private-key            = tls_private_key.jwt.private_key_pem_pkcs8
+    jwt-public-keys            = tls_private_key.jwt.public_key_pem
     internal-service-key       = var.internal_service_key
     internal-events-token      = var.internal_events_token
     cloudinary-api-key         = var.cloudinary_api_key

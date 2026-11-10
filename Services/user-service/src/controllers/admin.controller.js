@@ -1,10 +1,11 @@
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { OrganizationSettingsUpdate } from '@travel-crm/contracts';
-import prisma from '../db/client.js';
+import prisma, { identityPrisma } from '../db/client.js';
 import AppError from '../utils/appError.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import { getOrCreateSingleton, updateSingleton } from '../services/organizationSettings.service.js';
+import { assertMayGrantRole, assertNotSelf, findManageableUser, newMembership } from '../utils/accountGuard.js';
 import { idParamSchema, formatZodError, AVAILABLE_PERMISSIONS } from '../validators/common.js';
 import {
   createStaffSchema, updateUserSchema, updateUserStatusSchema, updateAdminPermissionsSchema,
@@ -55,8 +56,9 @@ export const getUserById = asyncHandler(async (req, res) => {
 
 export const createStaff = asyncHandler(async (req, res) => {
   const { name, email, phone, role, permissions = [] } = parseOrThrow(createStaffSchema, req.body);
+  assertMayGrantRole(req.user, role);
 
-  const existing = await prisma.user.findUnique({ where: { email } });
+  const existing = await identityPrisma.user.findUnique({ where: { email } });
   if (existing) throw new AppError('User with this email already exists', 400);
 
   const tempPassword = crypto.randomBytes(8).toString('hex');
@@ -69,15 +71,19 @@ export const createStaff = asyncHandler(async (req, res) => {
       permissions: permissions.filter((p) => AVAILABLE_PERMISSIONS.includes(p)),
       createdById: req.user.id,
       isTempPassword: true, mustChangePassword: true,
+      memberships: newMembership(req.user, role, permissions.filter((p) => AVAILABLE_PERMISSIONS.includes(p))),
     },
   });
 
-  res.status(201).json({ status: 'success', message: 'Staff created', data: { user: safeUser(user), tempPassword } });
+  res.status(201).json({ status: 'success', message: 'Staff created', data: { user: safeUser(user) } });
 });
 
 export const updateUser = asyncHandler(async (req, res) => {
   const { id } = parseOrThrow(idParamSchema, req.params);
   const { name, phone, role, isActive, permissions } = parseOrThrow(updateUserSchema, req.body);
+  await findManageableUser(req.user, id);
+  if (role || isActive !== undefined || permissions) assertNotSelf(req.user, id);
+  assertMayGrantRole(req.user, role);
   const user = await prisma.user.update({
     where: { id },
     data: {
@@ -91,8 +97,8 @@ export const updateUser = asyncHandler(async (req, res) => {
 
 export const deleteUser = asyncHandler(async (req, res) => {
   const { id } = parseOrThrow(idParamSchema, req.params);
-  const user = await prisma.user.findUnique({ where: { id } });
-  if (!user) throw new AppError('User not found', 404);
+  const user = await findManageableUser(req.user, id);
+  assertNotSelf(req.user, id);
   if (!user.canBeDeleted) throw new AppError('This user cannot be deleted', 403);
   await prisma.user.delete({ where: { id } });
   res.json({ status: 'success', data: {} });
@@ -101,19 +107,10 @@ export const deleteUser = asyncHandler(async (req, res) => {
 export const updateUserStatus = asyncHandler(async (req, res) => {
   const { id } = parseOrThrow(idParamSchema, req.params);
   const { isActive } = parseOrThrow(updateUserStatusSchema, req.body);
+  await findManageableUser(req.user, id);
+  assertNotSelf(req.user, id);
   const user = await prisma.user.update({ where: { id }, data: { isActive } });
   res.json({ status: 'success', data: { user: safeUser(user) } });
-});
-
-export const resetUserPassword = asyncHandler(async (req, res) => {
-  const { id } = parseOrThrow(idParamSchema, req.params);
-  const tempPassword = crypto.randomBytes(8).toString('hex');
-  const hashed = await bcrypt.hash(tempPassword, 12);
-  await prisma.user.update({
-    where: { id },
-    data: { password: hashed, isTempPassword: true, mustChangePassword: true },
-  });
-  res.json({ status: 'success', message: 'Password reset', data: { tempPassword } });
 });
 
 export const getAdminPermissions = asyncHandler(async (req, res) => {
@@ -126,6 +123,8 @@ export const getAdminPermissions = asyncHandler(async (req, res) => {
 export const updateAdminPermissions = asyncHandler(async (req, res) => {
   const { id } = parseOrThrow(idParamSchema, req.params);
   const { permissions } = parseOrThrow(updateAdminPermissionsSchema, req.body);
+  await findManageableUser(req.user, id);
+  assertNotSelf(req.user, id);
   const user = await prisma.user.update({
     where: { id },
     data: { permissions },

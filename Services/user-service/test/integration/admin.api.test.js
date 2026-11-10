@@ -6,6 +6,7 @@ const { mockPrisma } = vi.hoisted(() => ({
   mockPrisma: {
     user: {
       findUnique: vi.fn(),
+      findFirst: vi.fn(),
       findMany: vi.fn(),
       count: vi.fn(),
       create: vi.fn(),
@@ -21,7 +22,7 @@ const { mockPrisma } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('../../src/db/client.js', () => ({ default: mockPrisma }));
+vi.mock('../../src/db/client.js', () => ({ default: mockPrisma, identityPrisma: mockPrisma }));
 
 const { default: app } = await import('../../src/app.js');
 
@@ -30,6 +31,7 @@ const ID = 'a0000000-0000-4000-8000-000000000001';
 describe('Admin API — /api/v1/admin', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockPrisma.user.findFirst.mockResolvedValue(buildUserRow({ role: 'admin' }));
   });
 
   describe('GET /internal/organization-settings', () => {
@@ -115,7 +117,7 @@ describe('Admin API — /api/v1/admin', () => {
         .send({ name: 'New Admin', email: 'newadmin@test.com', role: 'admin' });
 
       expect(res.status).toBe(201);
-      expect(res.body.data.tempPassword).toBeTruthy();
+      expect(res.body.data.tempPassword).toBeUndefined();
     });
 
     it('POST /users rejects an invalid permission on create', async () => {
@@ -139,15 +141,24 @@ describe('Admin API — /api/v1/admin', () => {
       expect(res.status).toBe(200);
     });
 
-    it('POST /users/:id/reset-password returns a temp password', async () => {
-      mockPrisma.user.update.mockResolvedValue(buildUserRow());
-
+    it('no longer offers an endpoint that hands back someone else\'s password', async () => {
       const res = await request(app)
         .post(`/api/v1/admin/users/${ID}/reset-password`)
         .set(authHeaders({ role: 'admin' }));
 
-      expect(res.status).toBe(200);
-      expect(res.body.data.tempPassword).toBeTruthy();
+      expect(res.status).not.toBe(200);
+      expect(res.body.data?.tempPassword).toBeUndefined();
+      expect(mockPrisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('refuses a normal admin who tries to create a super admin', async () => {
+      const res = await request(app)
+        .post('/api/v1/admin/users')
+        .set(authHeaders({ role: 'admin' }))
+        .send({ name: 'Sneaky', email: 'sneaky@test.com', role: 'superAdmin' });
+
+      expect(res.status).toBe(403);
+      expect(mockPrisma.user.create).not.toHaveBeenCalled();
     });
 
     it('PUT /settings rejects unknown fields (strict contract)', async () => {

@@ -2,13 +2,14 @@ import prisma from '../db/client.js';
 import AppError from '../utils/appError.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import { updateSettingsSchema } from '../validators/settings.validator.js';
+import { requireTenantId } from '../../../shared/tenancy/src/index.js';
 
 // Only one Settings row is ever allowed — this is the singleton accessor the
 // schema comment already promised ("enforced by getSingleton() in service
 // layer") but that autoAssignSalesRep() never actually got.
 async function getOrCreateSingleton() {
   return prisma.settings.upsert({
-    where: { singletonKey: 1 },
+    where: { tenantId_singletonKey: { tenantId: requireTenantId(), singletonKey: 1 } },
     update: {},
     create: { singletonKey: 1 },
   });

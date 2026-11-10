@@ -19,6 +19,7 @@ import AdminDetailsModal from './AdminDetailsModal';
 import adminService from '../../../../services/admin.service';
 import { usePermission } from '../../../../contexts/PermissionContext';
 import { getPermissionDeniedMessage } from '../../utils/permissionUtils';
+import { sendInvitation } from '../../utils/sendInvitation';
 
 export interface Admin {
   id: string;
@@ -150,11 +151,6 @@ const AdminManagement = () => {
     }
   };
 
-  // Generate secure temporary password
-  const generateTemporaryPassword = () => {
-    return adminService.generateTemporaryPassword();
-  };
-
   const filteredAdmins = useMemo(() => {
     return filterUsers(admins, searchTerm, {});
   }, [admins, searchTerm]);
@@ -201,16 +197,12 @@ const AdminManagement = () => {
       setIsSubmitting(true);
       setError(null);
 
-      // Generate temporary password
-      const tempPassword = generateTemporaryPassword();
-
       // Create admin via API
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- service is untyped JS; its JSDoc omits `role`, which the real endpoint accepts
       const response = await adminService.createAdmin({
         name: formData.name,
         email: formData.email,
         phone: phoneFormatted.e164, // Send E.164 formatted phone
-        password: tempPassword,
         role: 'admin',
         permissions: formData.permissions || [],
       } as any);
@@ -257,11 +249,9 @@ const AdminManagement = () => {
           canBeDeleted: true,
         };
 
-        // Log email details to console (for developer reference)
-        console.log(`Email sent to ${newAdmin.email}`);
-        console.log(`Temporary Password: ${tempPassword}`);
-
-        // Update state with new admin
+        if (!(await sendInvitation(newAdmin.id))) {
+          toast.error('Admin created, but the invitation email failed. Use "Resend invitation".');
+        }
         setAdmins((prev) => [...prev, newAdmin]);
         setShowNewAdminDialog(false);
         setSearchTerm(''); // Clear search bar after creation
@@ -361,10 +351,7 @@ const AdminManagement = () => {
     try {
       setIsSubmitting(true);
 
-      const tempPassword = generateTemporaryPassword();
-
-      // In a real app, you'd call an API to resend the invitation
-      // For now, we'll just update the local state and log
+      await adminService.resetUserPassword(adminToResendInvite.id);
       setAdmins(
         admins.map((a) =>
           a.id === adminToResendInvite.id ? { ...a, invitationSentAt: new Date().toISOString() } : a
@@ -373,10 +360,6 @@ const AdminManagement = () => {
 
       setShowInviteResendConfirm(false);
       setAdminToResendInvite(null);
-
-      // Log email details to console (for developer reference)
-      console.log(`Invitation resent to ${adminToResendInvite.email}`);
-      console.log(`Temporary Password: ${tempPassword}`);
 
       toast.success(`Invitation resent to ${adminToResendInvite.email}`, {
         duration: 4000,

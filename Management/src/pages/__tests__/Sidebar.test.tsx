@@ -511,3 +511,38 @@ describe('Sidebar footer actions', () => {
     expect(screen.getByTitle('Sign Out').textContent).toBe('');
   });
 });
+
+describe('Sidebar current agency', () => {
+  it('shows which agency the person is working in', () => {
+    setUser({ ...ADMIN, tenant: { id: 'a1', slug: 'acme-tours', name: 'Acme Tours' } });
+
+    render(<Sidebar />);
+
+    expect(screen.getByTestId('current-agency')).toHaveTextContent('Acme Tours');
+  });
+
+  it('explains how to change agency', () => {
+    setUser({ ...ADMIN, tenant: { id: 'a1', slug: 'acme-tours', name: 'Acme Tours' } });
+
+    render(<Sidebar />);
+
+    expect(screen.getByTitle(/sign out and sign in again/)).toBeInTheDocument();
+  });
+
+  it('shows no agency line for a session from before agencies existed', () => {
+    setUser(ADMIN);
+
+    render(<Sidebar />);
+
+    expect(screen.queryByTestId('current-agency')).not.toBeInTheDocument();
+  });
+
+  it('hides the agency line when the sidebar is collapsed', () => {
+    setUser({ ...ADMIN, tenant: { id: 'a1', slug: 'acme-tours', name: 'Acme Tours' } });
+    render(<Sidebar />);
+
+    fireEvent.keyDown(window, { key: 'b', ctrlKey: true });
+
+    expect(screen.queryByTestId('current-agency')).not.toBeInTheDocument();
+  });
+});

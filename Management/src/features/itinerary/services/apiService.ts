@@ -4,8 +4,7 @@
  */
 
 import { reconcileFlightsForSave } from '../utils/flightSync';
-
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://api.lushtravelcloud.com/api/v1';
+import { API_BASE_URL, authFetch } from '@/lib/authFetch';
 
 interface ApiError extends Error {
   status?: number;
@@ -15,19 +14,16 @@ interface ApiError extends Error {
 
 async function makeRequest(endpoint: string, options: RequestInit & { headers?: Record<string, string> } = {}) {
   const url = `${API_BASE_URL}${endpoint}`;
-  const token = localStorage.getItem('token') || sessionStorage.getItem('token');
-
   const config: RequestInit = {
     headers: {
       'Content-Type': 'application/json',
-      ...(token && { Authorization: `Bearer ${token}` }),
       ...options.headers,
     },
     ...options,
   };
 
   try {
-    const response = await fetch(url, config);
+    const response = await authFetch(url, config);
     const data = await response.json();
 
     if (!response.ok) {
@@ -170,10 +166,7 @@ class ApiService {
   // Server-generated package PDF (Services/package-service's packagePDFGenerator.js).
   // Not routed through makeRequest() since that always parses the response as JSON.
   static async getPackagePdfBlob(id: string) {
-    const token = localStorage.getItem('token') || sessionStorage.getItem('token');
-    const response = await fetch(`${API_BASE_URL}/packages/${id}/ai-pdf`, {
-      headers: { ...(token && { Authorization: `Bearer ${token}` }) },
-    });
+    const response = await authFetch(`${API_BASE_URL}/packages/${id}/ai-pdf`);
     if (!response.ok) {
       const error: ApiError = new Error('Failed to generate package PDF');
       error.status = response.status;

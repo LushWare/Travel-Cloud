@@ -5,6 +5,12 @@ on:
     branches: [main]
     paths: &ci-paths
       - 'Services/shared/contracts/**'
+      - 'Services/shared/tenancy/**'
+      - 'Services/add-tenancy*.mjs'
+      - 'Services/tenant-uniques*.mjs'
+      - 'Services/setup-db-roles.mjs'
+      - 'Services/verify-tenancy.mjs'
+      - 'Services/seed-demo/**'
       - 'Services/analytics-service/**'
       - 'Services/assistant-service/**'
       - 'Services/auth-service/**'
@@ -52,6 +58,30 @@ jobs:
         working-directory: Services/shared/contracts
         run: npm test
 
+  # The agency (tenant) filter every service's database access goes through.
+  tenancy:
+    name: shared/tenancy tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: Services/shared/tenancy/package-lock.json
+
+      - name: Install
+        working-directory: Services/shared/tenancy
+        run: npm ci
+
+      - name: Test
+        working-directory: Services/shared/tenancy
+        run: npm test
+
+      - name: Every agency table is labelled, locked and unique per agency
+        run: node --test Services/add-tenancy.test.mjs Services/tenant-uniques.test.mjs Services/seed-demo/agencies.test.mjs
+
   # One job per backend service, driven by a matrix rather than a copied block.
   # Eight services had test suites that never ran in CI, so a change to any of
   # them could ship with its tests red and nobody would see it.
@@ -77,6 +107,7 @@ jobs:
           - { service: career-service,       contracts: false, lint: false }
           - { service: notification-service, contracts: false, lint: false }
           - { service: recommendation-service, contracts: false, lint: true }
+          - { service: gateway,              contracts: false, lint: false }
     steps:
       - uses: actions/checkout@v4
 

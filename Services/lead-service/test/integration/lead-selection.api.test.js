@@ -20,7 +20,7 @@ const { mockPrisma } = vi.hoisted(() => {
       leadPricing: model(),
       leadCostLine: model(),
       leadItineraryDay: model(),
-      $transaction: vi.fn(async (ops) => Promise.all(ops)),
+      $transaction: vi.fn(async function (arg) { return typeof arg === 'function' ? arg(this) : Promise.all(arg); }),
       $connect: vi.fn(),
     },
   };
@@ -59,7 +59,7 @@ const nestedBlueprint = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockPrisma.$transaction.mockImplementation(async (ops) => Promise.all(ops));
+  mockPrisma.$transaction.mockImplementation(async function (arg) { return typeof arg === 'function' ? arg(this) : Promise.all(arg); });
 });
 
 afterEach(() => {

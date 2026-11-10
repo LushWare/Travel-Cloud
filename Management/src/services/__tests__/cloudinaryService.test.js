@@ -6,7 +6,6 @@ import { deleteImage, deleteMultipleImages } from '../cloudinaryService';
 
 describe('cloudinaryService.deleteImage', () => {
   beforeEach(() => {
-    localStorage.setItem('token', 'test-token');
     globalThis.fetch = vi.fn();
   });
 
@@ -23,7 +22,17 @@ describe('cloudinaryService.deleteImage', () => {
     expect(url).toContain('/upload/travel-crm%2Fpackages%2Fabc%20123');
     expect(url).not.toContain('?publicId=');
     expect(options.method).toBe('DELETE');
-    expect(options.headers.Authorization).toBe('Bearer test-token');
+  });
+
+  it('authenticates with the login cookie instead of a stored token', async () => {
+    localStorage.setItem('token', 'leftover-token');
+    globalThis.fetch.mockResolvedValue({ ok: true, json: async () => ({ success: true }) });
+
+    await deleteImage('abc');
+
+    const [, options] = globalThis.fetch.mock.calls[0];
+    expect(options.credentials).toBe('include');
+    expect(options.headers?.Authorization).toBeUndefined();
   });
 
   it('throws with the server message when the request fails', async () => {
@@ -38,7 +47,6 @@ describe('cloudinaryService.deleteImage', () => {
 
 describe('cloudinaryService.deleteMultipleImages', () => {
   beforeEach(() => {
-    localStorage.setItem('token', 'test-token');
     globalThis.fetch = vi.fn();
   });
 

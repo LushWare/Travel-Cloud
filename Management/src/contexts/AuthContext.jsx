@@ -2,49 +2,62 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import axios from 'axios';
 import toast from '@/lib/toast';
 import { apiErrorMessage } from '@/lib/apiErrorMessage';
+import { API_BASE_URL, refreshSession, SESSION_EXPIRED_EVENT } from '@/lib/authFetch';
+import { setPendingPasswordReset } from '@/lib/pendingPasswordReset';
+import { nextStepAfterSignIn } from '@/lib/pendingTenantChoice';
 
 const AuthContext = createContext();
 const INACTIVITY_LIMIT_MS = 60 * 60 * 1000;
 const LAST_ACTIVITY_KEY = 'lastActivity';
 
+// The login itself lives in an httpOnly cookie; the browser only keeps the non-secret profile.
+const clearStoredSession = () => {
+  for (const store of [localStorage, sessionStorage]) {
+    for (const key of ['token', 'user', LAST_ACTIVITY_KEY]) store.removeItem(key);
+  }
+};
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [token, setToken] = useState(null);
 
-  const API_URL = import.meta.env.VITE_API_URL || 'https://api.lushtravelcloud.com/api/v1';
+  const API_URL = API_BASE_URL;
 
-  // Initialize auth from localStorage
+  const setAuth = useCallback((userData) => {
+    localStorage.setItem('user', JSON.stringify(userData));
+    localStorage.setItem(LAST_ACTIVITY_KEY, Date.now().toString());
+    setUser(userData);
+    setIsAuthenticated(true);
+  }, []);
+
   useEffect(() => {
-    const initializeAuth = () => {
-      const savedToken = localStorage.getItem('token') || sessionStorage.getItem('token');
-      const savedUser = localStorage.getItem('user') || sessionStorage.getItem('user');
-      const lastActivity = localStorage.getItem(LAST_ACTIVITY_KEY) || sessionStorage.getItem(LAST_ACTIVITY_KEY);
+    let cancelled = false;
 
-      if (savedToken) {
-        const now = Date.now();
-        if (lastActivity && now - Number(lastActivity) > INACTIVITY_LIMIT_MS) {
-          // Session expired due to inactivity
-          localStorage.removeItem('token');
-          localStorage.removeItem('user');
-          localStorage.removeItem(LAST_ACTIVITY_KEY);
-          sessionStorage.removeItem('token');
-          sessionStorage.removeItem('user');
-          sessionStorage.removeItem(LAST_ACTIVITY_KEY);
-        } else {
-          setToken(savedToken);
-          if (savedUser) {
-            setUser(JSON.parse(savedUser));
-          }
-          setIsAuthenticated(true);
-          axios.defaults.headers.common['Authorization'] = `Bearer ${savedToken}`;
-        }
+    const initializeAuth = async () => {
+      localStorage.removeItem('token');
+      sessionStorage.removeItem('token');
+
+      const hasSavedUser = Boolean(localStorage.getItem('user'));
+      const lastActivity = Number(localStorage.getItem(LAST_ACTIVITY_KEY));
+      const inactive = lastActivity > 0 && Date.now() - lastActivity > INACTIVITY_LIMIT_MS;
+
+      const freshUser = hasSavedUser && !inactive ? await refreshSession() : null;
+      if (cancelled) return;
+      if (freshUser) {
+        localStorage.setItem('user', JSON.stringify(freshUser));
+        setUser(freshUser);
+        setIsAuthenticated(true);
+      } else {
+        clearStoredSession();
       }
       setLoading(false);
     };
 
     initializeAuth();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Login function
@@ -69,31 +82,12 @@ export const AuthProvider = ({ children }) => {
         // Check if password change is required (for first-time login with temporary password)
         if (response.data.data?.mustChangePassword) {
           // Store temporary credentials for password reset
-          localStorage.setItem('resetEmail', email);
-          localStorage.setItem('tempPassword', password);
+          setPendingPasswordReset(email, password);
           toast.success('🔐 Please set your new password');
           return 'password-reset-required';
         }
 
-        const { token: authToken, user: userData } = response.data.data;
-
-        // Save to localStorage
-        localStorage.setItem('token', authToken);
-        localStorage.setItem('user', JSON.stringify(userData));
-        localStorage.setItem(LAST_ACTIVITY_KEY, Date.now().toString());
-        sessionStorage.setItem('token', authToken);
-        sessionStorage.setItem('user', JSON.stringify(userData));
-        sessionStorage.setItem(LAST_ACTIVITY_KEY, localStorage.getItem(LAST_ACTIVITY_KEY));
-
-        // Update state
-        setToken(authToken);
-        setUser(userData);
-        setIsAuthenticated(true);
-
-        // Set default authorization header
-        axios.defaults.headers.common['Authorization'] = `Bearer ${authToken}`;
-
-        return true;
+        return nextStepAfterSignIn(response.data.data, setAuth) === 'choose-agency' ? 'tenant-choice-required' : true;
       } catch (error) {
         const errorMessage = apiErrorMessage({ data: error.response?.data, status: error.response?.status });
         toast.error(errorMessage);
@@ -103,49 +97,38 @@ export const AuthProvider = ({ children }) => {
         setLoading(false);
       }
     },
-    [API_URL]
+    [API_URL, setAuth]
   );
 
-  // Logout function
   const logout = useCallback(async (opts = {}) => {
-    if (token) {
-      try {
-        axios.post(`${API_URL}/auth/logout`).catch((error) => {
-          if (error.response?.status === 401) {
-            console.warn('Token already expired or invalid, skipping server logout');
-          } else {
-            console.error('Logout error:', error);
-          }
-        });
-      } catch (error) {
-        console.error('Logout error:', error);
-      }
-
-    }
+    axios.post(`${API_URL}/auth/logout`).catch((error) => {
+      console.error('Logout error:', error);
+    });
     // Clear local state immediately; server logout must not keep the UI authenticated.
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    localStorage.removeItem(LAST_ACTIVITY_KEY);
-    sessionStorage.removeItem('token');
-    sessionStorage.removeItem('user');
-    sessionStorage.removeItem(LAST_ACTIVITY_KEY);
-
-    setToken(null);
+    clearStoredSession();
     setUser(null);
     setIsAuthenticated(false);
 
-    delete axios.defaults.headers.common['Authorization'];
     const { silent = false } = opts || {};
     if (!silent) {
       toast.success('Logged out successfully');
     }
-  }, [API_URL, token]);
+  }, [API_URL]);
+
+  useEffect(() => {
+    const onExpired = () => {
+      toast.error('Your session has expired. Please sign in again.');
+      logout({ silent: true });
+    };
+    window.addEventListener(SESSION_EXPIRED_EVENT, onExpired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired);
+  }, [logout]);
 
   const inactivityTimerRef = useRef(null);
 
   useEffect(() => {
     const getLastActivity = () => {
-      const storedValue = localStorage.getItem(LAST_ACTIVITY_KEY) || sessionStorage.getItem(LAST_ACTIVITY_KEY);
+      const storedValue = localStorage.getItem(LAST_ACTIVITY_KEY);
       const timestamp = Number(storedValue);
       return Number.isFinite(timestamp) && timestamp > 0 ? timestamp : null;
     };
@@ -172,7 +155,6 @@ export const AuthProvider = ({ children }) => {
       const now = Date.now();
       try {
         localStorage.setItem(LAST_ACTIVITY_KEY, now.toString());
-        sessionStorage.setItem(LAST_ACTIVITY_KEY, now.toString());
       } catch (e) {
       }
       resetTimer(now);
@@ -188,7 +170,7 @@ export const AuthProvider = ({ children }) => {
     };
 
     const storageListener = (event) => {
-      if (event.key === 'token' && !event.newValue) {
+      if (event.key === 'user' && !event.newValue) {
         logout({ silent: true });
       } else if (event.key === LAST_ACTIVITY_KEY) {
         checkLastActivity();
@@ -279,13 +261,13 @@ export const AuthProvider = ({ children }) => {
     user,
     loading,
     isAuthenticated,
-    token,
     login,
     logout,
+    setAuth,
     updateProfile,
     changePassword,
     hasRole,
-  }), [user, loading, isAuthenticated, token, login, logout, updateProfile, changePassword, hasRole]);
+  }), [user, loading, isAuthenticated, login, logout, setAuth, updateProfile, changePassword, hasRole]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

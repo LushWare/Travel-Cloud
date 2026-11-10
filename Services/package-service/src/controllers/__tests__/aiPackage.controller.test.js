@@ -18,7 +18,15 @@ vi.mock('../../ai/geminiClient.js', () => ({
 // PrismaClient at import time; mock it so this suite doesn't need DATABASE_URL.
 vi.mock('../../db/client.js', () => ({ default: mockPrisma }));
 
-const { default: app } = await import('../../app.js');
+const { default: serviceApp } = await import('../../app.js');
+const { default: express } = await import('express');
+
+const TEST_AGENCY = '11111111-1111-4111-8111-111111111111';
+// Requests reach the service with the agency the gateway took from the login.
+const app = express().use((req, _res, next) => {
+  req.headers['x-tenant-id'] ??= TEST_AGENCY;
+  next();
+}, serviceApp);
 
 function authHeaders() {
   return {

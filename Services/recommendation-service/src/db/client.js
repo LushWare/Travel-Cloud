@@ -1,5 +1,8 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
+import { createTenantPrisma } from '../../../shared/tenancy/src/index.js';
 
-const prisma = new PrismaClient();
+const base = new PrismaClient({});
+// Every query is limited to the request's agency; see Services/shared/tenancy.
+const prisma = createTenantPrisma(base, { Prisma });
 
 export default prisma;

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Lock, AlertCircle, CheckCircle, Eye, EyeOff, ArrowLeft, Loader2 } from 'lucide-react';
 import toast from '@/lib/toast';
 import authService from '../services/auth.service';
+import { clearPendingPasswordReset, peekPendingPasswordReset } from '@/lib/pendingPasswordReset';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
@@ -21,15 +22,20 @@ export default function ResetPassword() {
   const [passwordStrength, setPasswordStrength] = useState(0);
   const [errors, setErrors] = useState<FormErrors>({});
 
-  const [formData, setFormData] = useState({
-    email: localStorage.getItem('resetEmail') || '',
-    tempPassword: localStorage.getItem('tempPassword') || '',
-    newPassword: '',
-    confirmPassword: '',
+  const [formData, setFormData] = useState(() => {
+    const pending = peekPendingPasswordReset();
+    return {
+      email: pending?.email || '',
+      tempPassword: pending?.tempPassword || '',
+      newPassword: '',
+      confirmPassword: '',
+    };
   });
 
-  // Redirect to login if no credentials in localStorage
+  // Redirect to login if there is no pending reset from this session
   useEffect(() => {
+    localStorage.removeItem('resetEmail');
+    localStorage.removeItem('tempPassword');
     if (!formData.email || !formData.tempPassword) {
       toast.error('No pending password reset. Please log in first.');
       navigate('/login');
@@ -122,8 +128,7 @@ export default function ResetPassword() {
       });
 
       if (response.status === 'success') {
-        localStorage.removeItem('resetEmail');
-        localStorage.removeItem('tempPassword');
+        clearPendingPasswordReset();
 
         toast.success('Password reset successfully! Please log in with your new password.');
         setTimeout(() => {

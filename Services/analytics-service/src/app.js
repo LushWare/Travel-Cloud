@@ -8,6 +8,7 @@ import errorHandler from './middleware/errorHandler.js';
 import { correlationId, requestLogger } from './middleware/requestLogger.js';
 import analyticsRoutes from './routes/analytics.routes.js';
 import dashboardRoutes from './routes/dashboard.routes.js';
+import { installTenantFetch, tenantMiddleware } from '../../shared/tenancy/src/index.js';
 
 const app = express();
 const V1 = '/api/v1';
@@ -17,6 +18,10 @@ app.use(cors({ origin: process.env.CLIENT_URL || '*', credentials: true }));
 // Request ID + structured logging (replaces morgan)
 app.use(correlationId);
 app.use(requestLogger);
+// Every request runs inside the agency the gateway took from the login.
+app.use(tenantMiddleware);
+// Calls to our other services carry the same agency.
+installTenantFetch();
 app.use(express.json());
 app.use(cookieParser());
 app.use(extractUser);

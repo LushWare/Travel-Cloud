@@ -83,19 +83,18 @@ const PREFERRED_LEAD_STATUSES = new Set(['CONFIRMED', 'APPROVED', 'BOOKING_IN_PR
 /** Leads still being worked, used only to top the sample back up to 20–28. */
 const SECONDARY_LEAD_STATUSES = new Set(['DRAFTING', 'QUOTED']);
 
-const ALL_FLIGHT_STATUSES = ['quoted', 'pending', 'confirmed', 'ticketed', 'cancelled', 'failed'];
+// Must match FlightBookingStatus in flight-service's schema.
+const ALL_FLIGHT_STATUSES = ['pending', 'confirmed', 'cancelled', 'failed'];
 const FLIGHT_STATUS_WEIGHTS = [
-  ['ticketed', 6],
-  ['confirmed', 5],
-  ['quoted', 2],
-  ['pending', 2],
+  ['confirmed', 11],
+  ['pending', 4],
   ['cancelled', 2],
   ['failed', 1],
 ];
-/** A cancelled booking was still ticketed once, so it keeps bookedAt. */
-const HAS_BOOKED_AT = new Set(['confirmed', 'ticketed', 'cancelled']);
-/** Only live tickets get an airline record locator. */
-const HAS_PNR = new Set(['confirmed', 'ticketed']);
+/** A cancelled booking was confirmed once, so it keeps bookedAt. */
+const HAS_BOOKED_AT = new Set(['confirmed', 'cancelled']);
+/** Only live bookings get an airline record locator. */
+const HAS_PNR = new Set(['confirmed']);
 
 const CABIN_WEIGHTS = [['economy', 6], ['premium_economy', 2], ['business', 1]];
 /** USD per km, plus a fixed sector fee — business ≈ 3.2× the economy rate. */
@@ -105,10 +104,8 @@ const PAX_CAP = 4;
 const LONG_HAUL_KM = 4000;
 
 const NOTES_FOR_STATUS = {
-  quoted: 'Fare quoted from the live shopping response. No seats held until the deposit clears.',
   pending: 'Order submitted to the airline; awaiting the supplier confirmation.',
-  confirmed: 'Fare confirmed and held. Ticketing must be completed before the deadline shown.',
-  ticketed: 'Ticketed — e-ticket numbers were sent with the final travel documents.',
+  confirmed: 'Ticketed — e-ticket numbers were sent with the final travel documents.',
   cancelled: 'Cancelled before departure. Airline cancellation reference recorded on the file.',
   failed: 'Supplier rejected the order at ticketing; no ticket was issued and the fare was released.',
 };
@@ -192,7 +189,7 @@ export async function seed(ctx) {
     bookingRows.push({
       id: bookingId,
       pnr: HAS_PNR.has(status) ? makePnr(rng) : null,
-      travelportOrderId: status === 'quoted' || status === 'pending' || status === 'failed'
+      travelportOrderId: status === 'pending' || status === 'failed'
         ? null
         : `TVP-${rng.int(10000000, 99999999)}`,
       createdById: lead.assignedToId ?? rng.pick(staff).id,
@@ -446,13 +443,13 @@ function bookingClassFor(cabinClass, rng) {
 }
 
 /**
- * A ticketed booking's deadline is already behind it — a future ticketing
+ * A confirmed booking's deadline is already behind it — a future ticketing
  * deadline beside an issued ticket is the kind of detail that makes a demo
  * look machine-written.
  */
 function ticketingDeadlineFor(bookedAt, status, now, rng) {
   const deadline = addDays(bookedAt, rng.int(2, 7));
-  return status === 'ticketed' && deadline > now ? now : deadline;
+  return status === 'confirmed' && deadline > now ? now : deadline;
 }
 
 /** A date `days` before `anchor`, but never in the future. */

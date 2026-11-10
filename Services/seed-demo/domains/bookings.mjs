@@ -8,7 +8,7 @@
  * have no foreign key to resolve it.
  */
 import { addDays, money } from '../lib/rng.mjs';
-import { CATEGORIES } from '../lib/ids.mjs';
+import { CATEGORIES, ownedPrefix } from '../lib/ids.mjs';
 
 const BOOKING_STATUS_FOR_LEAD = {
   CONFIRMED: 'confirmed',
@@ -31,7 +31,7 @@ export async function seed(ctx) {
 
   // Own the id prefix: a re-run must rewrite these rows, not append a second
   // set. Booking has no natural unique key, and BookingTraveler cascades.
-  await db.sql.query(`DELETE FROM crm_bookings."Booking" WHERE id LIKE $1`, [`${CATEGORIES.booking}000000-%`]);
+  await db.sql.query(`DELETE FROM crm_bookings."Booking" WHERE id LIKE $1`, [`${ownedPrefix('booking')}%`]);
 
   const bookings = [];
   const travellers = [];

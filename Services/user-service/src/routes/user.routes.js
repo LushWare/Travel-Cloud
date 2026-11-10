@@ -2,7 +2,7 @@ import express from 'express';
 import { requireAuth, authorize } from '../middleware/auth.js';
 import {
   getCurrentUserProfile, updateCurrentUserProfile, getAllUsers, getUser,
-  createUser, updateUser, updateUserPassword, deleteUser, toggleUserStatus,
+  createUser, updateUser, deleteUser, toggleUserStatus,
   getUsersByRole, assignUserRole, getUserStats,
 } from '../controllers/user.controller.js';
 
@@ -20,7 +20,6 @@ router.post('/', createUser);
 router.get('/role/:role', getUsersByRole);
 router.get('/:id', getUser);
 router.put('/:id', updateUser);
-router.put('/:id/change-password', updateUserPassword);
 router.delete('/:id', deleteUser);
 router.patch('/:id/toggle-status', toggleUserStatus);
 router.patch('/:id/role', assignUserRole);

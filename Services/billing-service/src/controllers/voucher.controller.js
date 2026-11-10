@@ -112,7 +112,7 @@ export const sendVoucher = asyncHandler(async (req, res) => {
     if (channel === 'whatsapp') {
       const recipient = phone || voucher.customerPhone;
       if (!recipient) throw new AppError('No phone number available for this voucher', 400);
-      const mediaUrl = await uploadPdfBuffer(pdf, `voucher-${voucher.voucherNumber}`);
+      const mediaUrl = await uploadPdfBuffer(pdf);
       await sendVoucherWhatsapp({ voucher, phone: recipient, mediaUrl });
       const updated = await prisma.voucher.update({
         where: { id: voucher.id },
@@ -172,7 +172,7 @@ export const resendVoucherForVoice = asyncHandler(async (req, res) => {
 
   if (voucher.customerPhone) {
     try {
-      const mediaUrl = await uploadPdfBuffer(pdf, `voucher-${voucher.voucherNumber}`);
+      const mediaUrl = await uploadPdfBuffer(pdf);
       await sendVoucherWhatsapp({ voucher, phone: voucher.customerPhone, mediaUrl });
       await prisma.voucher.update({ where: { id: voucher.id }, data: { whatsappSent: true, whatsappSentAt: now, pdfUrl: mediaUrl } });
       results.whatsapp = 'sent';

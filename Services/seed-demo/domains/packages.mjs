@@ -276,25 +276,22 @@ async function flushPackageContent(ctx, { pkgId, dest, itinerary, slug, images, 
 
   // One transaction: the deletes must land before the inserts, and batching
   // them keeps this to a single round trip instead of six.
-  const ops = [
-    db.pkg.packageDayTransport.deleteMany({ where: { itineraryDay: { packageId: pkgId } } }),
-    db.pkg.packageDayPlace.deleteMany({ where: { itineraryDay: { packageId: pkgId } } }),
-    db.pkg.packageDayActivity.deleteMany({ where: { itineraryDay: { packageId: pkgId } } }),
-    db.pkg.itineraryDay.deleteMany({ where: { packageId: pkgId } }),
-    db.pkg.review.deleteMany({ where: { packageId: pkgId } }),
-  ];
-  if (images) ops.push(db.pkg.packageImage.deleteMany({ where: { packageId: pkgId } }));
+  // Interactive form: a batch transaction cannot carry the agency (see shared/tenancy).
+  await db.pkg.$transaction(async (tx) => {
+    await tx.packageDayTransport.deleteMany({ where: { itineraryDay: { packageId: pkgId } } });
+    await tx.packageDayPlace.deleteMany({ where: { itineraryDay: { packageId: pkgId } } });
+    await tx.packageDayActivity.deleteMany({ where: { itineraryDay: { packageId: pkgId } } });
+    await tx.itineraryDay.deleteMany({ where: { packageId: pkgId } });
+    await tx.review.deleteMany({ where: { packageId: pkgId } });
+    if (images) await tx.packageImage.deleteMany({ where: { packageId: pkgId } });
 
-  ops.push(
-    db.pkg.itineraryDay.createMany({ data: dayRows, skipDuplicates: true }),
-    ...(placeRows.length ? [db.pkg.packageDayPlace.createMany({ data: placeRows, skipDuplicates: true })] : []),
-    ...(activityRows.length ? [db.pkg.packageDayActivity.createMany({ data: activityRows, skipDuplicates: true })] : []),
-    ...(transportRows.length ? [db.pkg.packageDayTransport.createMany({ data: transportRows, skipDuplicates: true })] : []),
-    ...(imageRows.length ? [db.pkg.packageImage.createMany({ data: imageRows, skipDuplicates: true })] : []),
-    db.pkg.review.createMany({ data: reviewRows, skipDuplicates: true }),
-  );
-
-  await db.pkg.$transaction(ops);
+    await tx.itineraryDay.createMany({ data: dayRows, skipDuplicates: true });
+    if (placeRows.length) await tx.packageDayPlace.createMany({ data: placeRows, skipDuplicates: true });
+    if (activityRows.length) await tx.packageDayActivity.createMany({ data: activityRows, skipDuplicates: true });
+    if (transportRows.length) await tx.packageDayTransport.createMany({ data: transportRows, skipDuplicates: true });
+    if (imageRows.length) await tx.packageImage.createMany({ data: imageRows, skipDuplicates: true });
+    await tx.review.createMany({ data: reviewRows, skipDuplicates: true });
+  }, { timeout: 60_000 });
 }
 
 function imagesFor(bp) {

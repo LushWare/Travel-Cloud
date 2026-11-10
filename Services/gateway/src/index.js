@@ -5,7 +5,8 @@ import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import cookieParser from 'cookie-parser';
-import jwt from 'jsonwebtoken';
+import { createAccessTokenVerifier, loadPublicKeys } from './accessToken.js';
+import { DEMO_TENANT_ID } from '../../shared/constants/src/index.js';
 import { correlationId, requestLogger } from './middleware/requestLogger.js';
 import logger from './config/logger.js';
 import { GoogleAuth } from 'google-auth-library';
@@ -20,25 +21,59 @@ app.use(correlationId);
 app.use(requestLogger);
 
 // ─── Security ─────────────────────────────────────────────────────────────────
+// Identity and internal-auth headers are only ever set by the gateway itself.
+const INTERNAL_HEADER = /^x-(user-|tenant-|platform-|ctx$|service-key$|internal-token$|client-ip$)/;
+
+app.use((req, _res, next) => {
+  for (const name of Object.keys(req.headers)) {
+    if (INTERNAL_HEADER.test(name)) delete req.headers[name];
+  }
+  next();
+});
+
 app.use(helmet());
+
+const allowedOrigins = new Set(
+  [
+    process.env.CLIENT_URL,
+    process.env.MANAGEMENT_URL,
+    'https://lushtravelcloud.com',
+    'https://www.lushtravelcloud.com',
+    ...(process.env.CORS_ALLOWED_ORIGINS || '').split(','),
+  ]
+    .map((origin) => origin?.trim())
+    .filter(Boolean)
+);
+const LOCAL_ORIGIN = /^http:\/\/(localhost|127\.0\.0\.1):\d+$/;
+
+const isAllowedOrigin = (origin) =>
+  allowedOrigins.has(origin) || (process.env.NODE_ENV !== 'production' && LOCAL_ORIGIN.test(origin));
+
 app.use(cors({
   origin: (origin, cb) => {
-    const allowed = [
-      process.env.CLIENT_URL,
-      process.env.MANAGEMENT_URL,
-      'http://localhost:5173',
-      'http://localhost:5174',
-      'http://localhost:3000',
-      'http://localhost:3010',
-      'https://lushtravelcloud.com',
-      'https://www.lushtravelcloud.com',
-    ].filter(Boolean);
-    if (!origin || allowed.includes(origin)) return cb(null, true);
-    cb(null, true); // allow mobile apps with no origin
+    if (!origin || isAllowedOrigin(origin)) return cb(null, true);
+    logger.warn({ origin }, 'CORS origin rejected');
+    cb(null, false);
   },
   credentials: true,
 }));
 app.use(cookieParser());
+
+// Cookies are sent automatically, so a cookie-authenticated write must come from one of our own sites.
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+app.use((req, res, next) => {
+  const usesAuthCookie = req.cookies?.token || req.cookies?.refresh_token;
+  const { origin } = req.headers;
+  if (SAFE_METHODS.has(req.method) || !usesAuthCookie || !origin || isAllowedOrigin(origin)) return next();
+  logger.warn({ origin, path: req.path, requestId: req.requestId }, 'Cross-site cookie request rejected');
+  res.status(403).json({
+    success: false,
+    status: 'fail',
+    code: 'FORBIDDEN',
+    message: "You don't have permission to do that.",
+    ...(req.requestId && { requestId: req.requestId }),
+  });
+});
 
 // ─── Rate limiting ─────────────────────────────────────────────────────────────
 const globalLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 300 });
@@ -79,6 +114,7 @@ const SERVICES = {
 const PUBLIC_PATTERNS = [
   // Auth
   [/^\/api\/v1\/auth\/(register|login|login-step[12]|resend-otp|forgot-password|reset-temp-password|verify-email)/, 'ALL'],
+  [/^\/api\/v1\/auth\/(refresh|logout|select-tenant)$/, 'POST'],
   [/^\/api\/v1\/auth\/reset-password\//, 'ALL'],
   // Public package browsing — explicit paths only; admin/AI sub-routes remain protected
   [/^\/api\/v1\/packages\/?(\?.*)?$/,           'GET'], // list
@@ -118,14 +154,56 @@ const isPublicRoute = (method, path) =>
   PUBLIC_PATTERNS.some(([re, m]) => re.test(path) && (m === 'ALL' || m === method));
 
 // ─── JWT verification ──────────────────────────────────────────────────────────
-app.use((req, res, next) => {
-  if (isPublicRoute(req.method, req.path)) return next();
+const publicKeys = loadPublicKeys(process.env.JWT_PUBLIC_KEYS);
+if (publicKeys.size === 0) {
+  if (process.env.NODE_ENV === 'production') throw new Error('JWT_PUBLIC_KEYS is not set');
+  logger.warn('JWT_PUBLIC_KEYS is not set; logins from auth-service will be rejected');
+}
+const verifyAccessToken = createAccessTokenVerifier({ publicKeys, legacySecret: process.env.JWT_SECRET });
 
-  let token;
-  if (req.headers.authorization?.startsWith('Bearer ')) {
-    token = req.headers.authorization.split(' ')[1];
-  } else if (req.cookies?.token) {
-    token = req.cookies.token;
+const verifiedUser = (token) => {
+  const decoded = verifyAccessToken(token);
+  if (!decoded.id || decoded.tempAuth) throw new Error('Not an access token');
+  return decoded;
+};
+
+const forwardIdentity = (req, user) => {
+  req.headers['x-user-id']            = user.id;
+  req.headers['x-user-role']          = user.role;
+  req.headers['x-user-email']         = user.email;
+  req.headers['x-user-name']          = user.name;
+  req.headers['x-user-permissions']   = JSON.stringify(user.permissions || []);
+  req.headers['x-user-is-super-admin'] = String(user.isSuperAdmin || false);
+  if (user.tid) req.headers['x-tenant-id'] = user.tid;
+};
+
+// Anonymous visitors of the public website see this agency's catalogue.
+const PUBLIC_SITE_TENANT_ID = process.env.PUBLIC_SITE_TENANT_ID || DEMO_TENANT_ID;
+
+const unauthenticated = (req, res, message) =>
+  res.status(401).json({
+    success: false,
+    status: 'fail',
+    code: 'UNAUTHENTICATED',
+    message,
+    ...(req.requestId && { requestId: req.requestId }),
+  });
+
+app.use((req, res, next) => {
+  const bearer = req.headers.authorization?.startsWith('Bearer ') ? req.headers.authorization.split(' ')[1] : undefined;
+  const token = bearer || req.cookies?.token;
+
+  if (isPublicRoute(req.method, req.path)) {
+    req.headers['x-tenant-id'] = PUBLIC_SITE_TENANT_ID;
+    // Public pages also serve signed-in staff (e.g. draft packages), so identify the caller when possible.
+    if (!token || req.method !== 'GET' || req.path.startsWith('/api/v1/auth/')) return next();
+    try {
+      forwardIdentity(req, verifiedUser(token));
+    } catch (err) {
+      // An expired staff cookie must renew rather than silently browse as anonymous.
+      if (err.name === 'TokenExpiredError' && !bearer) return unauthenticated(req, res, 'Token expired. Please login again.');
+    }
+    return next();
   }
 
   if (!token) {
@@ -133,34 +211,10 @@ app.use((req, res, next) => {
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    // Forward user context to downstream services via headers
-    req.headers['x-user-id']            = decoded.id;
-    req.headers['x-user-role']          = decoded.role;
-    req.headers['x-user-email']         = decoded.email;
-    req.headers['x-user-name']          = decoded.name;
-    req.headers['x-user-permissions']   = JSON.stringify(decoded.permissions || []);
-    req.headers['x-user-is-super-admin'] = String(decoded.isSuperAdmin || false);
-    // Strip client-supplied internal key to prevent privilege escalation
-    delete req.headers['x-service-key'];
+    forwardIdentity(req, verifiedUser(token));
     next();
   } catch (err) {
-    if (err.name === 'TokenExpiredError') {
-      return res.status(401).json({
-        success: false,
-        status: 'fail',
-        code: 'UNAUTHENTICATED',
-        message: 'Token expired. Please login again.',
-        ...(req.requestId && { requestId: req.requestId }),
-      });
-    }
-    return res.status(401).json({
-      success: false,
-      status: 'fail',
-      code: 'UNAUTHENTICATED',
-      message: 'Invalid token.',
-      ...(req.requestId && { requestId: req.requestId }),
-    });
+    return unauthenticated(req, res, err.name === 'TokenExpiredError' ? 'Token expired. Please login again.' : 'Invalid token.');
   }
 });
 
@@ -193,6 +247,7 @@ const proxy = (target) => {
     on: {
       proxyReq: (proxyReq, req) => {
         if (req.cloudRunAuthHeader) proxyReq.setHeader('Authorization', req.cloudRunAuthHeader);
+        if (req.ip) proxyReq.setHeader('x-client-ip', req.ip);
       },
       proxyRes: (proxyRes) => {
         // Strip service-level CORS headers so the gateway's cors() middleware wins.
@@ -320,9 +375,11 @@ app.use((req, res) =>
   })
 );
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, '0.0.0.0', () => {
-  logger.info({ port: PORT }, 'gateway started');
-});
+if (process.env.NODE_ENV !== 'test') {
+  const PORT = process.env.PORT || 3000;
+  app.listen(PORT, '0.0.0.0', () => {
+    logger.info({ port: PORT }, 'gateway started');
+  });
+}
 
 export default app;

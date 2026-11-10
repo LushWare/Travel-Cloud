@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { nameField, emailField, phoneField, SERVICE_TYPES, VENDOR_STATUSES } from './common.js';
+import { nameField, emailField, phoneField, phoneCountryField, SERVICE_TYPES, VENDOR_STATUSES } from './common.js';
 
 const addressSchema = z
   .object({
@@ -16,7 +16,7 @@ const contactPersonSchema = z
   .object({
     name: z.string().trim().max(100).optional().nullable(),
     phone: z.string().trim().max(30).optional().nullable(),
-    email: z.string().trim().toLowerCase().email().optional().nullable(),
+    email: z.string().trim().toLowerCase().email().or(z.literal('')).optional().nullable(),
     designation: z.string().trim().max(100).optional().nullable(),
   })
   .strict()
@@ -39,6 +39,7 @@ export const createVendorSchema = z
     name: nameField,
     email: emailField,
     phone: phoneField,
+    phoneCountry: phoneCountryField,
     businessName: z.string().trim().max(255).optional().nullable(),
     serviceType: z.enum(SERVICE_TYPES).optional().nullable(),
     businessRegistrationNumber: z.string().trim().max(100).optional().nullable(),
@@ -53,6 +54,7 @@ export const updateVendorSchema = z
   .object({
     name: nameField.optional(),
     phone: phoneField,
+    phoneCountry: phoneCountryField,
     businessName: z.string().trim().max(255).optional().nullable(),
     serviceType: z.enum(SERVICE_TYPES).optional(),
     taxIdentificationNumber: z.string().trim().max(100).optional().nullable(),

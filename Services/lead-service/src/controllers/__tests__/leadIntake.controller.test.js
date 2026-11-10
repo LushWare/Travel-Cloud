@@ -106,7 +106,15 @@ vi.mock('../../services/lead-draft.service.js', async () => {
 
 process.env.INTERNAL_EVENTS_TOKEN = 'test-internal-token';
 
-const { default: app } = await import('../../app.js');
+const { default: serviceApp } = await import('../../app.js');
+const { default: express } = await import('express');
+
+const TEST_AGENCY = '11111111-1111-4111-8111-111111111111';
+// Requests reach the service with the agency the gateway took from the login.
+const app = express().use((req, _res, next) => {
+  req.headers['x-tenant-id'] ??= TEST_AGENCY;
+  next();
+}, serviceApp);
 
 // The transaction callback is handed the same mock client so the intake
 // controller's tx.* calls hit the same spies as the top-level prisma client.
@@ -209,7 +217,7 @@ describe('POST /api/v1/leads/internal/intake', () => {
 
     const [option] = mockLeadUpsert.mock.calls[0];
     expect(option.where).toEqual({
-      intakeChannel_intakeSessionId: { intakeChannel: 'chatbot', intakeSessionId: 'session-1' },
+      tenantId_intakeChannel_intakeSessionId: { tenantId: TEST_AGENCY, intakeChannel: 'chatbot', intakeSessionId: 'session-1' },
     });
     expect(option.create).toEqual(expect.objectContaining({
       source: 'chatbot',
@@ -451,7 +459,7 @@ describe('POST /api/v1/leads/internal/intake', () => {
     // No lookup by contact ever happens — findFirst is never called at all.
     expect(mockLeadFindFirst).not.toHaveBeenCalled();
     expect(mockLeadUpsert).toHaveBeenCalledWith(expect.objectContaining({
-      where: { intakeChannel_intakeSessionId: { intakeChannel: 'chatbot', intakeSessionId: 'attacker-session' } },
+      where: { tenantId_intakeChannel_intakeSessionId: { tenantId: TEST_AGENCY, intakeChannel: 'chatbot', intakeSessionId: 'attacker-session' } },
     }));
   });
 

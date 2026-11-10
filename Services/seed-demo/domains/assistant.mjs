@@ -26,16 +26,9 @@ import {
   INSIGHT_SEVERITIES,
 } from '../lib/fixtures.mjs';
 import { addDays, addMinutes } from '../lib/rng.mjs';
-import { CATEGORIES } from '../lib/ids.mjs';
+import { CATEGORIES, ownedPrefix } from '../lib/ids.mjs';
 
-/** '<cat>000000-' — the share of the id space this seed owns (mirrors reset.mjs). */
-const PREFIX = (category) => `${CATEGORIES[category]}000000-`;
-const MESSAGE_PREFIX = PREFIX('assistantMessage');
-const SESSION_PREFIX = PREFIX('assistantSession');
-const EVENT_PREFIX = PREFIX('assistantEvent');
-const DECISION_PREFIX = PREFIX('insightDecision');
-const LAST_SEEN_PREFIX = PREFIX('managementLastSeen');
-const INSIGHT_STATE_PREFIX = PREFIX('insightState');
+// The share of the id space this seed owns for the current agency (mirrors reset.mjs).
 
 /** Insights each page actually shows, so the suppression log reads like real usage. */
 const INSIGHT_KEYS_BY_PAGE = {
@@ -228,19 +221,19 @@ export async function seed(ctx) {
   // client version here, and these tables have no compound key to upsert on, so
   // the raw pool does the prefix delete the reset helper also relies on.
   await db.sql.query('DELETE FROM crm_assistant."AssistantMessage" WHERE id LIKE $1 OR "sessionId" LIKE $2', [
-    `${MESSAGE_PREFIX}%`,
-    `${SESSION_PREFIX}%`,
+    `${ownedPrefix('assistantMessage')}%`,
+    `${ownedPrefix('assistantSession')}%`,
   ]);
-  await db.sql.query('DELETE FROM crm_assistant."AssistantEvent" WHERE id LIKE $1', [`${EVENT_PREFIX}%`]);
-  await db.sql.query('DELETE FROM crm_assistant."InsightDecision" WHERE id LIKE $1', [`${DECISION_PREFIX}%`]);
+  await db.sql.query('DELETE FROM crm_assistant."AssistantEvent" WHERE id LIKE $1', [`${ownedPrefix('assistantEvent')}%`]);
+  await db.sql.query('DELETE FROM crm_assistant."InsightDecision" WHERE id LIKE $1', [`${ownedPrefix('insightDecision')}%`]);
   // These two carry a compound unique key, so an upsert looks natural — but the
   // id is deterministic while the compound values are drawn from the shared rng
   // stream, and that stream shifts whenever an earlier step gains or loses a
   // draw. A row would then be created under an id whose previous occupant had
   // different compound values, and the insert would die on the primary key.
   // Owning the prefix and rewriting the rows is immune to that.
-  await db.sql.query('DELETE FROM crm_assistant."ManagementLastSeen" WHERE id LIKE $1', [`${LAST_SEEN_PREFIX}%`]);
-  await db.sql.query('DELETE FROM crm_assistant."InsightState" WHERE id LIKE $1', [`${INSIGHT_STATE_PREFIX}%`]);
+  await db.sql.query('DELETE FROM crm_assistant."ManagementLastSeen" WHERE id LIKE $1', [`${ownedPrefix('managementLastSeen')}%`]);
+  await db.sql.query('DELETE FROM crm_assistant."InsightState" WHERE id LIKE $1', [`${ownedPrefix('insightState')}%`]);
 
   for (const s of sessions) {
     await db.assistant.assistantSession.upsert({

@@ -181,3 +181,9 @@ export const applyPricingModelChange = (row, pricingModel) => {
     distanceKm: pricingModel === 'PER_KM' ? row.distanceKm : null,
   };
 };
+
+// ─── Tenancy ──────────────────────────────────────────────────
+// The first agency: all data that existed before multi-tenancy belongs to it.
+// Fixed so every service's tenancy migration labels existing rows the same way.
+export const DEMO_TENANT_ID = '00000000-0000-4000-8000-000000000001';
+export const DEMO_TENANT_SLUG = 'lush-demo';

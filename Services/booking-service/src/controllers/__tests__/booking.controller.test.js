@@ -27,7 +27,14 @@ vi.mock('../../utils/email.js', () => ({
   sendLeadAssignmentEmail: mockSendLeadAssignmentEmail,
 }));
 
-const { createWebsiteBooking, createVoiceBooking } = await import('../booking.controller.js');
+const controller = await import('../booking.controller.js');
+const { runWithTenant } = await import('../../../../shared/tenancy/src/index.js');
+
+const AGENCY = '11111111-1111-4111-8111-111111111111';
+// Requests arrive inside the agency the gateway took from the login.
+const inAgency = (handler) => (...args) => runWithTenant(AGENCY, () => handler(...args));
+const createWebsiteBooking = inAgency(controller.createWebsiteBooking);
+const createVoiceBooking = inAgency(controller.createVoiceBooking);
 
 function buildReqRes(body) {
   const req = { body, log: { warn: vi.fn(), error: vi.fn() } };
@@ -268,5 +275,32 @@ describe('createVoiceBooking — exact package booking gates', () => {
     expect(res.status).toHaveBeenCalledWith(409);
     expect(res.json.mock.calls[0][0].data.reason).toBe('booking_details_changed_requires_review');
     expect(mockBookingCreate).not.toHaveBeenCalled();
+  });
+});
+
+describe('agency in hand-written SQL', () => {
+  const sqlCalls = () => [...mockQueryRaw.mock.calls, ...mockExecuteRaw.mock.calls];
+  const sqlText = (call) => call[0].join('?');
+
+  it('looks the package up only within the agency', async () => {
+    mockQueryRaw.mockResolvedValue([]);
+    const { req, res } = buildReqRes({ packageId: 'pkg-1', email: 'a@test.com', travelDate: '2027-01-01' });
+
+    await createWebsiteBooking(req, res, vi.fn());
+
+    const packageLookup = sqlCalls().find((call) => sqlText(call).includes('FROM crm_packages."Package"'));
+    expect(sqlText(packageLookup)).toContain('"tenantId" = ?::uuid');
+    expect(packageLookup.slice(1)).toContain(AGENCY);
+  });
+
+  it('refuses to run without an agency', async () => {
+    mockQueryRaw.mockClear();
+    const next = vi.fn();
+    const { req, res } = buildReqRes({ packageId: 'pkg-1', email: 'a@test.com', travelDate: '2027-01-01' });
+
+    await controller.createWebsiteBooking(req, res, next);
+
+    expect(next).toHaveBeenCalledWith(expect.objectContaining({ code: 'TENANT_CONTEXT_MISSING' }));
+    expect(mockQueryRaw).not.toHaveBeenCalled();
   });
 });

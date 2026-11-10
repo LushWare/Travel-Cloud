@@ -39,7 +39,7 @@ function mockPrisma(overrides = {}) {
     leadPricing: { findUnique: vi.fn().mockResolvedValue(null), update: vi.fn(), deleteMany: vi.fn() },
     leadCostLine: { deleteMany: vi.fn() },
     leadPackageSelection: { findUnique: vi.fn(), update: vi.fn() },
-    $transaction: vi.fn().mockImplementation(async (ops) => Promise.all(ops)),
+    $transaction: vi.fn().mockImplementation(async function (arg) { return typeof arg === 'function' ? arg(this) : Promise.all(arg); }),
     ...overrides,
   };
 }

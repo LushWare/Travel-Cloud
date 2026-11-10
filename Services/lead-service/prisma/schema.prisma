@@ -179,6 +179,7 @@ enum CostLineCategory {
 
 model Lead {
   id                 String       @id @default(uuid())
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
   name               String?
   email              String?
   phone              String?
@@ -258,8 +259,6 @@ model Lead {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  @@unique([intakeChannel, intakeSessionId])
   @@index([lifecycleStatus, createdAt])
   @@index([assignedToId, lifecycleStatus, createdAt])
   @@index([followUpDate])
@@ -279,6 +278,8 @@ model Lead {
   @@index([needsRepFollowup])
   @@index([voiceNeedsRepReview])
   @@index([voiceAiBookingAllowed])
+  @@index([tenantId])
+  @@unique([tenantId, intakeChannel, intakeSessionId])
   @@schema("crm_leads")
 }
 
@@ -298,6 +299,7 @@ enum CustomizationRequestStatus {
 
 model CustomizedPackage {
   id                 String                     @id @default(uuid())
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
   leadId             String
   lead               Lead                       @relation(fields: [leadId], references: [id], onDelete: Cascade)
   originalPackageId  String
@@ -323,11 +325,13 @@ model CustomizedPackage {
   @@index([leadId])
   @@index([originalPackageId])
   @@index([createdAt])
+  @@index([tenantId])
   @@schema("crm_leads")
 }
 
 model ManualItinerary {
   id        String                     @id @default(uuid())
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
   leadId    String
   lead      Lead                       @relation(fields: [leadId], references: [id], onDelete: Cascade)
   days      Json
@@ -338,6 +342,7 @@ model ManualItinerary {
 
   @@index([leadId])
   @@index([createdAt])
+  @@index([tenantId])
   @@schema("crm_leads")
 }
 
@@ -352,6 +357,7 @@ model ManualItinerary {
 // persisted rows to revert a selection back to pristine.
 model LeadPackageSelection {
   id     String @id @default(uuid())
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
   leadId String
   lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
 
@@ -391,6 +397,7 @@ model LeadPackageSelection {
 
   @@unique([leadId, packageId])
   @@index([leadId])
+  @@index([tenantId])
   @@schema("crm_leads")
 }
 
@@ -398,6 +405,7 @@ model LeadPackageSelection {
 
 model LeadRemark {
   id        String   @id @default(uuid())
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
   leadId    String
   lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
   text      String?
@@ -406,11 +414,13 @@ model LeadRemark {
   addedAt   DateTime @default(now())
 
   @@index([leadId])
+  @@index([tenantId])
   @@schema("crm_leads")
 }
 
 model LeadStatusHistory {
   id          String             @id @default(uuid())
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
   leadId      String
   lead        Lead               @relation(fields: [leadId], references: [id], onDelete: Cascade)
   status      String
@@ -420,11 +430,13 @@ model LeadStatusHistory {
   notes       String?
 
   @@index([leadId])
+  @@index([tenantId])
   @@schema("crm_leads")
 }
 
 model LeadCommunicationLog {
   id     String                @id @default(uuid())
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
   leadId String
   lead   Lead                  @relation(fields: [leadId], references: [id], onDelete: Cascade)
   date   DateTime              @default(now())
@@ -435,6 +447,7 @@ model LeadCommunicationLog {
 
   @@unique([leadId, externalMessageId])
   @@index([leadId])
+  @@index([tenantId])
   @@schema("crm_leads")
 }
 
@@ -442,6 +455,7 @@ model LeadCommunicationLog {
 
 model LeadInternalEvent {
   id          String   @id @default(uuid())
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
   eventId     String   @unique
   leadId      String
   lead        Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
@@ -450,6 +464,7 @@ model LeadInternalEvent {
   processedAt DateTime @default(now())
 
   @@index([leadId])
+  @@index([tenantId])
   @@schema("crm_leads")
 }
 
@@ -457,6 +472,7 @@ model LeadInternalEvent {
 
 model LeadPricing {
   id                     String               @id @default(uuid())
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
   leadPackageSelectionId String               @unique
   leadPackageSelection   LeadPackageSelection @relation(fields: [leadPackageSelectionId], references: [id], onDelete: Cascade)
 
@@ -486,11 +502,14 @@ model LeadPricing {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@index([tenantId])
+
   @@schema("crm_leads")
 }
 
 model LeadCostLine {
   id                     String               @id @default(uuid())
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
   leadPackageSelectionId String
   leadPackageSelection   LeadPackageSelection @relation(fields: [leadPackageSelectionId], references: [id], onDelete: Cascade)
 
@@ -516,6 +535,7 @@ model LeadCostLine {
   updatedAt DateTime @updatedAt
 
   @@index([leadPackageSelectionId])
+  @@index([tenantId])
   @@schema("crm_leads")
 }
 
@@ -523,6 +543,7 @@ model LeadCostLine {
 
 model LeadItineraryDay {
   id                     String               @id @default(uuid())
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
   leadPackageSelectionId String
   leadPackageSelection   LeadPackageSelection @relation(fields: [leadPackageSelectionId], references: [id], onDelete: Cascade)
   dayNumber              Int
@@ -545,11 +566,13 @@ model LeadItineraryDay {
 
   @@unique([leadPackageSelectionId, dayNumber])
   @@index([leadPackageSelectionId])
+  @@index([tenantId])
   @@schema("crm_leads")
 }
 
 model LeadDayPlace {
   id                 String           @id @default(uuid())
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
   leadItineraryDayId String
   leadItineraryDay   LeadItineraryDay @relation(fields: [leadItineraryDayId], references: [id], onDelete: Cascade)
   placeId            String? // → packages.Place.id (snapshot ref)
@@ -558,11 +581,13 @@ model LeadDayPlace {
 
   @@unique([leadItineraryDayId, orderIndex])
   @@index([leadItineraryDayId])
+  @@index([tenantId])
   @@schema("crm_leads")
 }
 
 model LeadDayActivity {
   id                 String           @id @default(uuid())
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
   leadItineraryDayId String
   leadItineraryDay   LeadItineraryDay @relation(fields: [leadItineraryDayId], references: [id], onDelete: Cascade)
   activityId         String? // → packages.ActivityCatalog.id (snapshot ref)
@@ -574,11 +599,13 @@ model LeadDayActivity {
 
   @@unique([leadItineraryDayId, orderIndex])
   @@index([leadItineraryDayId])
+  @@index([tenantId])
   @@schema("crm_leads")
 }
 
 model LeadDayImage {
   id                 String           @id @default(uuid())
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
   leadItineraryDayId String
   leadItineraryDay   LeadItineraryDay @relation(fields: [leadItineraryDayId], references: [id], onDelete: Cascade)
   url                String
@@ -587,11 +614,13 @@ model LeadDayImage {
 
   @@unique([leadItineraryDayId, orderIndex])
   @@index([leadItineraryDayId])
+  @@index([tenantId])
   @@schema("crm_leads")
 }
 
 model LeadDayTransport {
   id                 String           @id @default(uuid())
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
   leadItineraryDayId String
   leadItineraryDay   LeadItineraryDay @relation(fields: [leadItineraryDayId], references: [id], onDelete: Cascade)
   routeType          String?
@@ -603,6 +632,7 @@ model LeadDayTransport {
   destination        String?
 
   @@index([leadItineraryDayId])
+  @@index([tenantId])
   @@schema("crm_leads")
 }
 
@@ -610,6 +640,7 @@ model LeadDayTransport {
 
 model LeadOptionalFlight {
   id                     String               @id @default(uuid())
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
   leadPackageSelectionId String
   leadPackageSelection   LeadPackageSelection @relation(fields: [leadPackageSelectionId], references: [id], onDelete: Cascade)
   flightType             OptionalFlightType
@@ -632,6 +663,7 @@ model LeadOptionalFlight {
   updatedAt DateTime @updatedAt
 
   @@index([leadPackageSelectionId])
+  @@index([tenantId])
   @@schema("crm_leads")
 }
 
@@ -639,7 +671,8 @@ model LeadOptionalFlight {
 
 model Settings {
   id                    String             @id @default(uuid())
-  singletonKey          Int                @unique @default(1)
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
+  singletonKey          Int                @default(1)
   assignmentMode        AssignmentMode     @default(manual)
   autoStrategy          AssignmentStrategy @default(round_robin)
   enabledSalesRepIds    String[] // → users.User.id[]
@@ -653,6 +686,10 @@ model Settings {
   updatedAt DateTime @updatedAt
   // singletonKey is a fixed sentinel (always 1) — the @unique constraint is
   // what actually enforces "only one row" now; upsert on it everywhere.
+
+  @@index([tenantId])
+
+  @@unique([tenantId, singletonKey])
 
   @@schema("crm_leads")
 }

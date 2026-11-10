@@ -30,6 +30,11 @@ vi.mock('./recommendationEngine.js', () => ({
 }));
 
 import { listRecommendations } from './recommendationService.js';
+import { runWithTenant } from '../../shared/tenancy/src/index.js';
+
+const TENANT = '11111111-1111-4111-8111-111111111111';
+// Recommendations are per agency; every call runs inside one.
+const list = (args) => runWithTenant(TENANT, () => listRecommendations(args));
 
 const signalSource = { scope: 'org', asOf: '2026-10-12T00:00:00.000Z', signals: {} };
 const aiRecommendation = {
@@ -71,17 +76,17 @@ describe('recommendation mode persistence', () => {
   it('keeps AI and rule-based snapshots in separate scopes', async () => {
     const actor = { id: 'admin-1', role: 'admin', isSuperAdmin: false };
 
-    await listRecommendations({ actor, mode: 'ai', requestId: 'request-1' });
-    await listRecommendations({ actor, mode: 'rules', requestId: 'request-2' });
+    await list({ actor, mode: 'ai', requestId: 'request-1' });
+    await list({ actor, mode: 'rules', requestId: 'request-2' });
 
     expect(mockBuildRecommendations).toHaveBeenCalledTimes(1);
     expect(mockBuildRecommendations).toHaveBeenCalledWith(signalSource.signals);
     expect(mockGenerateRecommendations).toHaveBeenCalledTimes(1);
     expect(mockGenerateRecommendations).toHaveBeenCalledWith(signalSource);
-    expect(mockPrisma.recommendationRun.findUnique).toHaveBeenNthCalledWith(1, { where: { scopeKey: 'v10:agency:ai' } });
-    expect(mockPrisma.recommendationRun.findUnique).toHaveBeenNthCalledWith(2, { where: { scopeKey: 'v10:agency:rules' } });
+    expect(mockPrisma.recommendationRun.findUnique).toHaveBeenNthCalledWith(1, { where: { tenantId_scopeKey: { tenantId: TENANT, scopeKey: 'v10:agency:ai' } } });
+    expect(mockPrisma.recommendationRun.findUnique).toHaveBeenNthCalledWith(2, { where: { tenantId_scopeKey: { tenantId: TENANT, scopeKey: 'v10:agency:rules' } } });
     expect(mockRecommendationUpsert).toHaveBeenCalledWith(expect.objectContaining({
-      where: { scopeKey_key: { scopeKey: 'v10:agency:ai', key: 'ai.cross-tab-finding' } },
+      where: { tenantId_scopeKey_key: { tenantId: TENANT, scopeKey: 'v10:agency:ai', key: 'ai.cross-tab-finding' } },
       create: expect.objectContaining({
         title: 'Investigate a model-generated finding',
         summary: 'The AI generated this finding from the full analytics signal set.',
@@ -94,11 +99,11 @@ describe('recommendation mode persistence', () => {
       data: { active: false },
     });
     expect(mockRecommendationUpsert).toHaveBeenCalledWith(expect.objectContaining({
-      where: { scopeKey_key: { scopeKey: 'v10:agency:rules', key: 'verified.finding' } },
+      where: { tenantId_scopeKey_key: { tenantId: TENANT, scopeKey: 'v10:agency:rules', key: 'verified.finding' } },
       create: expect.objectContaining({ priority: 'medium' }),
     }));
-    expect(mockRunUpsert).toHaveBeenCalledWith(expect.objectContaining({ where: { scopeKey: 'v10:agency:ai' } }));
-    expect(mockRunUpsert).toHaveBeenCalledWith(expect.objectContaining({ where: { scopeKey: 'v10:agency:rules' } }));
+    expect(mockRunUpsert).toHaveBeenCalledWith(expect.objectContaining({ where: { tenantId_scopeKey: { tenantId: TENANT, scopeKey: 'v10:agency:ai' } } }));
+    expect(mockRunUpsert).toHaveBeenCalledWith(expect.objectContaining({ where: { tenantId_scopeKey: { tenantId: TENANT, scopeKey: 'v10:agency:rules' } } }));
   });
 
   it('excludes reviewed recommendations from Active and returns them in Reviewed', async () => {
@@ -118,8 +123,8 @@ describe('recommendation mode persistence', () => {
       recommendationRow('reviewed-id', 'reviewed'),
     ]);
 
-    const active = await listRecommendations({ actor, status: 'active', mode: 'ai', requestId: 'request-active' });
-    const reviewed = await listRecommendations({ actor, status: 'reviewed', mode: 'ai', requestId: 'request-reviewed' });
+    const active = await list({ actor, status: 'active', mode: 'ai', requestId: 'request-active' });
+    const reviewed = await list({ actor, status: 'reviewed', mode: 'ai', requestId: 'request-reviewed' });
 
     expect(active.counts).toEqual({ active: 1, reviewed: 1 });
     expect(active.recommendations.map(({ id }) => id)).toEqual(['unreviewed-id']);
@@ -134,7 +139,7 @@ describe('recommendation mode persistence', () => {
   it('does not substitute rule-based recommendations when AI generation fails', async () => {
     mockGenerateRecommendations.mockRejectedValueOnce(new Error('AI unavailable'));
 
-    await expect(listRecommendations({
+    await expect(list({
       actor: { id: 'admin-1', role: 'admin', isSuperAdmin: false },
       mode: 'ai',
       requestId: 'request-1',

@@ -20,7 +20,7 @@ const { mockPrisma } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('../../src/db/client.js', () => ({ default: mockPrisma }));
+vi.mock('../../src/db/client.js', () => ({ default: mockPrisma, identityPrisma: mockPrisma }));
 
 const { default: app } = await import('../../src/app.js');
 
@@ -29,6 +29,7 @@ const ID = 'a0000000-0000-4000-8000-000000000001';
 describe('Vendor API — /api/v1/vendors', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockPrisma.user.findFirst.mockResolvedValue(buildUserRow({ role: 'vendor' }));
   });
 
   it('returns 401 without auth headers', async () => {
@@ -80,7 +81,7 @@ describe('Vendor API — /api/v1/vendors', () => {
       .send({ name: 'Sunrise Hotels', email: 'sunrise@test.com', serviceType: 'hotel' });
 
     expect(res.status).toBe(201);
-    expect(res.body.data.tempPassword).toBeTruthy();
+    expect(res.body.data.tempPassword).toBeUndefined();
   });
 
   it('POST / rejects an unknown serviceType', async () => {

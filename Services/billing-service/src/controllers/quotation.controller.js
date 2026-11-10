@@ -157,7 +157,7 @@ export const sendQuotation = asyncHandler(async (req, res) => {
     if (channel === 'whatsapp') {
       const recipient = phone || quotation.customerPhone;
       if (!recipient) throw new AppError('No phone number available for this quotation', 400);
-      const mediaUrl = await uploadPdfBuffer(pdf, `quotation-${quotation.quotationNumber}`);
+      const mediaUrl = await uploadPdfBuffer(pdf);
       await sendQuotationWhatsapp({ quotation, phone: recipient, mediaUrl });
       const updated = await prisma.quotation.update({
         where: { id: quotation.id },
@@ -234,7 +234,7 @@ export const sendVoiceQuotation = asyncHandler(async (req, res) => {
 
   if (results.whatsapp === 'failed') {
     try {
-      const mediaUrl = quotation.pdfUrl || await uploadPdfBuffer(pdf, `quotation-${quotation.quotationNumber}`);
+      const mediaUrl = await uploadPdfBuffer(pdf);
       await sendQuotationWhatsapp({ quotation, phone: quotation.customerPhone, mediaUrl });
       await prisma.quotation.update({
         where: { id: quotation.id },
@@ -287,7 +287,7 @@ export const resendQuotationForVoice = asyncHandler(async (req, res) => {
 
   if (quotation.customerPhone) {
     try {
-      const mediaUrl = await uploadPdfBuffer(pdf, `quotation-${quotation.quotationNumber}`);
+      const mediaUrl = await uploadPdfBuffer(pdf);
       await sendQuotationWhatsapp({ quotation, phone: quotation.customerPhone, mediaUrl });
       await prisma.quotation.update({ where: { id: quotation.id }, data: { whatsappSent: true, whatsappSentAt: now, pdfUrl: mediaUrl } });
       results.whatsapp = 'sent';

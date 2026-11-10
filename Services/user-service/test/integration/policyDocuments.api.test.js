@@ -14,7 +14,7 @@ const { mockPrisma } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('../../src/db/client.js', () => ({ default: mockPrisma }));
+vi.mock('../../src/db/client.js', () => ({ default: mockPrisma, identityPrisma: mockPrisma }));
 
 const { default: app } = await import('../../src/app.js');
 

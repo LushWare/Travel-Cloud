@@ -11,6 +11,8 @@
  */
 import bcrypt from '../../user-service/node_modules/bcryptjs/index.js';
 import { id as idFor } from '../lib/ids.mjs';
+import { requireTenantId } from '../../shared/tenancy/src/index.js';
+import { agencyEmail } from '../lib/agencies.mjs';
 import { AGENCY, CUSTOMERS, POLICY_DOCUMENTS, STAFF, VENDORS } from '../lib/fixtures.mjs';
 
 /** One password per role, so a demo can log in as anyone it can see. */
@@ -29,7 +31,17 @@ const PERMISSION_SETS = {
 };
 
 export async function seed(ctx) {
-  const { db, ids, now, log } = ctx;
+  const { db, ids, now, log, agency } = ctx;
+  const tenantId = requireTenantId();
+
+  /** Staff and vendors work for the agency being seeded; existing memberships are left as they are. */
+  async function ensureMembership(userId, role, permissions) {
+    await db.users.membership.upsert({
+      where: { tenantId_userId: { tenantId, userId } },
+      update: {},
+      create: { userId, role, permissions, isOwner: role === 'superAdmin', status: 'active', joinedAt: now },
+    });
+  }
   // Its own PRNG stream, so this step's output cannot be reshuffled by a
   // conditional draw added in an earlier domain (see lib/rng.mjs).
   const rng = ctx.rngFor('users');
@@ -84,7 +96,7 @@ export async function seed(ctx) {
     const s = STAFF[i];
     s.id = await ensureUser({
       name: s.name,
-      email: s.email,
+      email: agencyEmail(s.email, agency),
       password: hash[s.role],
       role: s.role,
       isSuperAdmin: s.role === 'superAdmin',
@@ -97,6 +109,7 @@ export async function seed(ctx) {
       lastActivity: new Date(now.getTime() - rng.int(1, 48) * 3600 * 1000),
       phoneCountry: 'LK',
     }, 1000 + i);
+    await ensureMembership(s.id, s.role, s.permissions ?? PERMISSION_SETS[s.role] ?? []);
   }
 
   // ── Customers ─────────────────────────────────────────────────────────────
@@ -122,7 +135,7 @@ export async function seed(ctx) {
     const v = VENDORS[i];
     const userId = await ensureUser({
       name: v.name,
-      email: v.email,
+      email: agencyEmail(v.email, agency),
       phone: v.phone,
       phoneCountry: phoneCountry(v.phone),
       password: hash.vendor,
@@ -134,6 +147,7 @@ export async function seed(ctx) {
       lastActivity: new Date(now.getTime() - rng.int(2, 200) * 3600 * 1000),
     }, 3000 + i);
     v.id = userId;
+    await ensureMembership(userId, 'vendor', []);
 
     const profileData = {
       userId,
@@ -148,7 +162,7 @@ export async function seed(ctx) {
       addressCountry: v.country,
       contactPersonName: v.name,
       contactPersonPhone: v.phone,
-      contactPersonEmail: v.email,
+      contactPersonEmail: agencyEmail(v.email, agency),
       contactPersonDesignation: 'Managing Director',
       bankAccountName: v.business.toUpperCase(),
       bankAccountNumber: String(rng.int(1000000000, 9999999999)),
@@ -173,6 +187,7 @@ export async function seed(ctx) {
   // ── Organisation settings (singleton — updated in place, never duplicated) ─
   const orgData = {
     ...AGENCY,
+    ...(!agency.isDemo && { companyName: agency.name, companyShortName: agency.name, companyLegalName: `${agency.name} (Pvt) Ltd` }),
     defaultTaxRate: AGENCY.defaultTaxRate,
     defaultServiceChargeRate: AGENCY.defaultServiceChargeRate,
     updatedById: STAFF[1].id,
@@ -196,7 +211,10 @@ export async function seed(ctx) {
 
   // ── Read everything back so later steps can assign against real people ────
   const all = await db.users.user.findMany({
-    where: { isActive: true },
+    where: {
+      isActive: true,
+      OR: [{ role: 'customer' }, { memberships: { some: { tenantId, status: 'active' } } }],
+    },
     select: { id: true, name: true, email: true, role: true, phone: true },
     orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
   });

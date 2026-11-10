@@ -9,6 +9,10 @@ import { sendInvoiceWhatsapp } from '../utils/whatsappService.js';
 import { uploadPdfBuffer } from '../utils/cloudinary.js';
 import { sendInvoiceSchema } from '../validators/invoice.validator.js';
 import { logLeadCommunication } from '../services/events.client.js';
+import { requireTenantId } from '../../../shared/tenancy/src/index.js';
+
+// Hand-written SQL is not filtered automatically: every statement names the agency itself.
+const agency = () => requireTenantId();
 
 const invoiceInclude = {
   items: { orderBy: { order: 'asc' } },
@@ -19,7 +23,7 @@ const invoiceInclude = {
 const buildLeadFilter = async (user) => {
   if (user.role === 'salesRep' && !user.isSuperAdmin) {
     const leads = await prisma.$queryRaw`
-      SELECT id FROM crm_leads."Lead" WHERE "assignedToId" = ${user.id}
+      SELECT id FROM crm_leads."Lead" WHERE "assignedToId" = ${user.id} AND "tenantId" = ${agency()}::uuid
     `;
     return { leadId: { in: leads.map((l) => l.id) } };
   }
@@ -156,7 +160,7 @@ export const sendInvoice = asyncHandler(async (req, res) => {
     if (channel === 'whatsapp') {
       const recipient = phone || invoice.customerPhone;
       if (!recipient) throw new AppError('No phone number available for this invoice', 400);
-      const mediaUrl = await uploadPdfBuffer(pdf, `invoice-${invoice.invoiceNumber}`);
+      const mediaUrl = await uploadPdfBuffer(pdf);
       await sendInvoiceWhatsapp({ invoice, phone: recipient, mediaUrl });
       const updated = await prisma.invoice.update({
         where: { id: invoice.id },
@@ -212,7 +216,7 @@ export const resendInvoiceForVoice = asyncHandler(async (req, res) => {
 
   if (invoice.customerPhone) {
     try {
-      const mediaUrl = await uploadPdfBuffer(pdf, `invoice-${invoice.invoiceNumber}`);
+      const mediaUrl = await uploadPdfBuffer(pdf);
       await sendInvoiceWhatsapp({ invoice, phone: invoice.customerPhone, mediaUrl });
       await prisma.invoice.update({ where: { id: invoice.id }, data: { whatsappSent: true, whatsappSentAt: now, pdfUrl: mediaUrl } });
       results.whatsapp = 'sent';

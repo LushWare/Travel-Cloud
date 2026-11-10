@@ -37,6 +37,7 @@
 import { existsSync, readFileSync, writeFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { envQuoted, generateLoginKeyPair } from './create-login-keys.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, '..');
@@ -90,11 +91,14 @@ export function forceEnvValue(body, key, value) {
  * The values that must not come from an example, per directory. Keys are
  * repo-relative directory names.
  */
-export function forcedValues({ databaseUrl, allowPlaceholder = false } = {}) {
+export function forcedValues({ databaseUrl, allowPlaceholder = false, keyPair = generateLoginKeyPair() } = {}) {
   const dsn = ciDatabaseUrl({ databaseUrl, allowPlaceholder });
   const shared = { DATABASE_URL: dsn, DIRECT_URL: dsn };
   return {
     __allServices: shared,
+    // A fresh login key pair per run: auth-service will not start without one.
+    'Services/auth-service': { ...shared, JWT_PRIVATE_KEY: envQuoted(keyPair.privatePem) },
+    'Services/gateway': { ...shared, JWT_PUBLIC_KEYS: envQuoted(keyPair.publicPem) },
     'Services/assistant-service': { ...shared, MANAGEMENT_COPILOT_ENABLED: 'true' },
     Management: { VITE_MANAGEMENT_COPILOT_ENABLED: 'true' },
     // On a disposable database the shared-DB opt-in is not a hazard: it is the

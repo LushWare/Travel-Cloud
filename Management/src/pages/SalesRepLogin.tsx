@@ -1,6 +1,7 @@
 import { useState, useEffect, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { nextStepAfterSignIn } from '@/lib/pendingTenantChoice';
 import toast from '@/lib/toast';
 import axios from 'axios';
 import { Eye, EyeOff, Clock, Loader2, ShieldCheck } from 'lucide-react';
@@ -119,7 +120,10 @@ export default function SalesRepLogin() {
     try {
       const response = await axios.post(`${API_URL}/auth/login-step1`, formData);
 
-      if (response.data.status === 'success') {
+      const signedIn = response.data.status === 'success' && nextStepAfterSignIn(response.data.data, setAuth);
+      if (signedIn) {
+        navigate(signedIn === 'choose-agency' ? '/choose-agency' : '/');
+      } else if (response.data.status === 'success') {
         setTempToken(response.data.data.tempToken);
         setMaskedEmail(response.data.data.maskedEmail);
         setTimer(response.data.data.expiresIn || 600);
@@ -177,15 +181,9 @@ export default function SalesRepLogin() {
       });
 
       if (response.data.status === 'success') {
-        localStorage.setItem('token', response.data.data.token);
-        localStorage.setItem('user', JSON.stringify(response.data.data.user));
-
-        if (setAuth) {
-          setAuth(response.data.data.user, response.data.data.token);
-        }
-
-        toast.success('Login successful!');
-        navigate('/');
+        const step = nextStepAfterSignIn(response.data.data, setAuth);
+        if (step === 'signed-in') toast.success('Login successful!');
+        navigate(step === 'choose-agency' ? '/choose-agency' : '/');
       }
     } catch (err) {
       const errorMessage =

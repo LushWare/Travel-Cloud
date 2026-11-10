@@ -11,7 +11,7 @@
  * that is not on the page.
  */
 import { APPLICANT_COVER_LETTERS, APPLICANT_NAMES, VACANCIES } from '../lib/fixtures.mjs';
-import { CATEGORIES } from '../lib/ids.mjs';
+import { CATEGORIES, ownedPrefix } from '../lib/ids.mjs';
 import { addDays } from '../lib/rng.mjs';
 
 /** Recruiter one-liners per reviewed state; a pending application has no note. */
@@ -48,8 +48,8 @@ export async function seed(ctx) {
   /** Nothing that already happened may read as a future timestamp. */
   const clampNow = (d) => (d > now ? new Date(now) : d);
 
-  await db.sql.query('DELETE FROM crm_careers."Career" WHERE id LIKE $1', [`${CATEGORIES.career}000000-%`]);
-  await db.sql.query('DELETE FROM crm_careers."Vacancy" WHERE id LIKE $1', [`${CATEGORIES.vacancy}000000-%`]);
+  await db.sql.query('DELETE FROM crm_careers."Career" WHERE id LIKE $1', [`${ownedPrefix('career')}%`]);
+  await db.sql.query('DELETE FROM crm_careers."Vacancy" WHERE id LIKE $1', [`${ownedPrefix('vacancy')}%`]);
 
   // ── Vacancies ─────────────────────────────────────────────────────────────
   // A closed role's dates are pushed into the past so the "Closed" filter has
@@ -92,7 +92,7 @@ export async function seed(ctx) {
   await db.career.vacancy.deleteMany({
     where: {
       AND: [
-        { NOT: { id: { startsWith: `${CATEGORIES.vacancy}000000-` } } },
+        { NOT: { id: { startsWith: ownedPrefix('vacancy') } } },
         { OR: vacancies.map((v) => ({ position: v.position, location: v.location, type: v.type })) },
       ],
     },
@@ -188,7 +188,7 @@ export async function seed(ctx) {
   await db.career.career.deleteMany({
     where: {
       AND: [
-        { NOT: { id: { startsWith: `${CATEGORIES.career}000000-` } } },
+        { NOT: { id: { startsWith: ownedPrefix('career') } } },
         { email: { in: [...new Set(applications.map((a) => a.email))] } },
       ],
     },

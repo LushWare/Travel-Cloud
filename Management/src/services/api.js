@@ -1,28 +1,17 @@
 import { apiEnvelope, LeadPackageSelectionSummary, QuotePackageSelectionResult, QuotationSummary } from "@travel-crm/contracts";
 import { z } from "zod";
 import { apiErrorMessage, apiFieldErrors } from "../lib/apiErrorMessage";
+import { API_BASE_URL, authFetch } from "../lib/authFetch";
 
-export const API_BASE_URL =
-  import.meta.env.VITE_API_URL || "https://api.lushtravelcloud.com/api/v1";
-  // import.meta.env.VITE_API_URL || "http://localhost:5000/api/v1";
+export { API_BASE_URL };
 
 class ApiService {
   constructor() {
     this.baseURL = API_BASE_URL;
   }
 
-  // Helper method to get auth token
   getAuthHeaders() {
-    const token = localStorage.getItem("token") || (sessionStorage && sessionStorage.getItem("token"));
-    const headers = {
-      "Content-Type": "application/json",
-    };
-
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`;
-    }
-
-    return headers;
+    return { "Content-Type": "application/json" };
   }
 
   // Generic fetch method
@@ -40,7 +29,7 @@ class ApiService {
     };
 
     try {
-      const response = await fetch(url, config);
+      const response = await authFetch(url, config);
 
       // ✅ Handle blob responses FIRST (before any JSON parsing)
       if (options.responseType === "blob") {
@@ -79,17 +68,6 @@ class ApiService {
       }
 
       if (!response.ok) {
-        // Special handling for 401 (authentication errors)
-        if (response.status === 401) {
-          // Clear invalid token
-          try {
-            sessionStorage.removeItem("token");
-            sessionStorage.removeItem("user");
-          } catch (e) { }
-          localStorage.removeItem("token");
-          localStorage.removeItem("user");
-        }
-
         // The sentence comes from the mapper, never from error.message: the backend
         // marks which of its own messages are safe to show, and a response without
         // one is reported as a status-appropriate generic. Field-level detail travels
@@ -198,9 +176,9 @@ export const authAPI = {
     return api.post("/auth/login", { email, password });
   },
 
-  // Logout
   logout: async () => {
-    localStorage.removeItem("token");
+    const api = new ApiService();
+    await api.post("/auth/logout", {}).catch(() => {});
     localStorage.removeItem("user");
   },
 
@@ -210,9 +188,14 @@ export const authAPI = {
     return api.get("/auth/me");
   },
 
-  // Check if user is authenticated
   isAuthenticated: () => {
-    return !!localStorage.getItem("token");
+    return !!localStorage.getItem("user");
+  },
+
+  // Emails a staff member a one-time link to set their password (invite or reset).
+  sendSetPasswordLink: async (userId) => {
+    const api = new ApiService();
+    return api.post(`/auth/users/${encodeURIComponent(userId)}/set-password-link`, {});
   },
 
   // Get stored user data
@@ -221,9 +204,7 @@ export const authAPI = {
     return userStr ? JSON.parse(userStr) : null;
   },
 
-  // Store user data
-  storeUser: (userData, token) => {
-    localStorage.setItem("token", token);
+  storeUser: (userData) => {
     localStorage.setItem("user", JSON.stringify(userData));
   },
 };
@@ -967,15 +948,8 @@ export const uploadAPI = {
     const formData = new FormData();
     formData.append('image', file);
 
-    const token = localStorage.getItem("token") || (sessionStorage && sessionStorage.getItem("token"));
-    const headers = {};
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`;
-    }
-
-    const response = await fetch(`${api.baseURL}/upload/single`, {
+    const response = await authFetch(`${api.baseURL}/upload/single`, {
       method: 'POST',
-      headers: headers,
       body: formData
     });
 

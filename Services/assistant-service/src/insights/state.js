@@ -1,4 +1,8 @@
 import logger from '../config/logger.js';
+import { requireTenantId } from '../../../shared/tenancy/src/index.js';
+
+// Hand-written SQL is not filtered automatically: every statement names the agency itself.
+const agency = () => requireTenantId();
 
 // ─── Insight lifecycle state ──────────────────────────────────────────────
 // Reads and writes the two tables the ranking work needs, with two policies that
@@ -112,7 +116,8 @@ export async function markSurfaced({ prisma, actorId, pageKey, scopeFingerprint,
     await prisma.$executeRaw`
       UPDATE "crm_assistant"."InsightState"
          SET "surfacedCount" = "surfacedCount" + 1, "lastSurfacedAt" = NOW()
-       WHERE "actorId" = ${actorId}
+       WHERE "tenantId" = ${agency()}::uuid
+         AND "actorId" = ${actorId}
          AND "pageKey" = ${pageKey}
          AND "scopeFingerprint" = ${scopeFingerprint}
          AND "insightKey" = ANY(${keys})`;

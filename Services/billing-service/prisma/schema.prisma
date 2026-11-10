@@ -259,7 +259,8 @@ enum VoucherStatus {
 
 model Invoice {
   id            String @id @default(uuid())
-  invoiceNumber String @unique
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
+  invoiceNumber String
   currency      String @default("USD") @db.VarChar(3)
 
   // Cross-schema UUID refs
@@ -336,11 +337,14 @@ model Invoice {
   @@index([paymentStatus])
   @@index([createdAt])
   @@index([type])
+  @@index([tenantId])
+  @@unique([tenantId, invoiceNumber])
   @@schema("crm_billing")
 }
 
 model InvoiceItem {
   id          String       @id @default(uuid())
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
   invoiceId   String
   invoice     Invoice      @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   description String
@@ -353,6 +357,7 @@ model InvoiceItem {
   order       Int          @default(0)
 
   @@index([invoiceId])
+  @@index([tenantId])
   @@schema("crm_billing")
 }
 
@@ -360,7 +365,8 @@ model InvoiceItem {
 
 model Quotation {
   id              String @id @default(uuid())
-  quotationNumber String @unique
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
+  quotationNumber String
   currency        String @default("USD") @db.VarChar(3)
 
   // Cross-schema UUID refs
@@ -441,11 +447,14 @@ model Quotation {
   @@index([leadId, packageId])
   @@index([status, validUntil])
   @@index([createdAt])
+  @@index([tenantId])
+  @@unique([tenantId, quotationNumber])
   @@schema("crm_billing")
 }
 
 model QuotationItem {
   id          String       @id @default(uuid())
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
   quotationId String
   quotation   Quotation    @relation(fields: [quotationId], references: [id], onDelete: Cascade)
   description String
@@ -458,22 +467,26 @@ model QuotationItem {
   order       Int          @default(0)
 
   @@index([quotationId])
+  @@index([tenantId])
   @@schema("crm_billing")
 }
 
 model QuotationImage {
   id          String    @id @default(uuid())
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
   quotationId String
   quotation   Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
   url         String?
   isCover     Boolean   @default(false)
 
   @@index([quotationId])
+  @@index([tenantId])
   @@schema("crm_billing")
 }
 
 model QuotationRevision {
   id           String    @id @default(uuid())
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
   quotationId  String
   quotation    Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
   version      Int
@@ -482,6 +495,7 @@ model QuotationRevision {
   changes      String?
 
   @@index([quotationId])
+  @@index([tenantId])
   @@schema("crm_billing")
 }
 
@@ -489,7 +503,8 @@ model QuotationRevision {
 
 model PaymentReceipt {
   id            String @id @default(uuid())
-  receiptNumber String @unique
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
+  receiptNumber String
 
   // Cross-schema UUID refs
   leadId           String // → leads.Lead.id
@@ -565,6 +580,8 @@ model PaymentReceipt {
   @@index([paymentMethod])
   @@index([verified, reconciled])
   @@index([transactionId])
+  @@index([tenantId])
+  @@unique([tenantId, receiptNumber])
   @@schema("crm_billing")
 }
 
@@ -572,7 +589,8 @@ model PaymentReceipt {
 
 model PaymentHistory {
   id                   String @id @default(uuid())
-  paymentHistoryNumber String @unique
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
+  paymentHistoryNumber String
 
   receiptId String
   receipt   PaymentReceipt @relation(fields: [receiptId], references: [id])
@@ -614,6 +632,8 @@ model PaymentHistory {
   @@index([receiptId])
   @@index([paymentDate])
   @@index([status])
+  @@index([tenantId])
+  @@unique([tenantId, paymentHistoryNumber])
   @@schema("crm_billing")
 }
 
@@ -621,7 +641,8 @@ model PaymentHistory {
 
 model CreditNote {
   id               String @id @default(uuid())
-  creditNoteNumber String @unique
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
+  creditNoteNumber String
 
   // Cross-schema UUID refs
   leadId           String // → leads.Lead.id
@@ -693,11 +714,14 @@ model CreditNote {
   @@index([refundStatus])
   @@index([createdAt])
   @@index([type])
+  @@index([tenantId])
+  @@unique([tenantId, creditNoteNumber])
   @@schema("crm_billing")
 }
 
 model CreditNoteItem {
   id             String     @id @default(uuid())
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
   creditNoteId   String
   creditNote     CreditNote @relation(fields: [creditNoteId], references: [id], onDelete: Cascade)
   description    String
@@ -708,6 +732,7 @@ model CreditNoteItem {
   order          Int        @default(0)
 
   @@index([creditNoteId])
+  @@index([tenantId])
   @@schema("crm_billing")
 }
 
@@ -715,7 +740,8 @@ model CreditNoteItem {
 
 model Voucher {
   id            String @id @default(uuid())
-  voucherNumber String @unique
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
+  voucherNumber String
 
   // Cross-schema UUID refs
   leadId              String // → leads.Lead.id
@@ -763,11 +789,14 @@ model Voucher {
 
   @@index([leadId, createdAt])
   @@index([status])
+  @@index([tenantId])
+  @@unique([tenantId, voucherNumber])
   @@schema("crm_billing")
 }
 
 model VoucherLocationDate {
   id        String    @id @default(uuid())
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
   voucherId String
   voucher   Voucher   @relation(fields: [voucherId], references: [id], onDelete: Cascade)
   location  String?
@@ -777,11 +806,13 @@ model VoucherLocationDate {
   order     Int       @default(0)
 
   @@index([voucherId])
+  @@index([tenantId])
   @@schema("crm_billing")
 }
 
 model VoucherMealPlan {
   id        String  @id @default(uuid())
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
   voucherId String
   voucher   Voucher @relation(fields: [voucherId], references: [id], onDelete: Cascade)
   dayNumber Int
@@ -791,11 +822,13 @@ model VoucherMealPlan {
   dinner    Boolean @default(false)
 
   @@index([voucherId])
+  @@index([tenantId])
   @@schema("crm_billing")
 }
 
 model VoucherItinerarySummary {
   id                String   @id @default(uuid())
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
   voucherId         String
   voucher           Voucher  @relation(fields: [voucherId], references: [id], onDelete: Cascade)
   dayNumber         Int
@@ -807,11 +840,13 @@ model VoucherItinerarySummary {
   order             Int      @default(0)
 
   @@index([voucherId])
+  @@index([tenantId])
   @@schema("crm_billing")
 }
 
 model VoucherFlightSegment {
   id               String    @id @default(uuid())
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
   voucherId        String
   voucher          Voucher   @relation(fields: [voucherId], references: [id], onDelete: Cascade)
   dayNumber        Int?
@@ -824,5 +859,16 @@ model VoucherFlightSegment {
   order            Int       @default(0)
 
   @@index([voucherId])
+  @@index([tenantId])
+  @@schema("crm_billing")
+}
+
+/// Last number used per agency, prefix and month (e.g. INV-202611-).
+model DocumentCounter {
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
+  key      String
+  value    Int
+
+  @@id([tenantId, key])
   @@schema("crm_billing")
 }

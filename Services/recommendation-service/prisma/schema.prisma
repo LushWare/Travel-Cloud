@@ -11,6 +11,7 @@ datasource db {
 }
 
 model Recommendation {
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
   id                String                     @id @default(uuid())
   scopeKey          String
   key               String
@@ -30,12 +31,14 @@ model Recommendation {
   updatedAt         DateTime                   @updatedAt
   feedback          RecommendationFeedback[]
 
-  @@unique([scopeKey, key])
+  @@unique([tenantId, scopeKey, key])
   @@index([scopeKey, module, active])
+  @@index([tenantId])
   @@schema("crm_recommendations")
 }
 
 model RecommendationFeedback {
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
   recommendationId String
   actorId          String
   status           String
@@ -46,14 +49,17 @@ model RecommendationFeedback {
 
   @@id([recommendationId, actorId])
   @@index([actorId, status])
+  @@index([tenantId])
   @@schema("crm_recommendations")
 }
 
 model RecommendationRun {
-  scopeKey   String   @id
+  tenantId   String   @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
+  scopeKey   String
   sourceAsOf DateTime?
   lastRunAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
+  @@id([tenantId, scopeKey])
   @@schema("crm_recommendations")
 }

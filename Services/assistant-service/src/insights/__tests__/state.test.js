@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { runWithTenant } from '../../../../shared/tenancy/src/index.js';
 import {
   acknowledgeKeys,
   buildDecisionRows,
@@ -151,7 +152,7 @@ describe('writes never break the product', () => {
       $executeRaw: vi.fn().mockResolvedValue(3),
     };
 
-    const result = await markSurfaced({ prisma, ...scope, keys: ['a', 'b', 'c'] });
+    const result = await runWithTenant('11111111-1111-4111-8111-111111111111', () => markSurfaced({ prisma, ...scope, keys: ['a', 'b', 'c'] }));
 
     expect(prisma.insightState.createMany).toHaveBeenCalledTimes(1);
     expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);

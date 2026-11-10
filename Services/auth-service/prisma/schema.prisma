@@ -43,3 +43,30 @@ model Otp {
   @@index([expiresAt])
   @@schema("crm_auth")
 }
+
+model RefreshSession {
+  id        String    @id @default(uuid())
+  userId    String
+  familyId  String
+  tenantId  String?   @db.Uuid
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  revokedAt DateTime?
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([familyId])
+  @@schema("crm_auth")
+}
+
+model RateLimit {
+  key     String   @id
+  hits    Int
+  resetAt DateTime @db.Timestamptz(3)
+
+  @@index([resetAt])
+  @@schema("crm_auth")
+}

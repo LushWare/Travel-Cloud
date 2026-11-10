@@ -12,8 +12,8 @@ const { mockFindUnique, mockFindFirst, mockFindMany, mockCount, mockCreate, mock
   mockVpUpdate: vi.fn(),
 }));
 
-vi.mock('../../db/client.js', () => ({
-  default: {
+vi.mock('../../db/client.js', () => {
+  const client = {
     user: {
       findUnique: mockFindUnique,
       findFirst: mockFindFirst,
@@ -27,17 +27,18 @@ vi.mock('../../db/client.js', () => ({
       groupBy: mockVpGroupBy,
       update: mockVpUpdate,
     },
-  },
-}));
+  };
+  return { default: client, identityPrisma: client };
+});
 
 import {
   getAllVendors, getVendorById, createVendor, updateVendor, deleteVendor, getVendorStats,
-  toggleVendorStatus, resetVendorPassword, getVendorPerformance, updateVendorStatus,
+  toggleVendorStatus, getVendorPerformance, updateVendorStatus,
   updateVendorRating, getVendorsByServiceType,
 } from '../vendor.controller.js';
 
 const ID = '11111111-1111-4111-8111-111111111111';
-const ACTOR = { id: '22222222-2222-4222-8222-222222222222', role: 'admin' };
+const ACTOR = { id: '22222222-2222-4222-8222-222222222222', role: 'admin', tenantId: '00000000-0000-4000-8000-000000000001' };
 
 function buildReqRes({ body = {}, params = {}, query = {}, user = ACTOR } = {}) {
   const req = { body, params, query, user };
@@ -56,6 +57,7 @@ beforeEach(() => {
   mockDelete.mockReset();
   mockVpGroupBy.mockReset();
   mockVpUpdate.mockReset();
+  mockFindFirst.mockResolvedValue({ id: ID, role: 'vendor' });
 });
 
 describe('getAllVendors', () => {
@@ -222,14 +224,25 @@ describe('toggleVendorStatus', () => {
   });
 });
 
-describe('resetVendorPassword', () => {
-  it('returns a temp password', async () => {
-    mockUpdate.mockResolvedValue({ id: ID });
-    const { req, res, next } = buildReqRes({ params: { id: ID } });
+describe('vendor account protection', () => {
+  it('returns 404 instead of editing an account that is not a vendor', async () => {
+    mockFindFirst.mockResolvedValue(null);
+    const { req, res, next } = buildReqRes({ params: { id: ID }, body: { name: 'x' } });
 
-    await resetVendorPassword(req, res, next);
+    await updateVendor(req, res, next);
 
-    expect(res.json.mock.calls[0][0].data.tempPassword).toBeTruthy();
+    expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 404 }));
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it('only changes the status of a vendor account', async () => {
+    mockFindFirst.mockResolvedValue(null);
+    const { req, res, next } = buildReqRes({ params: { id: ID }, body: { vendorStatus: 'verified' } });
+
+    await updateVendorStatus(req, res, next);
+
+    expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 404 }));
+    expect(mockVpUpdate).not.toHaveBeenCalled();
   });
 });
 

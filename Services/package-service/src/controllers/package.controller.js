@@ -78,7 +78,8 @@ export const getPackageById = asyncHandler(async (req, res) => {
     where: { id: req.params.id },
     include: { ...buildInclude(), reviews: { where: { isApproved: true }, orderBy: { createdAt: 'desc' } } },
   });
-  if (!pkg) throw new AppError('Package not found', 404);
+  const isProtected = req.user && ['admin', 'staff', 'salesRep', 'superAdmin'].includes(req.user.role);
+  if (!pkg || (!pkg.isActive && !isProtected)) throw new AppError('Package not found', 404);
   await prisma.package.update({ where: { id: req.params.id }, data: { views: { increment: 1 } } });
   res.json({ success: true, data: serializePackage(pkg) });
 });

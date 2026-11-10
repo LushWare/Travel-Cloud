@@ -110,7 +110,7 @@ describe('sendQuotation', () => {
   it('uploads the PDF and sends over WhatsApp with the media URL', async () => {
     const { res } = await run(sendQuotation, { params: { id: 'q-1' }, body: { channel: 'whatsapp' } });
 
-    expect(mockUpload).toHaveBeenCalledWith(expect.any(Buffer), 'quotation-QT-202608-0001');
+    expect(mockUpload).toHaveBeenCalledWith(expect.any(Buffer));
     expect(mockSendWhatsapp).toHaveBeenCalledWith(expect.objectContaining({
       phone: '+15551234567',
       mediaUrl: 'https://cdn.example.com/quotations/q.pdf',

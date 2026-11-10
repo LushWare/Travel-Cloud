@@ -2,13 +2,14 @@ import prisma from '../db/client.js';
 import AppError from '../utils/appError.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import { manualItineraryWebsiteSchema, upsertManualItineraryDaysSchema } from '../validators/manualItinerary.validator.js';
+import { requireTenantId } from '../../../shared/tenancy/src/index.js';
 
 // ─── Auto-assignment helper ────────────────────────────────────
 // Copied from lead.controller.js (not exported there) — see
 // customizedPackage.controller.js's identical copy for the rationale.
 async function autoAssignSalesRep(tx) {
   const settings = await tx.settings.upsert({
-    where: { singletonKey: 1 },
+    where: { tenantId_singletonKey: { tenantId: requireTenantId(), singletonKey: 1 } },
     update: {},
     create: { singletonKey: 1 },
   });

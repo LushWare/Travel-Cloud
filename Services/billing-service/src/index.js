@@ -14,6 +14,7 @@ import paymentReceiptRoutes from './routes/paymentReceipt.routes.js';
 import paymentHistoryRoutes from './routes/paymentHistory.routes.js';
 import creditNoteRoutes from './routes/creditNote.routes.js';
 import voucherRoutes from './routes/voucher.routes.js';
+import { installTenantFetch, tenantMiddleware } from '../../shared/tenancy/src/index.js';
 
 const app = express();
 const PORT = process.env.PORT || 3006;
@@ -24,6 +25,10 @@ app.use(cors({ origin: process.env.CLIENT_URL || '*', credentials: true }));
 // Request ID + structured logging (replaces morgan)
 app.use(correlationId);
 app.use(requestLogger);
+// Every request runs inside the agency the gateway took from the login.
+app.use(tenantMiddleware);
+// Calls to our other services carry the same agency.
+installTenantFetch();
 app.use(express.json());
 app.use(cookieParser());
 app.use(extractUser);

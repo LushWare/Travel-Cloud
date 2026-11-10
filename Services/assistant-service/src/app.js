@@ -7,6 +7,7 @@ import assistantRoutes from './routes/assistant.routes.js';
 import eventsRoutes from './routes/events.routes.js';
 import managementNotificationsRoutes from './routes/managementNotifications.routes.js';
 import managementNotificationsSeenRoutes from './routes/managementNotificationsSeen.routes.js';
+import { installTenantFetch, tenantMiddleware } from '../../shared/tenancy/src/index.js';
 
 const app = express();
 
@@ -17,6 +18,10 @@ app.use(express.json({ limit: '10mb' }));
 // Request ID + structured logging (replaces morgan)
 app.use(correlationId);
 app.use(requestLogger);
+// Every request runs inside the agency the gateway took from the login.
+app.use(tenantMiddleware);
+// Calls to our other services carry the same agency.
+installTenantFetch();
 
 app.get('/health', (req, res) =>
   res.json({ status: 'ok', service: 'assistant-service', timestamp: new Date().toISOString() })

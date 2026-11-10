@@ -93,6 +93,15 @@ describe('resendQuotationForVoice', () => {
     expect(res.json.mock.calls[0][0].data).toEqual({ email: null, whatsapp: 'sent' });
   });
 
+  it('sends WhatsApp a freshly uploaded link instead of a previously stored one', async () => {
+    mockFindUnique.mockResolvedValue(sentQuotation({ pdfUrl: 'https://old.example/expired.pdf' }));
+
+    await run({});
+
+    expect(mockUpload).toHaveBeenCalledTimes(1);
+    expect(mockSendWhatsapp).toHaveBeenCalledWith(expect.objectContaining({ mediaUrl: 'https://cdn.test/quote.pdf' }));
+  });
+
   it('reports one channel failed without failing the other', async () => {
     mockSendEmail.mockRejectedValue(new Error('smtp down'));
     const { res } = await run({});

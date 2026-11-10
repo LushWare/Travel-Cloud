@@ -11,6 +11,7 @@ import { injectFlightClient } from './middleware/flightClient.js';
 import { correlationId, requestLogger } from './middleware/requestLogger.js';
 import errorHandler from './middleware/errorHandler.js';
 import logger from './config/logger.js';
+import { installTenantFetch, tenantMiddleware } from '../../shared/tenancy/src/index.js';
 
 const app = express();
 
@@ -26,6 +27,10 @@ app.use(cookieParser());
 // Request ID + structured logging (replaces morgan)
 app.use(correlationId);
 app.use(requestLogger);
+// Every request runs inside the agency the gateway took from the login.
+app.use(tenantMiddleware);
+// Calls to our other services carry the same agency.
+installTenantFetch();
 
 app.use(extractUser);
 app.use(injectFlightClient);

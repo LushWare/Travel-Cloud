@@ -1,4 +1,4 @@
-import { API_BASE_URL } from './api.js';
+import { API_BASE_URL, authFetch } from '@/lib/authFetch';
 import type { RecommendationMode } from '@/features/recommendations/recommendationMode';
 
 export type RecommendationEvidence = { label: string; value: string | number | null };
@@ -19,18 +19,10 @@ export type BusinessRecommendation = {
   sourceAsOf: string;
 };
 
-function authHeaders() {
-  const token = localStorage.getItem('token') || sessionStorage.getItem('token');
-  return {
-    'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
-}
-
 async function request(path: string, init?: RequestInit) {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await authFetch(`${API_BASE_URL}${path}`, {
     ...init,
-    headers: { ...authHeaders(), ...init?.headers },
+    headers: { 'Content-Type': 'application/json', ...init?.headers },
   });
   const body = await response.json().catch(() => null);
   if (!response.ok || body?.success !== true) {

@@ -266,7 +266,7 @@ describe('applyLeadSelectionItinerary', () => {
     mockLineDeleteMany.mockReset();
     mockLineFindMany.mockReset();
     mockTransaction.mockReset();
-    mockTransaction.mockImplementation(async (ops) => Promise.all(ops));
+    mockTransaction.mockImplementation(async function (arg) { return typeof arg === 'function' ? arg(this) : Promise.all(arg); });
     mockPricingCreate.mockResolvedValue({ id: 'pr-1', currency: 'USD' });
     mockPricingUpdate.mockResolvedValue({ id: 'pr-1' });
     mockSelectionUpdate.mockResolvedValue({ id: 'sel-1' });

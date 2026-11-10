@@ -10,6 +10,7 @@ import SalesRepTable, { type SalesRep } from './SalesRepTable';
 import salesRepService from '../../../../services/salesRep.service';
 import adminService from '../../../../services/admin.service';
 import { unwrapList } from '../../../../services/apiResponse';
+import { sendInvitation } from '../../utils/sendInvitation';
 
 // Deliberately scoped to just this one permission for now — extend this array
 // (and the checkbox block in the edit dialog below) if more salesRep-toggleable
@@ -167,7 +168,7 @@ const SalesRepManagement = () => {
             : rep.isEmailVerified
               ? 'verified'
               : 'pending_first_login',
-          commissionRate: rep.commissionRate || 10,
+          commissionRate: rep.commissionRate ?? 10,
           permissions: rep.permissions || [],
           leadsAssigned: rep.leadsAssigned || 0,
           leadsConverted: rep.leadsConverted || 0,
@@ -239,7 +240,7 @@ const SalesRepManagement = () => {
       email: rep.email,
       phone: phoneNumber,
       phoneCountry,
-      commissionRate: rep.commissionRate,
+      commissionRate: rep.commissionRate ?? 10,
       targetLeads: 50,
       permissions: rep.permissions || [],
     });
@@ -271,7 +272,7 @@ const SalesRepManagement = () => {
       return;
     }
 
-    if (formData.commissionRate < 0 || formData.commissionRate > 100) {
+    if (!Number.isFinite(formData.commissionRate) || formData.commissionRate < 0 || formData.commissionRate > 100) {
       toast.error('Commission rate must be between 0 and 100');
       return;
     }
@@ -291,7 +292,11 @@ const SalesRepManagement = () => {
       const response = await salesRepService.createSalesRep(payload);
 
       if (response.data) {
-        toast.success(`Sales rep created! Invitation sent to ${formData.email}`);
+        if (await sendInvitation(response.data.salesRep?.id)) {
+          toast.success(`Sales rep created! Invitation sent to ${formData.email}`);
+        } else {
+          toast.error(`Sales rep created, but the invitation email failed. Use "Resend invitation".`);
+        }
         setShowNewRepDialog(false);
         resetForm();
 
@@ -324,7 +329,7 @@ const SalesRepManagement = () => {
       return;
     }
 
-    if (formData.commissionRate < 0 || formData.commissionRate > 100) {
+    if (!Number.isFinite(formData.commissionRate) || formData.commissionRate < 0 || formData.commissionRate > 100) {
       toast.error('Commission rate must be between 0 and 100');
       return;
     }

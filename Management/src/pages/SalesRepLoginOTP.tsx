@@ -6,9 +6,12 @@ import { Clock, Loader2, ShieldCheck } from 'lucide-react';
 import { getLoginBranding } from '../config/branding';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { useAuth } from '../contexts/AuthContext';
+import { nextStepAfterSignIn } from '@/lib/pendingTenantChoice';
 
 export default function SalesRepLoginOTP() {
   const navigate = useNavigate();
+  const { setAuth } = useAuth();
 
   const [otpCode, setOtpCode] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -111,28 +114,14 @@ export default function SalesRepLoginOTP() {
         otp: otpCode,
       });
 
-      console.log('OTP Response:', response.data); // Debug log
-
       if (response.data.status === 'success') {
-        console.log('Login successful, user data:', response.data.data.user); // Debug log
+        const step = nextStepAfterSignIn(response.data.data, setAuth);
 
-        // Store token and user data directly in localStorage
-        localStorage.setItem('token', response.data.data.token);
-        localStorage.setItem('user', JSON.stringify(response.data.data.user));
-
-        // Update axios default header
-        axios.defaults.headers.common['Authorization'] = `Bearer ${response.data.data.token}`;
-
-        // Clean up OTP session
         localStorage.removeItem('otpTempToken');
         localStorage.removeItem('otpMaskedEmail');
 
-        toast.success('Login successful!');
-
-        // Wait a moment, then navigate to dashboard
-        setTimeout(() => {
-          window.location.href = '/'; // Force page reload to update context
-        }, 500);
+        if (step === 'signed-in') toast.success('Login successful!');
+        navigate(step === 'choose-agency' ? '/choose-agency' : '/');
       } else {
         console.error('Unexpected response status:', response.data.status); // Debug log
         throw new Error('Unexpected response from server');

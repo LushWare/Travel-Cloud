@@ -1,5 +1,9 @@
 import prisma from '../db/client.js';
 import { getOrgSettings } from '../config/orgSettings.js';
+import { requireTenantId } from '../../../shared/tenancy/src/index.js';
+
+// Hand-written SQL is not filtered automatically: every statement names the agency itself.
+const agency = () => requireTenantId();
 
 const pad = (n, len = 5) => String(n).padStart(len, '0');
 const yyyymm = () => {
@@ -7,12 +11,19 @@ const yyyymm = () => {
   return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}`;
 };
 
-// Defaults preserved exactly as they were before doc number prefixes became
-// org-configurable — falls back per-key so an admin can override just one
-// document type without needing to set all six.
+// Falls back per-key so an admin can override just one document type.
 const DEFAULT_PREFIXES = {
   quotation: 'QUO', invoice: 'INV', receipt: 'REC',
   payment: 'PAY', creditNote: 'CN', voucher: 'VOU',
+};
+
+const SOURCES = {
+  quotation: { model: 'quotation', field: 'quotationNumber' },
+  invoice: { model: 'invoice', field: 'invoiceNumber' },
+  receipt: { model: 'paymentReceipt', field: 'receiptNumber' },
+  payment: { model: 'paymentHistory', field: 'paymentHistoryNumber' },
+  creditNote: { model: 'creditNote', field: 'creditNoteNumber' },
+  voucher: { model: 'voucher', field: 'voucherNumber' },
 };
 
 async function prefixFor(docType) {
@@ -20,68 +31,37 @@ async function prefixFor(docType) {
   return settings.docNumberPrefixes?.[docType] || DEFAULT_PREFIXES[docType];
 }
 
-export async function nextInvoiceNumber() {
-  const prefix = `${await prefixFor('invoice')}-${yyyymm()}-`;
-  const last = await prisma.invoice.findFirst({
-    where: { invoiceNumber: { startsWith: prefix } },
-    orderBy: { invoiceNumber: 'desc' },
-    select: { invoiceNumber: true },
-  });
-  const seq = last ? parseInt(last.invoiceNumber.split('-').pop(), 10) + 1 : 1;
-  return `${prefix}${pad(seq)}`;
+async function bumpCounter(key) {
+  const rows = await prisma.$queryRaw`
+    UPDATE "crm_billing"."DocumentCounter" SET "value" = "value" + 1
+    WHERE "key" = ${key} AND "tenantId" = ${agency()}::uuid
+    RETURNING "value"`;
+  return rows[0]?.value;
 }
 
-export async function nextQuotationNumber() {
-  const prefix = `${await prefixFor('quotation')}-${yyyymm()}-`;
-  const last = await prisma.quotation.findFirst({
-    where: { quotationNumber: { startsWith: prefix } },
-    orderBy: { quotationNumber: 'desc' },
-    select: { quotationNumber: true },
+async function startCounter(key, { model, field }) {
+  const last = await prisma[model].findFirst({
+    where: { [field]: { startsWith: key } },
+    orderBy: { [field]: 'desc' },
+    select: { [field]: true },
   });
-  const seq = last ? parseInt(last.quotationNumber.split('-').pop(), 10) + 1 : 1;
-  return `${prefix}${pad(seq)}`;
+  const seed = (last ? parseInt(last[field].slice(key.length), 10) || 0 : 0) + 1;
+  const rows = await prisma.$queryRaw`
+    INSERT INTO "crm_billing"."DocumentCounter" ("tenantId", "key", "value") VALUES (${agency()}::uuid, ${key}, ${seed})
+    ON CONFLICT ("tenantId", "key") DO UPDATE SET "value" = "DocumentCounter"."value" + 1
+    RETURNING "value"`;
+  return rows[0].value;
 }
 
-export async function nextReceiptNumber() {
-  const prefix = `${await prefixFor('receipt')}-${yyyymm()}-`;
-  const last = await prisma.paymentReceipt.findFirst({
-    where: { receiptNumber: { startsWith: prefix } },
-    orderBy: { receiptNumber: 'desc' },
-    select: { receiptNumber: true },
-  });
-  const seq = last ? parseInt(last.receiptNumber.split('-').pop(), 10) + 1 : 1;
-  return `${prefix}${pad(seq)}`;
+async function nextNumber(docType) {
+  const key = `${await prefixFor(docType)}-${yyyymm()}-`;
+  const seq = (await bumpCounter(key)) ?? (await startCounter(key, SOURCES[docType]));
+  return `${key}${pad(seq)}`;
 }
 
-export async function nextPaymentHistoryNumber() {
-  const prefix = `${await prefixFor('payment')}-${yyyymm()}-`;
-  const last = await prisma.paymentHistory.findFirst({
-    where: { paymentHistoryNumber: { startsWith: prefix } },
-    orderBy: { paymentHistoryNumber: 'desc' },
-    select: { paymentHistoryNumber: true },
-  });
-  const seq = last ? parseInt(last.paymentHistoryNumber.split('-').pop(), 10) + 1 : 1;
-  return `${prefix}${pad(seq)}`;
-}
-
-export async function nextCreditNoteNumber() {
-  const prefix = `${await prefixFor('creditNote')}-${yyyymm()}-`;
-  const last = await prisma.creditNote.findFirst({
-    where: { creditNoteNumber: { startsWith: prefix } },
-    orderBy: { creditNoteNumber: 'desc' },
-    select: { creditNoteNumber: true },
-  });
-  const seq = last ? parseInt(last.creditNoteNumber.split('-').pop(), 10) + 1 : 1;
-  return `${prefix}${pad(seq)}`;
-}
-
-export async function nextVoucherNumber() {
-  const prefix = `${await prefixFor('voucher')}-${yyyymm()}-`;
-  const last = await prisma.voucher.findFirst({
-    where: { voucherNumber: { startsWith: prefix } },
-    orderBy: { voucherNumber: 'desc' },
-    select: { voucherNumber: true },
-  });
-  const seq = last ? parseInt(last.voucherNumber.split('-').pop(), 10) + 1 : 1;
-  return `${prefix}${pad(seq)}`;
-}
+export const nextQuotationNumber = () => nextNumber('quotation');
+export const nextInvoiceNumber = () => nextNumber('invoice');
+export const nextReceiptNumber = () => nextNumber('receipt');
+export const nextPaymentHistoryNumber = () => nextNumber('payment');
+export const nextCreditNoteNumber = () => nextNumber('creditNote');
+export const nextVoucherNumber = () => nextNumber('voucher');

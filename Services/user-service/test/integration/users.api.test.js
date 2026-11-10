@@ -6,6 +6,7 @@ const { mockPrisma } = vi.hoisted(() => ({
   mockPrisma: {
     user: {
       findUnique: vi.fn(),
+      findFirst: vi.fn(),
       findMany: vi.fn(),
       count: vi.fn(),
       create: vi.fn(),
@@ -16,13 +17,14 @@ const { mockPrisma } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('../../src/db/client.js', () => ({ default: mockPrisma }));
+vi.mock('../../src/db/client.js', () => ({ default: mockPrisma, identityPrisma: mockPrisma }));
 
 const { default: app } = await import('../../src/app.js');
 
 describe('User API — /api/v1/users', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockPrisma.user.findFirst.mockResolvedValue(buildUserRow({ role: 'salesRep' }));
   });
 
   describe('GET /profile/me', () => {
@@ -100,7 +102,7 @@ describe('User API — /api/v1/users', () => {
   });
 
   describe('POST / (create)', () => {
-    it('creates a user and returns 201 with a tempPassword', async () => {
+    it('creates a user and returns 201 without any password', async () => {
       mockPrisma.user.findUnique.mockResolvedValue(null);
       mockPrisma.user.create.mockResolvedValue(buildUserRow({ role: 'customer' }));
 
@@ -110,7 +112,7 @@ describe('User API — /api/v1/users', () => {
         .send({ name: 'New Customer', email: 'newcustomer@test.com', role: 'customer' });
 
       expect(res.status).toBe(201);
-      expect(res.body.data.tempPassword).toBeTruthy();
+      expect(res.body.data.tempPassword).toBeUndefined();
     });
 
     it('returns 400 when the payload fails validation', async () => {
@@ -155,7 +157,7 @@ describe('User API — /api/v1/users', () => {
 
   describe('DELETE /:id', () => {
     it('returns 403 when the user cannot be deleted', async () => {
-      mockPrisma.user.findUnique.mockResolvedValue(buildUserRow({ canBeDeleted: false }));
+      mockPrisma.user.findFirst.mockResolvedValue(buildUserRow({ canBeDeleted: false }));
 
       const res = await request(app)
         .delete('/api/v1/users/a0000000-0000-4000-8000-000000000001')

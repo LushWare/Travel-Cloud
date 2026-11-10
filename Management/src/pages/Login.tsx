@@ -69,6 +69,8 @@ export default function Login() {
         navigate('/sales-rep-login-otp');
       } else if (result === 'password-reset-required') {
         navigate('/reset-password');
+      } else if (result === 'tenant-choice-required') {
+        navigate('/choose-agency');
       } else if (result === true) {
         navigate('/');
       }

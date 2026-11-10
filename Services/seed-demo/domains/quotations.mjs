@@ -11,7 +11,7 @@
  * voucher builder all follow the same pointer.
  */
 import { addDays, humanDay, isoDay, money } from '../lib/rng.mjs';
-import { CATEGORIES } from '../lib/ids.mjs';
+import { CATEGORIES, ownedPrefix } from '../lib/ids.mjs';
 import { AGENCY } from '../lib/fixtures.mjs';
 
 /** Leads that got as far as a priced document. */
@@ -65,7 +65,7 @@ export async function seed(ctx) {
     `DELETE FROM crm_billing."QuotationRevision" WHERE id LIKE $1`,
     `DELETE FROM crm_billing."Quotation" WHERE id LIKE $1`,
   ]) {
-    await db.sql.query(sql, [`${CATEGORIES.quotation}000000-%`]);
+    await db.sql.query(sql, [`${ownedPrefix('quotation')}%`]);
   }
 
   const quotations = [];

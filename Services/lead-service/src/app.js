@@ -8,6 +8,7 @@ import { correlationId, requestLogger } from './middleware/requestLogger.js';
 import leadRoutes from './routes/lead.routes.js';
 import customizedPackageRoutes from './routes/customizedPackage.routes.js';
 import manualItineraryRoutes from './routes/manualItinerary.routes.js';
+import { installTenantFetch, tenantMiddleware } from '../../shared/tenancy/src/index.js';
 
 // The Express app, built without starting a server or connecting to the DB so
 // it can be imported directly by supertest. `src/index.js` owns the lifecycle.
@@ -19,6 +20,10 @@ app.use(express.urlencoded({ extended: true }));
 // Request ID + structured logging (replaces morgan)
 app.use(correlationId);
 app.use(requestLogger);
+// Every request runs inside the agency the gateway took from the login.
+app.use(tenantMiddleware);
+// Calls to our other services carry the same agency.
+installTenantFetch();
 
 app.get('/health', (req, res) =>
   res.json({ status: 'ok', service: 'lead-service', timestamp: new Date().toISOString() })

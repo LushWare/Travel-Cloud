@@ -10,10 +10,18 @@ const { mockFindUnique, mockFindMany, mockCount, mockCreate, mockUpdate, mockDel
   mockGroupBy: vi.fn(),
 }));
 
-vi.mock('../../db/client.js', () => ({
-  default: {
+
+// Target lookups go through findFirst; unless a test stubs findUnique, the target is an ordinary staff account.
+const defaultTarget = (args) => ({ id: args?.where?.id, role: args?.where?.role || 'salesRep', canBeDeleted: true, isActive: true });
+const mockFindFirst = vi.fn();
+const resetFindFirst = () => mockFindFirst.mockReset().mockImplementation(async (args) =>
+  (mockFindUnique.getMockImplementation() ? mockFindUnique(args) : defaultTarget(args)));
+
+vi.mock('../../db/client.js', () => {
+  const client = {
     user: {
       findUnique: mockFindUnique,
+      findFirst: (...args) => mockFindFirst(...args),
       findMany: mockFindMany,
       count: mockCount,
       create: mockCreate,
@@ -21,8 +29,9 @@ vi.mock('../../db/client.js', () => ({
       delete: mockDelete,
       groupBy: mockGroupBy,
     },
-  },
-}));
+  };
+  return { default: client, identityPrisma: client };
+});
 
 vi.mock('bcryptjs', () => ({
   default: { hash: vi.fn().mockResolvedValue('hashed-password') },
@@ -31,13 +40,13 @@ vi.mock('bcryptjs', () => ({
 import bcrypt from 'bcryptjs';
 import {
   getCurrentUserProfile, updateCurrentUserProfile, getAllUsers, getUser, createUser,
-  updateUser, updateUserPassword, deleteUser, toggleUserStatus, getUsersByRole,
+  updateUser, deleteUser, toggleUserStatus, getUsersByRole,
   assignUserRole, getUserStats,
 } from '../user.controller.js';
 
 const ID = '11111111-1111-4111-8111-111111111111';
 const SECOND_ID = '33333333-3333-4333-8333-333333333333';
-const ACTOR = { id: '22222222-2222-4222-8222-222222222222', role: 'admin' };
+const ACTOR = { id: '22222222-2222-4222-8222-222222222222', role: 'admin', tenantId: '00000000-0000-4000-8000-000000000001' };
 
 function buildReqRes({ body = {}, params = {}, query = {}, user = ACTOR } = {}) {
   const req = { body, params, query, user };
@@ -47,6 +56,7 @@ function buildReqRes({ body = {}, params = {}, query = {}, user = ACTOR } = {}) 
 }
 
 beforeEach(() => {
+  resetFindFirst();
   mockFindUnique.mockReset();
   mockFindMany.mockReset();
   mockCount.mockReset();
@@ -218,7 +228,7 @@ describe('getUser', () => {
 describe('createUser', () => {
   const valid = { name: 'New User', email: 'new@test.com', role: 'customer' };
 
-  it('creates a user with a generated temp password when none is supplied', async () => {
+  it('never returns a password for a new user', async () => {
     mockFindUnique.mockResolvedValue(null);
     mockCreate.mockResolvedValue({ id: ID, name: 'New User', email: 'new@test.com', role: 'customer', password: 'hashed-password' });
     const { req, res, next } = buildReqRes({ body: valid });
@@ -232,7 +242,7 @@ describe('createUser', () => {
     expect(res.status).toHaveBeenCalledWith(201);
     const payload = res.json.mock.calls[0][0];
     expect(payload.data.user.password).toBeUndefined();
-    expect(payload.data.tempPassword).toBeTruthy();
+    expect(payload.data.tempPassword).toBeUndefined();
   });
 
   it('does not return a tempPassword when the caller supplied a password', async () => {
@@ -277,21 +287,6 @@ describe('updateUser', () => {
 
     expect(mockUpdate).toHaveBeenCalledWith({ where: { id: ID }, data: { name: 'Updated' } });
     expect(res.json.mock.calls[0][0].data.user.password).toBeUndefined();
-  });
-});
-
-describe('updateUserPassword', () => {
-  it('hashes and stores the new password, clearing temp-password flags', async () => {
-    mockUpdate.mockResolvedValue({ id: ID, password: 'hashed-password' });
-    const { req, res, next } = buildReqRes({ params: { id: ID }, body: { password: 'newpassword' } });
-
-    await updateUserPassword(req, res, next);
-
-    expect(bcrypt.hash).toHaveBeenCalledWith('newpassword', 12);
-    expect(mockUpdate).toHaveBeenCalledWith({
-      where: { id: ID },
-      data: expect.objectContaining({ password: 'hashed-password', mustChangePassword: false, isTempPassword: false }),
-    });
   });
 });
 

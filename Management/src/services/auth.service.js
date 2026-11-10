@@ -8,7 +8,7 @@ const authService = {
 
   // Logout
   logout: async () => {
-    localStorage.removeItem('token');
+    await api.post('/auth/logout', {}).catch(() => {});
     localStorage.removeItem('user');
   },
 
@@ -43,7 +43,7 @@ const authService = {
 
   // Check if user is authenticated
   isAuthenticated: () => {
-    return !!localStorage.getItem('token');
+    return !!localStorage.getItem('user');
   },
 
   // Get stored user data
@@ -53,8 +53,7 @@ const authService = {
   },
 
   // Store user data
-  storeUser: (userData, token) => {
-    localStorage.setItem('token', token);
+  storeUser: (userData) => {
     localStorage.setItem('user', JSON.stringify(userData));
   },
 };

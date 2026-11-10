@@ -1,15 +1,16 @@
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
-import prisma from '../db/client.js';
+import prisma, { identityPrisma } from '../db/client.js';
 import AppError from '../utils/appError.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import { idParamSchema, formatZodError } from '../validators/common.js';
 import {
   createUserSchema, updateUserSchema, updateCurrentUserProfileSchema,
-  updateUserPasswordSchema, assignUserRoleSchema, listUsersQuerySchema,
+  assignUserRoleSchema, listUsersQuerySchema,
 } from '../validators/user.validator.js';
 import { z } from 'zod';
 import { USER_ROLES } from '../validators/common.js';
+import { assertMayGrantRole, assertNotSelf, findManageableUser, newMembership } from '../utils/accountGuard.js';
 
 const roleParamSchema = z.object({ role: z.enum(USER_ROLES) });
 
@@ -81,8 +82,9 @@ export const getUser = asyncHandler(async (req, res) => {
 
 export const createUser = asyncHandler(async (req, res) => {
   const { name, email, phone, role, password } = parseOrThrow(createUserSchema, req.body);
+  assertMayGrantRole(req.user, role);
 
-  const existing = await prisma.user.findUnique({ where: { email } });
+  const existing = await identityPrisma.user.findUnique({ where: { email } });
   if (existing) throw new AppError('User with this email already exists', 400);
 
   const tempPassword = password || crypto.randomBytes(8).toString('hex');
@@ -98,19 +100,24 @@ export const createUser = asyncHandler(async (req, res) => {
       createdById: req.user.id,
       isTempPassword: !password,
       mustChangePassword: !password,
+      // Website customers are not agency staff; an admin who set the password needs no invitation.
+      ...(role !== 'customer' && { memberships: newMembership(req.user, role, [], { active: Boolean(password) }) }),
     },
   });
 
   res.status(201).json({
     status: 'success',
     message: 'User created successfully',
-    data: { user: safeUser(user), ...(!password && { tempPassword }) },
+    data: { user: safeUser(user) },
   });
 });
 
 export const updateUser = asyncHandler(async (req, res) => {
   const { id } = parseOrThrow(idParamSchema, req.params);
   const { name, phone, role, isActive, permissions } = parseOrThrow(updateUserSchema, req.body);
+  await findManageableUser(req.user, id);
+  if (role || isActive !== undefined || permissions) assertNotSelf(req.user, id);
+  assertMayGrantRole(req.user, role);
   const user = await prisma.user.update({
     where: { id },
     data: {
@@ -124,21 +131,10 @@ export const updateUser = asyncHandler(async (req, res) => {
   res.json({ status: 'success', data: { user: safeUser(user) } });
 });
 
-export const updateUserPassword = asyncHandler(async (req, res) => {
-  const { id } = parseOrThrow(idParamSchema, req.params);
-  const { password } = parseOrThrow(updateUserPasswordSchema, req.body);
-  const hashed = await bcrypt.hash(password, 12);
-  const user = await prisma.user.update({
-    where: { id },
-    data: { password: hashed, passwordChangedAt: new Date(), mustChangePassword: false, isTempPassword: false },
-  });
-  res.json({ status: 'success', message: 'Password updated', data: { user: safeUser(user) } });
-});
-
 export const deleteUser = asyncHandler(async (req, res) => {
   const { id } = parseOrThrow(idParamSchema, req.params);
-  const user = await prisma.user.findUnique({ where: { id } });
-  if (!user) throw new AppError('User not found', 404);
+  const user = await findManageableUser(req.user, id);
+  assertNotSelf(req.user, id);
   if (!user.canBeDeleted) throw new AppError('This user cannot be deleted', 403);
   await prisma.user.delete({ where: { id } });
   res.json({ status: 'success', message: 'User deleted', data: {} });
@@ -146,8 +142,8 @@ export const deleteUser = asyncHandler(async (req, res) => {
 
 export const toggleUserStatus = asyncHandler(async (req, res) => {
   const { id } = parseOrThrow(idParamSchema, req.params);
-  const user = await prisma.user.findUnique({ where: { id } });
-  if (!user) throw new AppError('User not found', 404);
+  const user = await findManageableUser(req.user, id);
+  assertNotSelf(req.user, id);
   const updated = await prisma.user.update({
     where: { id },
     data: { isActive: !user.isActive },
@@ -167,6 +163,9 @@ export const getUsersByRole = asyncHandler(async (req, res) => {
 export const assignUserRole = asyncHandler(async (req, res) => {
   const { id } = parseOrThrow(idParamSchema, req.params);
   const { role } = parseOrThrow(assignUserRoleSchema, req.body);
+  await findManageableUser(req.user, id);
+  assertNotSelf(req.user, id);
+  assertMayGrantRole(req.user, role);
   const user = await prisma.user.update({ where: { id }, data: { role } });
   res.json({ status: 'success', message: 'Role updated', data: { user: safeUser(user) } });
 });

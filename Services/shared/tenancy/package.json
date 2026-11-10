@@ -1,0 +1,17 @@
+{
+  "name": "@travel-crm/tenancy",
+  "version": "1.0.0",
+  "description": "Agency (tenant) context and the agency filter every service's database access goes through",
+  "private": true,
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.10"
+  }
+}

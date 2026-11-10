@@ -7,7 +7,12 @@ RUN apt-get update -y && apt-get install -y --no-install-recommends openssl \
 
 WORKDIR /app
 
-# voice-service has no @travel-crm/* dependencies — nothing shared to copy.
+# Shared agency (tenant) filter.
+# No runtime dependencies, so no install step.
+COPY shared/tenancy/src ./shared/tenancy/src
+COPY shared/constants/src ./shared/constants/src
+COPY shared/constants/package.json ./shared/constants/package.json
+COPY shared/tenancy/package.json ./shared/tenancy/package.json
 COPY voice-service ./voice-service
 WORKDIR /app/voice-service
 RUN npm ci

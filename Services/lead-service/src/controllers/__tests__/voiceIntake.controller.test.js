@@ -55,7 +55,15 @@ vi.mock('../../services/notification.client.js', () => ({
 
 process.env.INTERNAL_EVENTS_TOKEN = 'test-internal-token';
 
-const { default: app } = await import('../../app.js');
+const { default: serviceApp } = await import('../../app.js');
+const { default: express } = await import('express');
+
+const TEST_AGENCY = '11111111-1111-4111-8111-111111111111';
+// Requests reach the service with the agency the gateway took from the login.
+const app = express().use((req, _res, next) => {
+  req.headers['x-tenant-id'] ??= TEST_AGENCY;
+  next();
+}, serviceApp);
 
 const txClient = {
   lead: {
@@ -336,7 +344,7 @@ describe('voice channel lead intake', () => {
     arrangeNewLead();
     await postIntake(voiceBody());
     expect(mockLeadUpsert.mock.calls[0][0].where).toEqual({
-      intakeChannel_intakeSessionId: { intakeChannel: 'voice', intakeSessionId: 'call_abc123' },
+      tenantId_intakeChannel_intakeSessionId: { tenantId: TEST_AGENCY, intakeChannel: 'voice', intakeSessionId: 'call_abc123' },
     });
   });
 

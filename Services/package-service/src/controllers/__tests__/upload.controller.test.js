@@ -14,8 +14,13 @@ vi.mock('../../db/client.js', () => ({ default: {} }));
 
 const { default: app } = await import('../../app.js');
 
-function authHeaders() {
+const DEMO = '00000000-0000-4000-8000-000000000001';
+const AGENCY = '11111111-1111-4111-8111-111111111111';
+const OTHER = '22222222-2222-4222-8222-222222222222';
+
+function authHeaders(tenantId = DEMO) {
   return {
+    'x-tenant-id': tenantId,
     'x-user-id': 'agent-1',
     'x-user-role': 'admin',
     'x-user-email': 'agent@test.com',
@@ -42,6 +47,34 @@ describe('DELETE /api/v1/upload/:publicId', () => {
     expect(mockDestroy).toHaveBeenCalledWith('travel-crm/packages/abc123');
   });
 
+  it('deletes an image the agency owns', async () => {
+    mockDestroy.mockResolvedValue({ result: 'ok' });
+
+    const res = await request(app)
+      .delete(`/api/v1/upload/${encodeURIComponent(`travel-crm/tenants/${AGENCY}/packages/x`)}`)
+      .set(authHeaders(AGENCY));
+
+    expect(res.status).toBe(200);
+  });
+
+  it('refuses to delete an image of another agency, answering as if it did not exist', async () => {
+    const res = await request(app)
+      .delete(`/api/v1/upload/${encodeURIComponent(`travel-crm/tenants/${OTHER}/packages/x`)}`)
+      .set(authHeaders(AGENCY));
+
+    expect(res.status).toBe(404);
+    expect(mockDestroy).not.toHaveBeenCalled();
+  });
+
+  it('refuses to delete images from before agencies existed unless the agency is the demo one', async () => {
+    const res = await request(app)
+      .delete('/api/v1/upload/travel-crm%2Fpackages%2Fabc123')
+      .set(authHeaders(AGENCY));
+
+    expect(res.status).toBe(404);
+    expect(mockDestroy).not.toHaveBeenCalled();
+  });
+
   it('returns 401 when unauthenticated', async () => {
     const res = await request(app).delete('/api/v1/upload/abc123');
     expect(res.status).toBe(401);
@@ -64,6 +97,16 @@ describe('POST /api/v1/upload/delete-multiple', () => {
 
     expect(res.status).toBe(200);
     expect(mockDestroy).toHaveBeenCalledTimes(3);
+  });
+
+  it('refuses the whole batch when any image belongs to another agency', async () => {
+    const res = await request(app)
+      .post('/api/v1/upload/delete-multiple')
+      .set(authHeaders(AGENCY))
+      .send({ publicIds: [`travel-crm/tenants/${AGENCY}/a`, `travel-crm/tenants/${OTHER}/b`] });
+
+    expect(res.status).toBe(404);
+    expect(mockDestroy).not.toHaveBeenCalled();
   });
 
   it('rejects an empty publicIds array', async () => {

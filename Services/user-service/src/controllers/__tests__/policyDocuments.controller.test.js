@@ -8,8 +8,8 @@ const { mockFindMany, mockFindUnique, mockCreate, mockUpdate, mockDelete } = vi.
   mockDelete: vi.fn(),
 }));
 
-vi.mock('../../db/client.js', () => ({
-  default: {
+vi.mock('../../db/client.js', () => {
+  const client = {
     policyDocument: {
       findMany: mockFindMany,
       findUnique: mockFindUnique,
@@ -17,8 +17,9 @@ vi.mock('../../db/client.js', () => ({
       update: mockUpdate,
       delete: mockDelete,
     },
-  },
-}));
+  };
+  return { default: client, identityPrisma: client };
+});
 
 import {
   getPolicyDocuments, getPolicyDocument, postPolicyDocument, putPolicyDocument,

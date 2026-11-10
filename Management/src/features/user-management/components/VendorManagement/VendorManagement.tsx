@@ -9,6 +9,7 @@ import { formatDate } from '../../utils/helpers';
 import { validatePhone, formatPhoneToE164, getPhonePlaceholder, parseE164, COUNTRIES } from '../../utils/phoneUtils';
 import vendorService from '../../../../services/vendor.service';
 import VendorTable from './VendorTable';
+import { sendInvitation } from '../../utils/sendInvitation';
 
 const VENDOR_TYPES = ['hotel', 'transport', 'activity', 'restaurant', 'guide', 'other'];
 const VENDOR_TYPE_LABELS: Record<string, string> = {
@@ -215,21 +216,25 @@ const VendorManagement = () => {
 
     try {
       setActionLoading(true);
+      const { phoneCountry: _contactCountry, ...contactPerson } = formData.contactPerson;
       const submitData = {
         ...formData,
         phone: phoneData.e164,
         phoneCountry: phoneData.countryCode,
         contactPerson: {
-          ...formData.contactPerson,
+          ...contactPerson,
           phone: contactPersonPhoneData ? contactPersonPhoneData.e164 : '',
-          phoneCountry: contactPersonPhoneData ? contactPersonPhoneData.countryCode : formData.contactPerson.phoneCountry,
         },
       };
       const response = await vendorService.createVendor(submitData);
 
       if (response.status === 'success') {
         setShowNewVendorDialog(false);
-        setSuccessMessage(`Vendor created successfully`);
+        setSuccessMessage(
+          (await sendInvitation(response.data?.vendor?.id))
+            ? `Vendor created. Invitation sent to ${submitData.email}`
+            : 'Vendor created, but the invitation email failed. Use "Resend invitation".'
+        );
         setTimeout(() => setSuccessMessage(''), 5000);
         resetForm();
         setValidationErrors({});
@@ -286,12 +291,10 @@ const VendorManagement = () => {
 
       const updateData = {
         name: formData.name,
-        email: formData.email,
         phone: phoneData ? phoneData.e164 : selectedVendor.phone,
         phoneCountry: phoneData ? phoneData.countryCode : selectedVendor.phoneCountry || 'US',
         businessName: formData.businessName,
         serviceType: formData.serviceType,
-        businessRegistrationNumber: formData.businessRegistrationNumber,
         taxIdentificationNumber: formData.taxIdentificationNumber,
         address: formData.address,
         bankDetails: formData.bankDetails,

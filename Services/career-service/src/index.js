@@ -9,6 +9,7 @@ import logger from './config/logger.js';
 import careerRoutes from './routes/career.routes.js';
 import vacancyRoutes from './routes/vacancy.routes.js';
 import prisma from './db/client.js';
+import { installTenantFetch, tenantMiddleware } from '../../shared/tenancy/src/index.js';
 
 const app = express();
 
@@ -20,6 +21,10 @@ app.use(express.urlencoded({ extended: true }));
 // Request ID + structured logging (replaces morgan)
 app.use(correlationId);
 app.use(requestLogger);
+// Every request runs inside the agency the gateway took from the login.
+app.use(tenantMiddleware);
+// Calls to our other services carry the same agency.
+installTenantFetch();
 
 app.get('/health', (req, res) =>
   res.json({ status: 'ok', service: 'career-service', timestamp: new Date().toISOString() })

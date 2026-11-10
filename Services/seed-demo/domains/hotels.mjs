@@ -13,7 +13,7 @@
  */
 import { DESTINATIONS } from '../lib/destinations.mjs';
 import { addDays, money } from '../lib/rng.mjs';
-import { CATEGORIES } from '../lib/ids.mjs';
+import { CATEGORIES, ownedPrefix } from '../lib/ids.mjs';
 
 /** Statuses whose leads have had rooms held with a supplier. */
 const STAY_STATUSES = { CONFIRMED: 'confirmed', BOOKING_IN_PROGRESS: 'confirmed', APPROVED: 'pending', CANCELLED: 'cancelled', BOOKING_FAILED: 'failed' };
@@ -29,7 +29,7 @@ export async function seed(ctx) {
   const { reps, admins } = ctx.data.users;
 
   // Own the whole table's demo range, so a re-run replaces rather than appends.
-  await db.sql.query(`DELETE FROM crm_packages."HotelBooking" WHERE id LIKE $1`, [`${CATEGORIES.hotelBooking}000000-%`]);
+  await db.sql.query(`DELETE FROM crm_packages."HotelBooking" WHERE id LIKE $1`, [`${ownedPrefix('hotelBooking')}%`]);
 
   const eligible = plan.filter((l) => STAY_STATUSES[l.status]);
   const rows = [];

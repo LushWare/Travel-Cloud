@@ -16,7 +16,7 @@ const { mockPrisma } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('../../src/db/client.js', () => ({ default: mockPrisma }));
+vi.mock('../../src/db/client.js', () => ({ default: mockPrisma, identityPrisma: mockPrisma }));
 
 const { default: app } = await import('../../src/app.js');
 
@@ -25,6 +25,7 @@ const ID = 'a0000000-0000-4000-8000-000000000001';
 describe('Sales Rep API — /api/v1/sales-reps', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockPrisma.user.findFirst.mockResolvedValue(buildUserRow({ role: 'salesRep' }));
   });
 
   it('returns 401 without auth headers', async () => {
@@ -62,7 +63,7 @@ describe('Sales Rep API — /api/v1/sales-reps', () => {
       .send({ name: 'Priya Nair', email: 'priya@test.com' });
 
     expect(res.status).toBe(201);
-    expect(res.body.data.tempPassword).toBeTruthy();
+    expect(res.body.data.tempPassword).toBeUndefined();
   });
 
   it('POST / rejects a payload with an unknown field (role is not client-settable)', async () => {
@@ -96,14 +97,16 @@ describe('Sales Rep API — /api/v1/sales-reps', () => {
     expect(res.body.data.metrics.note).toMatch(/analytics-service/);
   });
 
-  it('PATCH /:id/commission is a no-op stub that still validates the id', async () => {
+  it('PATCH /:id/commission saves the new rate', async () => {
+    mockPrisma.user.update.mockResolvedValue(buildUserRow({ id: ID, role: 'salesRep', commissionRate: 20 }));
+
     const res = await request(app)
       .patch(`/api/v1/sales-reps/${ID}/commission`)
       .set(authHeaders({ role: 'admin' }))
       .send({ commissionRate: 20 });
 
     expect(res.status).toBe(200);
-    expect(mockPrisma.user.update).not.toHaveBeenCalled();
+    expect(mockPrisma.user.update).toHaveBeenCalledWith({ where: { id: ID }, data: { commissionRate: 20 } });
   });
 
   it('DELETE /:id returns 404 when the rep does not exist', async () => {

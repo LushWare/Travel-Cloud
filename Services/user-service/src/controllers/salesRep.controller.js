@@ -1,12 +1,20 @@
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
-import prisma from '../db/client.js';
+import prisma, { identityPrisma } from '../db/client.js';
 import AppError from '../utils/appError.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import { idParamSchema, formatZodError } from '../validators/common.js';
-import { createSalesRepSchema, updateSalesRepSchema, listSalesRepsQuerySchema } from '../validators/salesRep.validator.js';
+import {
+  createSalesRepSchema, updateSalesRepSchema, updateCommissionSchema, listSalesRepsQuerySchema, DEFAULT_COMMISSION_RATE,
+} from '../validators/salesRep.validator.js';
+import { findManageableUser, newMembership } from '../utils/accountGuard.js';
 
-const safeUser = (u) => { if (!u) return null; const { password, ...r } = u; return r; };
+// commissionRate is a Prisma Decimal; send it as a plain number.
+const safeUser = (u) => {
+  if (!u) return null;
+  const { password, ...r } = u;
+  return { ...r, commissionRate: r.commissionRate == null ? null : Number(r.commissionRate) };
+};
 
 function parseOrThrow(schema, value) {
   const parsed = schema.safeParse(value);
@@ -38,9 +46,9 @@ export const getSalesRepById = asyncHandler(async (req, res) => {
 });
 
 export const createSalesRep = asyncHandler(async (req, res) => {
-  const { name, email, phone } = parseOrThrow(createSalesRepSchema, req.body);
+  const { name, email, phone, phoneCountry, commissionRate = DEFAULT_COMMISSION_RATE } = parseOrThrow(createSalesRepSchema, req.body);
 
-  const existing = await prisma.user.findUnique({ where: { email } });
+  const existing = await identityPrisma.user.findUnique({ where: { email } });
   if (existing) throw new AppError('User with this email already exists', 400);
 
   const tempPassword = crypto.randomBytes(8).toString('hex');
@@ -48,22 +56,24 @@ export const createSalesRep = asyncHandler(async (req, res) => {
 
   const rep = await prisma.user.create({
     data: {
-      name, email, phone: phone || null,
-      password: hashed, role: 'salesRep',
+      name, email, phone: phone || null, ...(phoneCountry && { phoneCountry }),
+      password: hashed, role: 'salesRep', commissionRate,
       createdById: req.user.id,
       isTempPassword: true, mustChangePassword: true,
       permissions: ['view_reports', 'manage_packages'],
+      memberships: newMembership(req.user, 'salesRep', ['view_reports', 'manage_packages']),
     },
   });
-  res.status(201).json({ status: 'success', data: { salesRep: safeUser(rep), tempPassword } });
+  res.status(201).json({ status: 'success', data: { salesRep: safeUser(rep) } });
 });
 
 export const updateSalesRep = asyncHandler(async (req, res) => {
   const { id } = parseOrThrow(idParamSchema, req.params);
-  const { name, phone, email } = parseOrThrow(updateSalesRepSchema, req.body);
+  const { name, phone, email, phoneCountry, commissionRate } = parseOrThrow(updateSalesRepSchema, req.body);
+  await findManageableUser(req.user, id, { role: 'salesRep', notFound: 'Sales representative not found' });
   const rep = await prisma.user.update({
     where: { id },
-    data: { ...(name && { name }), ...(phone !== undefined && { phone }), ...(email && { email }) },
+    data: { ...(name && { name }), ...(phone !== undefined && { phone }), ...(email && { email }), ...(phoneCountry && { phoneCountry }), ...(commissionRate !== undefined && { commissionRate }) },
   });
   res.json({ status: 'success', data: { salesRep: safeUser(rep) } });
 });
@@ -90,17 +100,6 @@ export const toggleSalesRepStatus = asyncHandler(async (req, res) => {
   res.json({ status: 'success', data: { salesRep: safeUser(updated) } });
 });
 
-export const resetSalesRepPassword = asyncHandler(async (req, res) => {
-  const { id } = parseOrThrow(idParamSchema, req.params);
-  const tempPassword = crypto.randomBytes(8).toString('hex');
-  const hashed = await bcrypt.hash(tempPassword, 12);
-  await prisma.user.update({
-    where: { id },
-    data: { password: hashed, isTempPassword: true, mustChangePassword: true },
-  });
-  res.json({ status: 'success', message: 'Password reset', data: { tempPassword } });
-});
-
 export const getSalesRepPerformance = asyncHandler(async (req, res) => {
   // Aggregation across services — simplified response for now
   const { id } = parseOrThrow(idParamSchema, req.params);
@@ -110,10 +109,11 @@ export const getSalesRepPerformance = asyncHandler(async (req, res) => {
 });
 
 export const updateSalesRepCommission = asyncHandler(async (req, res) => {
-  // commissionRate is a free field not in the schema — update via notes/profile update.
-  // Intentional stub: validates the id shape but does not persist anything yet.
-  parseOrThrow(idParamSchema, req.params);
-  res.json({ status: 'success', message: 'Commission rate updated', data: {} });
+  const { id } = parseOrThrow(idParamSchema, req.params);
+  const { commissionRate } = parseOrThrow(updateCommissionSchema, req.body);
+  await findManageableUser(req.user, id, { role: 'salesRep', notFound: 'Sales representative not found' });
+  const rep = await prisma.user.update({ where: { id }, data: { commissionRate } });
+  res.json({ status: 'success', message: 'Commission rate updated', data: { salesRep: safeUser(rep) } });
 });
 
 export const getInternalNotifyTargets = asyncHandler(async (req, res) => {

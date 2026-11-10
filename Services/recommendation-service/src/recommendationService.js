@@ -2,6 +2,7 @@ import { fetchBusinessSignals } from './analyticsClient.js';
 import { generateRecommendations } from './ai/generateRecommendations.js';
 import { buildRecommendations } from './recommendationEngine.js';
 import prisma from './db/client.js';
+import { requireTenantId } from '../../shared/tenancy/src/index.js';
 
 const priorityRank = { high: 0, medium: 1, low: 2 };
 const REFRESH_WINDOW_MS = 5 * 60_000;
@@ -18,7 +19,8 @@ function storageScopeKey(scopeKey, mode) {
 export async function refreshRecommendations(actor, requestId, mode = 'ai') {
   const viewerScopeKey = baseScopeKey(actor);
   const scopeKey = storageScopeKey(viewerScopeKey, mode);
-  const cachedRun = await prisma.recommendationRun.findUnique({ where: { scopeKey } });
+  const tenantId = requireTenantId();
+  const cachedRun = await prisma.recommendationRun.findUnique({ where: { tenantId_scopeKey: { tenantId, scopeKey } } });
   if (cachedRun && Date.now() - cachedRun.lastRunAt.getTime() < REFRESH_WINDOW_MS) {
     return { scopeKey, sourceAsOf: cachedRun.sourceAsOf?.toISOString() ?? null };
   }
@@ -57,13 +59,13 @@ export async function refreshRecommendations(actor, requestId, mode = 'ai') {
         active: true,
       };
       await tx.recommendation.upsert({
-        where: { scopeKey_key: { scopeKey, key: item.key } },
+        where: { tenantId_scopeKey_key: { tenantId, scopeKey, key: item.key } },
         create: { scopeKey, key: item.key, ...data },
         update: data,
       });
     }
     await tx.recommendationRun.upsert({
-      where: { scopeKey },
+      where: { tenantId_scopeKey: { tenantId, scopeKey } },
       create: { scopeKey, sourceAsOf: new Date(source.asOf), lastRunAt: new Date() },
       update: { sourceAsOf: new Date(source.asOf), lastRunAt: new Date() },
     });

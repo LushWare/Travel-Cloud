@@ -4,6 +4,10 @@ import prisma from '../db/client.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import AppError from '../utils/appError.js';
 import { computeMargin } from '../../../shared/pricing-engine/src/index.js';
+import { requireTenantId } from '../../../shared/tenancy/src/index.js';
+
+// Hand-written SQL is not filtered automatically: every statement names the agency itself.
+const agency = () => requireTenantId();
 
 const normalizePhone = (phone) => {
   if (!phone) return undefined;
@@ -20,7 +24,7 @@ async function findPackageById(id, client = prisma) {
            "default_margin_input" AS "defaultMarginInput",
            "is_active" AS "isActive", "duration_days" AS "durationDays"
     FROM crm_packages."Package"
-    WHERE id = ${id}
+    WHERE id = ${id} AND "tenantId" = ${agency()}::uuid
     LIMIT 1
   `;
   const pkg = rows[0];
@@ -73,6 +77,7 @@ async function autoAssignSalesRep() {
   const rows = await prisma.$queryRaw`
     SELECT id, "enabledSalesRepIds", "roundRobinIndex", "autoStrategy", "assignmentMode"
     FROM crm_leads."Settings"
+    WHERE "tenantId" = ${agency()}::uuid
     LIMIT 1
   `;
   const settings = rows[0];
@@ -88,7 +93,7 @@ async function autoAssignSalesRep() {
   await prisma.$executeRaw`
     UPDATE crm_leads."Settings"
     SET "roundRobinIndex" = ${nextIdx}, "updatedAt" = NOW()
-    WHERE id = ${settings.id}
+    WHERE id = ${settings.id} AND "tenantId" = ${agency()}::uuid
   `;
   return assignedId;
 }
@@ -108,12 +113,12 @@ async function createLead({ name, email, phone, packageId, packageName, destinat
   const tags = ['website-booking'];
   await prisma.$executeRaw`
     INSERT INTO crm_leads."Lead"
-      (id, name, email, phone, source, platform,
+      ("tenantId", id, name, email, phone, source, platform,
        destination, "destinationCountry", "travelDate", "endDate",
        "numberOfTravelers", budget, message, "lifecycleStatus", tags,
        "assignedToId", "assignmentMode", "leadDateTime", "createdAt", "updatedAt")
     VALUES
-      (${leadId}, ${name}, ${email}, ${phone || null},
+      (${agency()}::uuid, ${leadId}, ${name}, ${email}, ${phone || null},
        ${source}::"crm_leads"."LeadSource",
        ${platform}::"crm_leads"."LeadPlatform",
        ${destination || null}, ${destination || null},
@@ -133,26 +138,26 @@ async function createLead({ name, email, phone, packageId, packageName, destinat
     const selectionId = crypto.randomUUID();
     await prisma.$executeRaw`
       INSERT INTO crm_leads."LeadPackageSelection"
-        (id, "leadId", "packageId", "isManual", "packageName", "createdAt", "updatedAt")
-      VALUES (${selectionId}, ${leadId}, ${packageId}, false, ${packageName || null}, NOW(), NOW())
+        ("tenantId", id, "leadId", "packageId", "isManual", "packageName", "createdAt", "updatedAt")
+      VALUES (${agency()}::uuid, ${selectionId}, ${leadId}, ${packageId}, false, ${packageName || null}, NOW(), NOW())
     `;
     await prisma.$executeRaw`
-      UPDATE crm_leads."Lead" SET "primarySelectionId" = ${selectionId} WHERE id = ${leadId}
+      UPDATE crm_leads."Lead" SET "primarySelectionId" = ${selectionId} WHERE id = ${leadId} AND "tenantId" = ${agency()}::uuid
     `;
   }
 
   if (message?.trim()) {
     const remarkId = crypto.randomUUID();
     await prisma.$executeRaw`
-      INSERT INTO crm_leads."LeadRemark" (id, "leadId", text, "addedAt", date)
-      VALUES (${remarkId}, ${leadId}, ${'Website inquiry: ' + message.trim()}, NOW(), NOW())
+      INSERT INTO crm_leads."LeadRemark" ("tenantId", id, "leadId", text, "addedAt", date)
+      VALUES (${agency()}::uuid, ${remarkId}, ${leadId}, ${'Website inquiry: ' + message.trim()}, NOW(), NOW())
     `;
   }
 
   const histId = crypto.randomUUID();
   await prisma.$executeRaw`
-    INSERT INTO crm_leads."LeadStatusHistory" (id, "leadId", status, "changedAt")
-    VALUES (${histId}, ${leadId}, ${lifecycleStatus}, NOW())
+    INSERT INTO crm_leads."LeadStatusHistory" ("tenantId", id, "leadId", status, "changedAt")
+    VALUES (${agency()}::uuid, ${histId}, ${leadId}, ${lifecycleStatus}, NOW())
   `;
 
   return leadId;
@@ -172,7 +177,7 @@ async function incrementPackageBookings(packageId, client = prisma) {
   await client.$executeRaw`
     UPDATE crm_packages."Package"
     SET bookings = bookings + 1, "updatedAt" = NOW()
-    WHERE id = ${packageId}
+    WHERE id = ${packageId} AND "tenantId" = ${agency()}::uuid
   `;
 }
 
@@ -305,7 +310,7 @@ async function flagVoiceReview(tx, leadId, reason = 'package_changed_requires_re
         "voiceNeedsRepReview" = true, "voiceReviewReason" = ${reason},
         "voiceAiBookingAllowed" = false, "needsRepFollowup" = true, "aiHandled" = true,
         "updatedAt" = NOW()
-    WHERE id = ${leadId}
+    WHERE id = ${leadId} AND "tenantId" = ${agency()}::uuid
   `;
 }
 
@@ -324,7 +329,7 @@ export const createVoiceBooking = asyncHandler(async (req, res) => {
     const calls = await tx.$queryRaw`
       SELECT id, "fromNumber", "leadId", disposition
       FROM crm_voice."VoiceCall"
-      WHERE "conversationId" = ${input.conversationId}
+      WHERE "conversationId" = ${input.conversationId} AND "tenantId" = ${agency()}::uuid
       FOR UPDATE
     `;
     const call = calls[0];
@@ -348,7 +353,7 @@ export const createVoiceBooking = asyncHandler(async (req, res) => {
                "travelDate", "endDate", "numberOfTravelers",
                "voiceNeedsRepReview", "voicePriceChanged", "voiceReviewReason"
         FROM crm_leads."Lead"
-        WHERE id = ${call.leadId}
+        WHERE id = ${call.leadId} AND "tenantId" = ${agency()}::uuid
         FOR UPDATE
       `;
       lead = leads[0] || null;
@@ -410,7 +415,7 @@ export const createVoiceBooking = asyncHandler(async (req, res) => {
       const selections = await tx.$queryRaw`
         SELECT id, "packageId", "packageName", "currentQuoteId", "pendingAiChange"
         FROM crm_leads."LeadPackageSelection"
-        WHERE "leadId" = ${lead.id}
+        WHERE "leadId" = ${lead.id} AND "tenantId" = ${agency()}::uuid
         ORDER BY "createdAt" ASC
         FOR UPDATE
       `;
@@ -430,12 +435,12 @@ export const createVoiceBooking = asyncHandler(async (req, res) => {
       const leadId = crypto.randomUUID();
       await tx.$executeRaw`
         INSERT INTO crm_leads."Lead"
-          (id, name, email, phone, "phoneNormalized", source, platform, "intakeChannel", "intakeSessionId",
+          ("tenantId", id, name, email, phone, "phoneNormalized", source, platform, "intakeChannel", "intakeSessionId",
            destination, "travelDate", "endDate", "numberOfTravelers", "lifecycleStatus", "aiHandled",
            "needsRepFollowup", "voiceExactPackageMatch", "voicePriceChanged", "voiceNeedsRepReview",
            "voiceAiBookingAllowed", "voiceCustomerIdentityConfirmed", "leadDateTime", "createdAt", "updatedAt")
         VALUES
-          (${leadId}, ${input.name}, ${input.email.toLowerCase()}, ${normalizedPhone}, ${normalizedPhone},
+          (${agency()}::uuid, ${leadId}, ${input.name}, ${input.email.toLowerCase()}, ${normalizedPhone}, ${normalizedPhone},
            'voice_agent'::"crm_leads"."LeadSource", 'Voice_Agent'::"crm_leads"."LeadPlatform", 'voice',
            ${input.conversationId}, ${pkg.destination}, ${travelDate}, ${inferredEndDate}, ${input.travelers},
            'PENDING_VERIFICATION'::"crm_leads"."LeadLifecycleStatus", true, false, true, false, false, true, true,
@@ -443,8 +448,8 @@ export const createVoiceBooking = asyncHandler(async (req, res) => {
       `;
       lead = { id: leadId, primarySelectionId: null };
       await tx.$executeRaw`
-        INSERT INTO crm_leads."LeadStatusHistory" (id, "leadId", status, actor, "changedById", notes, "changedAt")
-        VALUES (${crypto.randomUUID()}, ${leadId}, 'PENDING_VERIFICATION', 'SYSTEM', NULL,
+        INSERT INTO crm_leads."LeadStatusHistory" ("tenantId", id, "leadId", status, actor, "changedById", notes, "changedAt")
+        VALUES (${agency()}::uuid, ${crypto.randomUUID()}, ${leadId}, 'PENDING_VERIFICATION', 'SYSTEM', NULL,
                 'Created by exact-package voice booking request', NOW())
       `;
     } else {
@@ -457,7 +462,7 @@ export const createVoiceBooking = asyncHandler(async (req, res) => {
             "voiceExactPackageMatch" = true, "voicePriceChanged" = false, "voiceNeedsRepReview" = false,
             "voiceReviewReason" = NULL, "voiceAiBookingAllowed" = true,
             "voiceCustomerIdentityConfirmed" = true, "updatedAt" = NOW()
-        WHERE id = ${lead.id}
+        WHERE id = ${lead.id} AND "tenantId" = ${agency()}::uuid
       `;
     }
 
@@ -465,11 +470,11 @@ export const createVoiceBooking = asyncHandler(async (req, res) => {
       const selectionId = crypto.randomUUID();
       await tx.$executeRaw`
         INSERT INTO crm_leads."LeadPackageSelection"
-          (id, "leadId", "packageId", "isManual", "packageName", "createdAt", "updatedAt")
-        VALUES (${selectionId}, ${lead.id}, ${input.packageId}, false, ${pkg.name}, NOW(), NOW())
+          ("tenantId", id, "leadId", "packageId", "isManual", "packageName", "createdAt", "updatedAt")
+        VALUES (${agency()}::uuid, ${selectionId}, ${lead.id}, ${input.packageId}, false, ${pkg.name}, NOW(), NOW())
       `;
       await tx.$executeRaw`
-        UPDATE crm_leads."Lead" SET "primarySelectionId" = ${selectionId} WHERE id = ${lead.id}
+        UPDATE crm_leads."Lead" SET "primarySelectionId" = ${selectionId} WHERE id = ${lead.id} AND "tenantId" = ${agency()}::uuid
       `;
     }
 
@@ -478,7 +483,7 @@ export const createVoiceBooking = asyncHandler(async (req, res) => {
       const quotePricing = await tx.$queryRaw`
         SELECT "totalAmount"
         FROM crm_leads."LeadPricing"
-        WHERE "leadPackageSelectionId" = ${selection.id}
+        WHERE "leadPackageSelectionId" = ${selection.id} AND "tenantId" = ${agency()}::uuid
         LIMIT 1
       `;
       const quotedAmount = Number(quotePricing[0]?.totalAmount);
@@ -519,11 +524,11 @@ export const createVoiceBooking = asyncHandler(async (req, res) => {
           "voicePriceChanged" = false, "voiceNeedsRepReview" = false, "voiceReviewReason" = NULL,
           "voiceAiBookingAllowed" = true, "voiceCustomerIdentityConfirmed" = true,
           "needsRepFollowup" = false, "updatedAt" = NOW()
-      WHERE id = ${lead.id}
+      WHERE id = ${lead.id} AND "tenantId" = ${agency()}::uuid
     `;
     await tx.$executeRaw`
       UPDATE crm_voice."VoiceCall" SET "leadId" = ${lead.id}, "needsRepFollowup" = false, "updatedAt" = NOW()
-      WHERE id = ${call.id}
+      WHERE id = ${call.id} AND "tenantId" = ${agency()}::uuid
     `;
     await incrementPackageBookings(pkg.id, tx);
     return { bookingId: booking.id, leadId: lead.id, alreadyCreated: false };
@@ -555,8 +560,8 @@ export const getUserBookings = asyncHandler(async (req, res) => {
       p."default_margin_input" AS "packageMarginInput",
       p."cover_image" AS "packageCoverImage", p.slug AS "packageSlug"
     FROM crm_bookings."Booking" b
-    LEFT JOIN crm_packages."Package" p ON p.id = b."packageId"
-    WHERE b."userId" = ${userId}
+    LEFT JOIN crm_packages."Package" p ON p.id = b."packageId" AND p."tenantId" = b."tenantId"
+    WHERE b."userId" = ${userId} AND b."tenantId" = ${agency()}::uuid
     ORDER BY b."createdAt" DESC
   `;
 
@@ -580,9 +585,9 @@ export const getRecentBookings = asyncHandler(async (req, res) => {
       p."cover_image" AS "packageCoverImage", p.slug AS "packageSlug",
       u.name AS "userName", u.email AS "userEmail"
     FROM crm_bookings."Booking" b
-    LEFT JOIN crm_packages."Package" p ON p.id = b."packageId"
+    LEFT JOIN crm_packages."Package" p ON p.id = b."packageId" AND p."tenantId" = b."tenantId"
     LEFT JOIN crm_users."User" u ON u.id = b."userId"
-    WHERE b."bookingStatus" IN ('pending','confirmed','completed')
+    WHERE b."tenantId" = ${agency()}::uuid AND b."bookingStatus" IN ('pending','confirmed','completed')
     ORDER BY b."confirmedAt" DESC NULLS LAST, b."createdAt" DESC
     LIMIT ${limit}
   `;

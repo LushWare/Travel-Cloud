@@ -216,7 +216,7 @@ export const sendPaymentReceipt = asyncHandler(async (req, res) => {
     if (channel === 'whatsapp') {
       const recipient = phone || receipt.customerPhone;
       if (!recipient) throw new AppError('No phone number available for this receipt', 400);
-      const mediaUrl = await uploadPdfBuffer(pdf, `receipt-${receipt.receiptNumber}`);
+      const mediaUrl = await uploadPdfBuffer(pdf);
       await sendReceiptWhatsapp({ receipt, phone: recipient, mediaUrl });
       const updated = await prisma.paymentReceipt.update({
         where: { id: receipt.id },
@@ -272,7 +272,7 @@ export const resendPaymentReceiptForVoice = asyncHandler(async (req, res) => {
 
   if (receipt.customerPhone) {
     try {
-      const mediaUrl = await uploadPdfBuffer(pdf, `receipt-${receipt.receiptNumber}`);
+      const mediaUrl = await uploadPdfBuffer(pdf);
       await sendReceiptWhatsapp({ receipt, phone: receipt.customerPhone, mediaUrl });
       await prisma.paymentReceipt.update({ where: { id: receipt.id }, data: { whatsappSent: true, whatsappSentAt: now, pdfUrl: mediaUrl } });
       results.whatsapp = 'sent';

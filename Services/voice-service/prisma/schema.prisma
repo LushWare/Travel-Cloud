@@ -38,6 +38,7 @@ enum CallDisposition {
 }
 
 model VoiceNumber {
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
   id             String  @id @default(uuid())
   e164           String  @unique
   label          String?
@@ -53,10 +54,12 @@ model VoiceNumber {
   updatedAt DateTime @updatedAt
 
   @@index([isActive])
+  @@index([tenantId])
   @@schema("crm_voice")
 }
 
 model VoiceCall {
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
   id           String       @id @default(uuid())
   conversationId String      @unique
   numberId     String?
@@ -93,10 +96,12 @@ model VoiceCall {
   @@index([fromNumber])
   @@index([startedAt])
   @@index([disposition])
+  @@index([tenantId])
   @@schema("crm_voice")
 }
 
 model VoiceCallEvent {
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
   id          String    @id @default(uuid())
   voiceCallId String
   voiceCall   VoiceCall @relation(fields: [voiceCallId], references: [id], onDelete: Cascade)
@@ -112,5 +117,6 @@ model VoiceCallEvent {
 
   @@unique([voiceCallId, sequence])
   @@index([voiceCallId])
+  @@index([tenantId])
   @@schema("crm_voice")
 }

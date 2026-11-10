@@ -1,4 +1,4 @@
-import api from './api';
+import api, { authAPI } from './api';
 import { apiErrorMessage } from '../lib/apiErrorMessage';
 
 /**
@@ -60,7 +60,7 @@ class SalesRepService {
    * @param {string} salesRepData.email - Sales rep email (required)
    * @param {string} salesRepData.phone - Sales rep phone in E.164 format (required)
    * @param {string} salesRepData.phoneCountry - Country code for phone (required)
-   * @param {number} salesRepData.commissionRate - Commission rate (0-100, default: 10)
+   * @param {number} [salesRepData.commissionRate] - Commission percent, 0–100 (default 10)
    * @returns {Promise<any>} Created sales rep
    */
   async createSalesRep(salesRepData) {
@@ -81,7 +81,7 @@ class SalesRepService {
    * @param {string} updateData.email - Email address
    * @param {string} updateData.phone - Phone number in E.164 format
    * @param {string} updateData.phoneCountry - Country code for phone
-   * @param {number} updateData.commissionRate - Commission rate
+   * @param {number} [updateData.commissionRate] - Commission percent, 0–100
    * @returns {Promise<any>} Updated sales rep
    */
   async updateSalesRep(salesRepId, updateData) {
@@ -139,10 +139,7 @@ class SalesRepService {
    */
   async resetSalesRepPassword(salesRepId) {
     try {
-      const response = await this.api.post(
-        `${this.endpoint}/${salesRepId}/reset-password`
-      );
-      return response;
+      return await authAPI.sendSetPasswordLink(salesRepId);
     } catch (error) {
       console.error(`Error sending password reset for sales rep ${salesRepId}:`, error);
       throw this.handleError(error);

@@ -10,10 +10,18 @@ const { mockFindUnique, mockFindMany, mockCount, mockCreate, mockUpdate, mockDel
   mockGroupBy: vi.fn(),
 }));
 
-vi.mock('../../db/client.js', () => ({
-  default: {
+
+// Target lookups go through findFirst; unless a test stubs findUnique, the target is an ordinary staff account.
+const defaultTarget = (args) => ({ id: args?.where?.id, role: args?.where?.role || 'salesRep', canBeDeleted: true, isActive: true });
+const mockFindFirst = vi.fn();
+const resetFindFirst = () => mockFindFirst.mockReset().mockImplementation(async (args) =>
+  (mockFindUnique.getMockImplementation() ? mockFindUnique(args) : defaultTarget(args)));
+
+vi.mock('../../db/client.js', () => {
+  const client = {
     user: {
       findUnique: mockFindUnique,
+      findFirst: (...args) => mockFindFirst(...args),
       findMany: mockFindMany,
       count: mockCount,
       create: mockCreate,
@@ -21,17 +29,18 @@ vi.mock('../../db/client.js', () => ({
       delete: mockDelete,
       groupBy: mockGroupBy,
     },
-  },
-}));
+  };
+  return { default: client, identityPrisma: client };
+});
 
 import {
   getDashboardStats, getAllUsers, getUserById, createStaff, updateUser, deleteUser,
-  updateUserStatus, resetUserPassword, getAdminPermissions, updateAdminPermissions,
+  updateUserStatus, getAdminPermissions, updateAdminPermissions,
   getAvailablePermissions, getSuperAdminInfo, listSuperAdmins, promoteSuperAdmin, demoteSuperAdmin,
 } from '../admin.controller.js';
 
 const ID = '11111111-1111-4111-8111-111111111111';
-const ACTOR = { id: '22222222-2222-4222-8222-222222222222', role: 'admin' };
+const ACTOR = { id: '22222222-2222-4222-8222-222222222222', role: 'admin', tenantId: '00000000-0000-4000-8000-000000000001' };
 
 function buildReqRes({ body = {}, params = {}, query = {}, user = ACTOR } = {}) {
   const req = { body, params, query, user };
@@ -41,6 +50,7 @@ function buildReqRes({ body = {}, params = {}, query = {}, user = ACTOR } = {}) 
 }
 
 beforeEach(() => {
+  resetFindFirst();
   mockFindUnique.mockReset();
   mockFindMany.mockReset();
   mockCount.mockReset();
@@ -97,7 +107,7 @@ describe('getUserById', () => {
 describe('createStaff', () => {
   const valid = { name: 'New Admin', email: 'newadmin@test.com', role: 'admin' };
 
-  it('creates staff with a temp password and filters unknown permissions', async () => {
+  it('creates staff that must set a password, without returning one', async () => {
     mockFindUnique.mockResolvedValue(null);
     mockCreate.mockResolvedValue({ id: ID, name: 'New Admin', password: 'hashed' });
     const { req, res, next } = buildReqRes({ body: { ...valid, permissions: ['manage_leads'] } });
@@ -109,7 +119,7 @@ describe('createStaff', () => {
       data: expect.objectContaining({ permissions: ['manage_leads'], isTempPassword: true, mustChangePassword: true }),
     }));
     expect(res.status).toHaveBeenCalledWith(201);
-    expect(res.json.mock.calls[0][0].data.tempPassword).toBeTruthy();
+    expect(res.json.mock.calls[0][0].data.tempPassword).toBeUndefined();
   });
 
   it('rejects a permissions entry that is not on the allowed list at the validation layer', async () => {
@@ -178,18 +188,105 @@ describe('updateUserStatus', () => {
   });
 });
 
-describe('resetUserPassword', () => {
-  it('returns a fresh temp password and flags the account for a forced change', async () => {
-    mockUpdate.mockResolvedValue({ id: ID });
-    const { req, res, next } = buildReqRes({ params: { id: ID } });
+describe('super admin protection', () => {
+  const NORMAL_ADMIN = { id: '99999999-9999-4999-8999-999999999999', role: 'admin', isSuperAdmin: false };
+  const SUPER = { id: '88888888-8888-4888-8888-888888888888', role: 'superAdmin', isSuperAdmin: true, tenantId: '00000000-0000-4000-8000-000000000001' };
+  const valid = { name: 'New Admin', email: 'newadmin@test.com', role: 'admin' };
+  const superTarget = () => mockFindFirst.mockResolvedValue({ id: ID, role: 'superAdmin', isSuperAdmin: true, canBeDeleted: true });
 
-    await resetUserPassword(req, res, next);
+  it('stops a normal admin from creating a super admin', async () => {
+    const { req, res, next } = buildReqRes({ body: { ...valid, role: 'superAdmin' }, user: NORMAL_ADMIN });
 
-    expect(mockUpdate).toHaveBeenCalledWith({
-      where: { id: ID },
-      data: expect.objectContaining({ isTempPassword: true, mustChangePassword: true }),
-    });
-    expect(res.json.mock.calls[0][0].data.tempPassword).toBeTruthy();
+    await createStaff(req, res, next);
+
+    expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 403 }));
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it('lets a super admin create a super admin', async () => {
+    mockFindUnique.mockResolvedValue(null);
+    mockCreate.mockResolvedValue({ id: ID, role: 'superAdmin' });
+    const { req, res, next } = buildReqRes({ body: { ...valid, role: 'superAdmin' }, user: SUPER });
+
+    await createStaff(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(201);
+  });
+
+  it('stops a normal admin from promoting anyone to super admin', async () => {
+    const { req, res, next } = buildReqRes({ params: { id: ID }, body: { role: 'superAdmin' }, user: NORMAL_ADMIN });
+
+    await updateUser(req, res, next);
+
+    expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 403 }));
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it('stops a normal admin from editing a super admin', async () => {
+    superTarget();
+    const { req, res, next } = buildReqRes({ params: { id: ID }, body: { name: 'Taken over' }, user: NORMAL_ADMIN });
+
+    await updateUser(req, res, next);
+
+    expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 403 }));
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it('stops a normal admin from deactivating a super admin', async () => {
+    superTarget();
+    const { req, res, next } = buildReqRes({ params: { id: ID }, body: { isActive: false }, user: NORMAL_ADMIN });
+
+    await updateUserStatus(req, res, next);
+
+    expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 403 }));
+  });
+
+  it('stops a normal admin from deleting a super admin', async () => {
+    superTarget();
+    const { req, res, next } = buildReqRes({ params: { id: ID }, user: NORMAL_ADMIN });
+
+    await deleteUser(req, res, next);
+
+    expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 403 }));
+    expect(mockDelete).not.toHaveBeenCalled();
+  });
+
+  it('stops a normal admin from changing a super admin\'s permissions', async () => {
+    superTarget();
+    const { req, res, next } = buildReqRes({ params: { id: ID }, body: { permissions: [] }, user: NORMAL_ADMIN });
+
+    await updateAdminPermissions(req, res, next);
+
+    expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 403 }));
+  });
+
+  it('stops an admin from changing their own role', async () => {
+    const { req, res, next } = buildReqRes({ params: { id: NORMAL_ADMIN.id }, body: { role: 'admin' }, user: NORMAL_ADMIN });
+
+    await updateUser(req, res, next);
+
+    expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 400 }));
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it('stops an admin from deleting their own account', async () => {
+    const { req, res, next } = buildReqRes({ params: { id: NORMAL_ADMIN.id }, user: NORMAL_ADMIN });
+
+    await deleteUser(req, res, next);
+
+    expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 400 }));
+  });
+
+  it('lets a super admin edit another super admin', async () => {
+    superTarget();
+    mockUpdate.mockResolvedValue({ id: ID, name: 'Renamed' });
+    const { req, res, next } = buildReqRes({ params: { id: ID }, body: { name: 'Renamed' }, user: SUPER });
+
+    await updateUser(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(mockUpdate).toHaveBeenCalled();
   });
 });
 

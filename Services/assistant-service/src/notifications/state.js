@@ -1,4 +1,5 @@
 import logger from '../config/logger.js';
+import { requireTenantId } from '../../../shared/tenancy/src/index.js';
 
 export function notificationStatesToMap(rows = []) {
   return new Map(rows.map((row) => [row.notificationKey, row]));
@@ -51,7 +52,7 @@ export async function markNotificationsSeen({
           ? { dismissedAt: now, acknowledgedAt: null }
           : { acknowledgedAt: now, dismissedAt: null };
         return prisma.businessNotificationState.upsert({
-          where: { actorId_notificationKey: { actorId, notificationKey } },
+          where: { tenantId_actorId_notificationKey: { tenantId: requireTenantId(), actorId, notificationKey } },
           create: {
             actorId,
             notificationKey,

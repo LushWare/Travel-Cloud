@@ -49,6 +49,7 @@ enum TravelerGender {
 
 model Booking {
   id                  String        @id @default(uuid())
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
 
   // Cross-schema UUID refs
   userId              String        // → users.User.id (customer)
@@ -82,6 +83,7 @@ model Booking {
   @@index([travelDate])
   @@index([assignedToId])
   @@index([endDate])
+  @@index([tenantId])
   @@schema("crm_bookings")
 }
 
@@ -89,6 +91,7 @@ model Booking {
 
 model BookingTraveler {
   id        String          @id @default(uuid())
+  tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
   bookingId String
   booking   Booking         @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   name      String
@@ -98,5 +101,6 @@ model BookingTraveler {
   idNumber  String?
 
   @@index([bookingId])
+  @@index([tenantId])
   @@schema("crm_bookings")
 }

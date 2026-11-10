@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
 import {
   Menu, X, Home, Users, MapPin, DollarSign, User, LogOut,
-  BarChart3, Briefcase, ChevronRight, PanelLeftClose, PanelLeftOpen, Sparkles, Plane, Hotel, Settings
+  BarChart3, Briefcase, ChevronRight, PanelLeftClose, PanelLeftOpen, Sparkles, Plane, Hotel, Settings, Building2
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { usePermission } from "../contexts/PermissionContext";
@@ -329,6 +329,15 @@ const Sidebar = () => {
                     the identity, not as a second, unrelated row in the card. */}
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-sidebar-foreground truncate">{user.name}</p>
+                  {user.tenant?.name && (
+                    <p
+                      className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground"
+                      title={`Working in ${user.tenant.name}. To change agency, sign out and sign in again.`}
+                    >
+                      <Building2 className="w-3.5 h-3.5 flex-shrink-0" aria-hidden="true" />
+                      <span className="truncate" data-testid="current-agency">{user.tenant.name}</span>
+                    </p>
+                  )}
                   <div className="mt-1 flex items-center gap-1">
                     {user.role === 'superAdmin' && <Sparkles className="w-4 h-4 flex-shrink-0 text-sidebar-primary" />}
                   </div>

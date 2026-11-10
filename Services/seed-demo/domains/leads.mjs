@@ -15,6 +15,7 @@
 import { COMMUNICATION_NOTES, INQUIRY_MESSAGES, LEAD_REMARKS, LOST_REASONS, SPECIAL_REQUESTS } from '../lib/fixtures.mjs';
 import { addDays, isoDay, money } from '../lib/rng.mjs';
 import { id as idFor } from '../lib/ids.mjs';
+import { requireTenantId } from '../../shared/tenancy/src/index.js';
 
 /** How many leads of each lifecycle state to build. */
 const MIX = {
@@ -53,7 +54,9 @@ const STATUS_PATH = {
 const SOURCES = [
   ['website', 'Website_Form', 26],
   ['booking', 'Paid_Package', 6],
-  ['social_media', 'Social_Media', 14],
+  // 'social_media' was split into facebook and instagram (lead-service migration 20261018000000).
+  ['facebook', 'Facebook', 8],
+  ['instagram', 'Instagram', 6],
   ['phone_call', 'Phone_Call', 12],
   ['email', 'Email', 10],
   ['referral', 'Referral', 8],
@@ -682,7 +685,11 @@ export async function seed(ctx) {
     requireActiveLogin48h: false,
     updatedById: admins[0]?.id ?? null,
   };
-  await db.lead.settings.upsert({ where: { singletonKey: 1 }, update: settings, create: { id: ids.next('leadSettings'), ...settings } });
+  await db.lead.settings.upsert({
+    where: { tenantId_singletonKey: { tenantId: requireTenantId(), singletonKey: 1 } },
+    update: settings,
+    create: { id: ids.next('leadSettings'), ...settings },
+  });
 
   const counts = Object.fromEntries(Object.entries(MIX));
   log(`    leads: ${rows.leads.length} (${Object.entries(counts).map(([k, v]) => `${k} ${v}`).join(', ')})`);

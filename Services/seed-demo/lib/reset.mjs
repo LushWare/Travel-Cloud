@@ -18,9 +18,12 @@
 import { CATEGORIES } from './ids.mjs';
 import { EXISTING_PACKAGE_ITINERARIES } from './destinations.mjs';
 
-/** '1a000000-' style prefixes — the share of the uuid space this seed owns. */
+/**
+ * LIKE patterns for the share of the uuid space this seed owns, across every test agency:
+ * '1a00000_-' matches lush-demo's '1a000000-', acme-tours' '1a000001-' and globe-dmc's '1a000002-'.
+ */
 export const DEMO_ID_PREFIXES = Object.fromEntries(
-  Object.entries(CATEGORIES).map(([name, cat]) => [name, `${cat}000000-`]),
+  Object.entries(CATEGORIES).map(([name, cat]) => [name, `${cat}00000_-`]),
 );
 
 const likePrefix = (category) => `${DEMO_ID_PREFIXES[category]}%`;

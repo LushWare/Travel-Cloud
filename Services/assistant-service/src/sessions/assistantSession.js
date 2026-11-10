@@ -58,9 +58,9 @@ const isExpired = (session) => Date.now() - session.lastSeenAt.getTime() > SESSI
 
 /** Clears an expired session in place, keeping its row (and its id) alive. */
 async function resetExpiredSession(sessionId) {
-  const [, session] = await prisma.$transaction([
-    prisma.assistantMessage.deleteMany({ where: { sessionId } }),
-    prisma.assistantSession.update({
+  return prisma.$transaction(async (tx) => {
+    await tx.assistantMessage.deleteMany({ where: { sessionId } });
+    return tx.assistantSession.update({
       where: { id: sessionId },
       data: {
         lastSeenAt: new Date(),
@@ -71,9 +71,8 @@ async function resetExpiredSession(sessionId) {
         bookingAskedTurn: null,
         turnCount: 0,
       },
-    }),
-  ]);
-  return session;
+    });
+  });
 }
 
 /**

@@ -31,7 +31,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockPrisma.assistantSession.update.mockResolvedValue(sessionRow());
   mockPrisma.assistantMessage.deleteMany.mockResolvedValue({ count: 0 });
-  mockPrisma.$transaction.mockResolvedValue([{ count: 0 }, sessionRow()]);
+  mockPrisma.$transaction.mockImplementation(async (work) => work(mockPrisma));
 });
 
 describe('loadSession', () => {
