@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+// Plan checks are covered in plan.service.test.js; here every agency has every module.
+vi.mock('../../services/plan.service.js', () => ({ assertPlanFeature: vi.fn().mockResolvedValue(undefined), metered: vi.fn((_metric, send) => send()) }));
+
 // Cross-verifies convertQuotationToInvoice against the quotation workflow:
 // pricing must be copied verbatim (never recomputed), the converted-quotation
 // guard must hold, the quotation<->invoice link must round-trip, and
@@ -33,6 +36,8 @@ vi.mock('../../services/events.client.js', () => ({ emitLeadEvent: vi.fn() }));
 vi.mock('../../services/quotation.service.js', () => ({ createOrVersionQuotation: vi.fn(), quotationTotals: vi.fn() }));
 
 import { convertQuotationToInvoice } from '../quotation.controller.js';
+import { assertPlanFeature } from '../../services/plan.service.js';
+import AppError from '../../utils/appError.js';
 
 const fullQuotation = {
   id: 'q-1',
@@ -131,6 +136,17 @@ describe('convertQuotationToInvoice — pricing is copied verbatim, never recomp
 });
 
 describe('convertQuotationToInvoice — converted-quotation guard', () => {
+  it('refuses turning a quotation into an invoice when the plan leaves invoices out', async () => {
+    vi.mocked(assertPlanFeature).mockRejectedValueOnce(new AppError('not in plan', 403, { code: 'FEATURE_NOT_IN_PLAN' }));
+
+    const { nextErr } = await run({ params: { id: 'q-1' }, body: {}, user: { id: 'admin-1' } });
+
+    expect(nextErr).toMatchObject({ statusCode: 403, code: 'FEATURE_NOT_IN_PLAN' });
+    expect(vi.mocked(assertPlanFeature)).toHaveBeenCalledWith('finance_docs');
+    expect(mockInvoiceCreate).not.toHaveBeenCalled();
+    expect(mockQuotationUpdate).not.toHaveBeenCalled();
+  });
+
   it('rejects converting an already-converted quotation', async () => {
     mockQuotationFindUnique.mockResolvedValue({ ...fullQuotation, status: 'converted' });
     const { nextErr } = await run({ params: { id: 'q-1' }, body: {}, user: { id: 'admin-1' } });

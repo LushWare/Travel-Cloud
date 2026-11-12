@@ -256,6 +256,7 @@ model Tenant {
   memberships Membership[]
     planAssignment TenantPlan?
     planOverrides PlanEntitlementOverride[]
+    usageCounters UsageCounter[]
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
   deletedAt   DateTime?
@@ -326,6 +327,21 @@ model PlanEntitlementOverride {
 
   @@unique([tenantId, entitlementKey])
   @@index([tenantId])
+  @@schema("crm_platform")
+}
+
+// Monthly count of metered sends per agency ("emails", "whatsapp"); period is the first day of
+// the month (UTC). Written with raw SQL by the sending services (shared/tenancy/src/usage.js).
+model UsageCounter {
+  tenantId  String    @db.Uuid
+  metric    String    @db.VarChar(32)
+  period    DateTime  @db.Date
+  count     Int       @default(0)
+  warnedAt  DateTime?
+  updatedAt DateTime  @default(now())
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@id([tenantId, metric, period])
   @@schema("crm_platform")
 }
 

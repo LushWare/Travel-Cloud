@@ -491,3 +491,99 @@ describe('console setup links', () => {
     expect(res.headers['ratelimit-limit'] ?? res.headers['x-ratelimit-limit']).toBe('10');
   });
 });
+
+describe('plan modules', () => {
+  const AGENCY = '00000000-0000-4000-8000-000000000002';
+  const staff = (off) => `Bearer ${tokenFor({
+    id: 'user-1', tid: AGENCY, role: 'admin', email: 'a@acme.test', name: 'A', permissions: [], ...(off && { off }),
+  })}`;
+
+  it.each([
+    ['POST', '/api/v1/billing/invoices', 'finance_docs'],
+    ['PUT', '/api/v1/billing/vouchers/v-1', 'finance_docs'],
+    ['POST', '/api/v1/billing/receipts', 'finance_docs'],
+    ['POST', '/api/v1/billing/credit-notes', 'finance_docs'],
+    ['POST', '/api/v1/invoices', 'finance_docs'],
+    ['POST', '/api/v1/vendors', 'vendors'],
+    ['DELETE', '/api/v1/vendors/v-1', 'vendors'],
+    ['POST', '/api/v1/flights/search', 'travel_booking'],
+    ['POST', '/api/v1/flights/book-for-lead', 'travel_booking'],
+  ])('refuses %s %s with FEATURE_NOT_IN_PLAN when %s is switched off', async (method, path, module) => {
+    const res = await request(app)[method.toLowerCase()](path).set('Authorization', staff([module])).send({});
+
+    expect(res.status).toBe(403);
+    expect(res.body).toMatchObject({ code: 'FEATURE_NOT_IN_PLAN', module });
+  });
+
+  it.each([
+    ['/api/v1/billing/invoices', 'finance_docs'],
+    ['/api/v1/billing/vouchers/v-1/pdf', 'finance_docs'],
+    ['/api/v1/vendors', 'vendors'],
+    ['/api/v1/flights/bookings', 'travel_booking'],
+  ])('still lets an agency read its own %s after %s is switched off', async (path, module) => {
+    const res = await request(app).get(path).set('Authorization', staff([module]));
+
+    expect(res.status).toBe(200);
+  });
+
+  it.each([
+    '/api/v1/analytics/packages/overview',
+    '/api/v1/analytics/salesreps/performance',
+    '/api/v1/analytics/business/signals',
+  ])('refuses reading the full report %s when analytics_full is switched off', async (path) => {
+    const res = await request(app).get(path).set('Authorization', staff(['analytics_full']));
+
+    expect(res.status).toBe(403);
+    expect(res.body.module).toBe('analytics_full');
+  });
+
+  it.each([
+    '/api/v1/analytics/leads/overview',
+    '/api/v1/analytics/billing/overview',
+    '/api/v1/analytics/salesreps/me/performance',
+    '/api/v1/dashboard/stats',
+  ])('keeps the dashboard figure %s when analytics_full is switched off', async (path) => {
+    const res = await request(app).get(path).set('Authorization', staff(['analytics_full']));
+
+    expect(res.status).toBe(200);
+  });
+
+  it('keeps quotations open when finance_docs is switched off', async () => {
+    const res = await request(app).post('/api/v1/billing/quotations').set('Authorization', staff(['finance_docs'])).send({});
+
+    expect(res.status).toBe(200);
+  });
+
+  it('blocks only the modules that are switched off', async () => {
+    const res = await request(app).post('/api/v1/vendors').set('Authorization', staff(['finance_docs'])).send({});
+
+    expect(res.status).toBe(200);
+  });
+
+  it('lets a login with no module list through (agency with no plan, or a token issued before plans)', async () => {
+    const res = await request(app).post('/api/v1/billing/invoices').set('Authorization', staff()).send({});
+
+    expect(res.status).toBe(200);
+  });
+
+  it('ignores a module list that is not an array', async () => {
+    const res = await request(app).post('/api/v1/billing/invoices').set('Authorization', staff('finance_docs')).send({});
+
+    expect(res.status).toBe(200);
+  });
+});
+
+describe('agency on the request log line', () => {
+  it('never takes the agency from a client-sent header', async () => {
+    const { requestLogProps } = await import('../middleware/requestLogger.js');
+
+    expect(requestLogProps({ headers: { 'x-tenant-id': '00000000-0000-4000-8000-000000000009' } })).toEqual({});
+  });
+
+  it('uses the agency the gateway verified', async () => {
+    const { requestLogProps } = await import('../middleware/requestLogger.js');
+
+    expect(requestLogProps({ headers: {}, verifiedTenantId: '00000000-0000-4000-8000-000000000002' }))
+      .toEqual({ tenantId: '00000000-0000-4000-8000-000000000002' });
+  });
+});

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import httpClient from '../http/client';
 import { parseEnvelope } from '../http/envelope';
-import { WebsiteBookingRequest, WebsiteBookingResult, UserBooking } from '@travel-crm/contracts';
+import { WebsiteBookingRequest, WebsiteBookingResult, UserBooking, RecentBooking } from '@travel-crm/contracts';
 
 type BookingPayload = z.infer<typeof WebsiteBookingRequest>;
 
@@ -18,5 +18,5 @@ export const fetchUserBookings = async () => {
 
 export const fetchRecentBookings = async (limit = 10) => {
   const response = await httpClient.get(`/bookings/recent?limit=${limit}`);
-  return parseEnvelope(z.array(UserBooking), response.data, 'GET /bookings/recent').data;
+  return parseEnvelope(z.array(RecentBooking), response.data, 'GET /bookings/recent').data;
 };

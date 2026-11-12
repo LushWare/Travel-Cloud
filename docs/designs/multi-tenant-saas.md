@@ -1,8 +1,9 @@
 # Design: Multi-Tenant SaaS — Self-Serve Agencies on One Platform
 
-Branch: ongoing
-Status: DRAFT — pending approval
-Date: 2026-11-07
+Branch: multi-tenant
+Status: Phases 0–2 built (2026-11-12, not yet deployed); Phases 3–5 planned. Where a section below
+differs from what was built, the "As built" notes in §11 and §15 take precedence.
+Date: 2026-11-07 (updated 2026-11-12)
 Priority order for every trade-off in this document: **1. security, 2. correctness of existing data, 3. agency autonomy, 4. cost/speed.**
 
 ## 1. Problem Statement
@@ -416,6 +417,23 @@ An existing user can create additional workspaces from the workspace switcher (l
 | **4 — Self-serve SaaS** | Signup, provisioning, invites, onboarding checklist, CSV import, subscriptions, suspension/deletion/export | **External penetration test** before the first external agency; deletion verification report |
 | **5 — Later** | Flights per tenant, AI products per tenant (assistant, voice, recommendations), per-agency public websites and custom domains, data residency, dedicated-DB tier | Per-product design docs |
 
+**Status (2026-11-12):**
+
+| Phase | Status | Gate evidence |
+|---|---|---|
+| 0 | Built | Header-forgery tests per public route (gateway `security.test.js`); httpOnly cookies + refresh sessions; asymmetric JWT |
+| 1 | Built | `verify-tenancy.mjs` green; isolation suite (`e2e-tests/flows/tenant-isolation.spec.js`) 37/37 with RLS enforced under `crm_app` |
+| 2 | Built, not deployed | Audit entries for every privileged action (see "Phase 2 as built"); help access recorded in the agency's own audit log and shown as a banner in its session |
+| 3–5 | Not started | — |
+
+**Phase 2 as built** (differs from the row above in these ways):
+- **Help access instead of impersonation.** Lushware staff get view-only access to an agency for 15 or 30 minutes, with a required reason, a one-time code, a banner in the session, and `platform.help_access_started`/`_ended` entries in the agency's own audit log. Every write is refused at the gateway (`HELP_ACCESS_READ_ONLY`). Write-mode impersonation was not built and is not planned.
+- **Entitlements:** see §15 "As built".
+- **Audited actions:** staff added/invited/removed/suspended/reactivated, role, permission, owner and commission changes, password-reset links; organization and bank-detail settings; lead-assignment settings; policy documents; customer deletion/deactivation; account email changes; lead deletion; quotation and voucher deletion; billing exports; the 80% monthly sending warning; and every console action (sign-in, staff, plans, plan assignment and overrides, suspend/restore, help access).
+- **What agencies see of the audit log:** only Lushware support visits, as a "Lushware support access" note in Management's Settings (`GET /admin/support-access`: date, length, reason; never the staff member). The full log, including the agency's own staff actions and Lushware's plan changes and internal notes, is recorded but not shown to agencies; there is no Audit Log page.
+- **Per-agency logs:** every service log line carries `tenantId`. Per-agency request/error dashboards and an alert on `TENANT_CONTEXT_MISSING` are Cloud Logging log-based metrics, set up with the deployment.
+- **Not yet built:** Redis-backed rate limits (Phase 0 scope, still in-memory per instance); emailing the owner at 80% of a sending allowance (today: audit entry + warning on the plan card).
+
 Pilot plan: after Phase 1's gate, onboard 1–2 friendly agencies with hands-on help through Phases 2–3, and use what they actually need to order the Phase 3 integration list.
 
 ## 12. Testing Strategy
@@ -512,3 +530,22 @@ Pricing hypothesis to test with pilots: Starter ≈ $25, Growth ≈ $45, Pro ≈
 - Inviting a teammate past the seat limit is blocked, with an "upgrade or add seats" prompt.
 - Upgrades apply immediately. **Downgrades never delete data**: modules no longer in the plan become read-only, and existing documents stay viewable and downloadable.
 - Quota counters live in `UsageCounter`; at 80% the owner is warned, and at 100% sending pauses with a clear message. A quota is never silently exceeded or silently dropped.
+
+### 15.4 As built (Phase 2, 2026-11-12)
+
+**Plans** live in `crm_platform`: `Plan` → immutable `PlanVersion`s (editing a plan creates a new version; agencies keep the version they were given) → `TenantPlan` (one per agency, optional special price) → `PlanEntitlementOverride` (per-agency special deals, reason required). **An agency with no plan gets every feature with no limits.** Pricing is a **flat price per agency with seat caps**, not per seat; starting prices are placeholders in `platform-service/src/planDefaults.js`, edited in the console.
+
+**Entitlements** (`shared/tenancy/src/entitlements.js`):
+
+| Kind | Keys | Enforced by |
+|---|---|---|
+| Limits (null = unlimited) | `staff_seats`, `packages` | user-service / package-service, under an advisory lock |
+| Monthly allowances | `emails_per_month`, `whatsapp_per_month` | `meteredSend` in billing-service and lead-service; `UsageCounter` per agency, metric and UTC month |
+| Feature | `ai_itinerary_builder` | package-service route check |
+| Modules | `finance_docs`, `whatsapp`, `vendors`, `travel_booking` (flights), `analytics_full` | Gateway by route (`gateway/src/planModules.js`) + live service checks for cross-module actions |
+
+- A stored plan version that does not mention a module includes it (only `ai_itinerary_builder` defaults to off), so plans saved before modules existed keep working unchanged.
+- Switched-off modules travel in the staff login token (`off`), so the gateway needs no database; a plan change reaches staff at the next token renewal (≤ 15 minutes). Services check live for actions the gateway cannot see by route: quotation → invoice needs `finance_docs`; every WhatsApp send needs `whatsapp`.
+- **Downgrades never hide data:** a switched-off record module (`finance_docs`, `vendors`, `travel_booking`) stays readable and refuses only changes (403 `FEATURE_NOT_IN_PLAN`). `analytics_full` blocks the report pages entirely; the dashboard figures stay in every plan. Management marks such menu items with a lock instead of hiding them.
+- **Only customer-facing sends are metered** (billing documents by email and WhatsApp, staff WhatsApp replies). Sign-in codes, password resets and staff notifications are never counted or paused. Over the allowance → 429 `USAGE_LIMIT_REACHED`; a failed send gives its unit back; if the counter itself is unreachable the send goes out and the failure is logged.
+- `lead_ads` waits for Phase 3 (lead-ads webhooks still route only to Tenant #1); `advanced_admin` was dropped because the audit log must stay visible to every agency, since help-access transparency depends on it.

@@ -13,6 +13,7 @@ import { normalizePhone, phoneMatchWhere } from '../utils/phone.js';
 import { handleLeadEvent } from '../services/lead-events.service.js';
 import { serializeLeadDays } from '../services/lead-itinerary.service.js';
 import { requireTenantId } from '../../../shared/tenancy/src/index.js';
+import { audit } from '../utils/audit.js';
 
 // ─── Auto-assignment helper ────────────────────────────────────
 // Must run inside the same transaction as the lead create it feeds, so the
@@ -395,6 +396,10 @@ export const deleteLead = asyncHandler(async (req, res) => {
   const lead = await prisma.lead.findUnique({ where: { id: req.params.id } });
   if (!lead) throw new AppError('Lead not found', 404);
   await prisma.lead.delete({ where: { id: req.params.id } });
+  await audit(req, {
+    action: 'lead.deleted', targetType: 'lead', targetId: lead.id,
+    summary: `Deleted lead ${lead.name || lead.id}`,
+  });
   res.json({ success: true, data: {} });
 });
 

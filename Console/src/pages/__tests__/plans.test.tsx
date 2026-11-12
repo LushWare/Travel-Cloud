@@ -55,6 +55,49 @@ describe('Plans page', () => {
     });
   });
 
+  it('shows a module an older plan never mentions as included', async () => {
+    const user = userEvent.setup();
+    fetchMock = vi.fn().mockResolvedValue(response([plan]));
+    vi.stubGlobal('fetch', fetchMock);
+    open();
+
+    await user.click(await screen.findByRole('button', { name: /Edit/ }));
+
+    expect(screen.getByLabelText('Invoices, receipts, credit notes and vouchers')).toBeChecked();
+    expect(screen.getByLabelText('Flight booking')).toBeChecked();
+  });
+
+  it('saves a module switched off as false', async () => {
+    const user = userEvent.setup();
+    fetchMock = vi.fn()
+      .mockResolvedValueOnce(response([plan]))
+      .mockResolvedValueOnce(response({ version: 2 }))
+      .mockResolvedValueOnce(response([plan]));
+    vi.stubGlobal('fetch', fetchMock);
+    open();
+
+    await user.click(await screen.findByRole('button', { name: /Edit/ }));
+    await user.click(screen.getByLabelText('Vendors and suppliers'));
+    await user.click(screen.getByRole('button', { name: /Save plan/ }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body).entitlements.features).toMatchObject({
+      vendors: false, finance_docs: true, ai_itinerary_builder: true,
+    });
+  });
+
+  it('starts a new plan with every module included and the AI builder off', async () => {
+    const user = userEvent.setup();
+    fetchMock = vi.fn().mockResolvedValue(response([]));
+    vi.stubGlobal('fetch', fetchMock);
+    open();
+
+    await user.click(await screen.findByRole('button', { name: /New plan/ }));
+
+    expect(screen.getByLabelText('WhatsApp delivery')).toBeChecked();
+    expect(screen.getByLabelText('AI itinerary builder')).not.toBeChecked();
+  });
+
   it('creates a new immutable version when editing an existing plan', async () => {
     const user = userEvent.setup();
     fetchMock = vi.fn()

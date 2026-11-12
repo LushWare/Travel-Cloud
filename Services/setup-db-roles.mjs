@@ -68,6 +68,10 @@ END $$;`,
     GRANT SELECT ON crm_platform."PlanEntitlementOverride" TO ${APP_ROLE};
     REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON crm_platform."PlanEntitlementOverride" FROM ${APP_ROLE};
   END IF;
+  IF to_regclass('crm_platform."UsageCounter"') IS NOT NULL THEN
+    GRANT SELECT, INSERT, UPDATE ON crm_platform."UsageCounter" TO ${APP_ROLE};
+    REVOKE DELETE, TRUNCATE ON crm_platform."UsageCounter" FROM ${APP_ROLE};
+  END IF;
 END $$;`,
   );
   return statements;

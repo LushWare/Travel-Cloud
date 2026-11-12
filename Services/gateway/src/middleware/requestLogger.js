@@ -12,9 +12,22 @@ import logger from '../config/logger.js';
  * Skips logging for health checks.
  * Auto-redacts sensitive headers/query params.
  */
+/**
+ * The agency a request was handled for, on its "request completed" line.
+ *
+ * pino-http calls this twice: when the request arrives (before the gateway strips client-sent
+ * headers) and when the line is written. So it never reads the x-tenant-id header, which a
+ * client could set; it reads `req.verifiedTenantId`, which only the gateway's auth step sets,
+ * from the verified login or the public-website pin.
+ */
+export function requestLogProps(req) {
+  return req.verifiedTenantId ? { tenantId: req.verifiedTenantId } : {};
+}
+
 export const requestLogger = pinoHttp({
   logger,
   useLevel: 'info',
+  customProps: requestLogProps,
   genReqId: (req) => req.headers['x-request-id'] || uuidv4(),
 
   quietReqLogger: true,

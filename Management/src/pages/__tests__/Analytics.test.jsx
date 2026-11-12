@@ -76,3 +76,22 @@ describe('Analytics — notification deep links', () => {
     expect(screen.getByText('Billing Analytics Content')).toBeInTheDocument();
   });
 });
+
+describe('Analytics — plan without full analytics', () => {
+  it('explains the page is not in the plan instead of showing report tabs', () => {
+    mockUseAuth.mockReturnValue({ user: { role: 'admin', planModulesOff: ['analytics_full'] } });
+    render(<Analytics />);
+
+    expect(screen.getByText("Full analytics isn't in your plan")).toBeInTheDocument();
+    expect(screen.queryByText('Lead Analytics Content')).not.toBeInTheDocument();
+    expect(screen.queryByText('Package Analytics')).not.toBeInTheDocument();
+  });
+
+  it('shows the reports when the plan includes full analytics', () => {
+    mockUseAuth.mockReturnValue({ user: { role: 'admin', planModulesOff: ['vendors'] } });
+    render(<Analytics />);
+
+    expect(screen.queryByText("Full analytics isn't in your plan")).not.toBeInTheDocument();
+    expect(screen.getByText('Lead Analytics Content')).toBeInTheDocument();
+  });
+});

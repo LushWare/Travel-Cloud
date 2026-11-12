@@ -503,14 +503,10 @@ export const adminAPI = {
     const api = new ApiService();
     return api.put("/admin/settings", data);
   },
-  // The current agency's audit log, newest first; pass the previous page's nextCursor to continue.
-  getAuditLog: async ({ action, cursor, limit = 50 } = {}) => {
+  // Lushware support visits to this agency (view-only help access), newest first.
+  getSupportAccess: async () => {
     const api = new ApiService();
-    return api.get("/admin/audit-log", {
-      limit,
-      ...(action && { action }),
-      ...(cursor && { cursor }),
-    });
+    return api.get("/admin/support-access");
   },
   getSalesReps: async () => {
     const api = new ApiService();

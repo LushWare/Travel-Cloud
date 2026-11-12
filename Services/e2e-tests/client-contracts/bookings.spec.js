@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
-import { WebsiteBookingRequest, WebsiteBookingResult, UserBooking, ApiPackage } from '@travel-crm/contracts';
+import {
+  WebsiteBookingRequest, WebsiteBookingResult, UserBooking, RecentBooking, RECENT_BOOKING_PRIVATE_FIELDS, ApiPackage,
+} from '@travel-crm/contracts';
 import { apiClient } from '../helpers/api-client.js';
 
 // booking-service exposes no delete/cancel endpoint at all (confirmed via
@@ -41,10 +43,18 @@ describe.sequential('client contract: bookings', () => {
     if (!parsed.success) throw new Error(`UserBooking[] mismatch: ${JSON.stringify(parsed.error.issues)}`);
   });
 
-  it('GET /bookings/recent (public) returns an envelope whose data matches UserBooking[]', async () => {
+  it('GET /bookings/recent (public) returns an envelope whose data matches RecentBooking[]', async () => {
     const res = await apiClient.get('/bookings/recent?limit=5');
     expect(res.status).toBe(200);
-    const parsed = z.array(UserBooking).safeParse(res.body?.data);
-    if (!parsed.success) throw new Error(`UserBooking[] mismatch: ${JSON.stringify(parsed.error.issues)}`);
+    const parsed = z.array(RecentBooking).safeParse(res.body?.data);
+    if (!parsed.success) throw new Error(`RecentBooking[] mismatch: ${JSON.stringify(parsed.error.issues)}`);
+  });
+
+  it('GET /bookings/recent (public) exposes no traveller or payment field to an anonymous visitor', async () => {
+    const res = await apiClient.get('/bookings/recent?limit=50');
+    expect(res.status).toBe(200);
+    const leaked = (res.body?.data ?? []).flatMap((row) =>
+      RECENT_BOOKING_PRIVATE_FIELDS.filter((field) => Object.prototype.hasOwnProperty.call(row, field)));
+    expect(leaked).toEqual([]);
   });
 });

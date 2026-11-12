@@ -1,5 +1,19 @@
 import { describe, it, expect, vi } from 'vitest';
+
+// Monthly allowance counting is covered in plan.service.test.js; here every send is within it.
+vi.mock('../plan.service.js', () => ({ metered: vi.fn((_metric, send) => send()) }));
 import { sendEmail } from '../email.client.js';
+import { metered } from '../plan.service.js';
+
+describe('email.client allowance', () => {
+  it('counts every billing email against the monthly email allowance', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ success: true }) });
+
+    await sendEmail({ to: 'a@test.com', subject: 'Hi', html: '<p>hi</p>', fetchImpl });
+
+    expect(vi.mocked(metered)).toHaveBeenCalledWith('emails', expect.any(Function));
+  });
+});
 
 describe('email.client sendEmail', () => {
   it('POSTs to notification-service with the internal token header', async () => {

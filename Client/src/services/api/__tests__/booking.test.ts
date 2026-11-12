@@ -4,7 +4,7 @@ const mockPost = vi.hoisted(() => vi.fn());
 const mockGet = vi.hoisted(() => vi.fn());
 vi.mock('../../http/client', () => ({ default: { post: mockPost, get: mockGet } }));
 
-import { submitBookingRequest, fetchUserBookings } from '../booking';
+import { submitBookingRequest, fetchUserBookings, fetchRecentBookings } from '../booking';
 
 beforeEach(() => {
   mockPost.mockReset();
@@ -46,5 +46,30 @@ describe('fetchUserBookings', () => {
   it('rejects on a malformed array element', async () => {
     mockGet.mockResolvedValue({ data: { success: true, data: [{ totalAmount: 'not-a-number' }] } });
     await expect(fetchUserBookings()).rejects.toThrow();
+  });
+});
+
+describe('fetchRecentBookings', () => {
+  const row = {
+    id: 'bk-1', packageId: 'pkg-1', packageName: 'Bali Escape', packageDestination: 'Bali',
+    packageDuration: 5, packageCoverImage: '/bali.jpg', packageSlug: 'bali-escape',
+    packagePrice: '1100.00', numberOfTravelers: 2, createdAt: '2026-11-01T10:00:00.000Z',
+  };
+
+  it('drops a traveller name or email even if an older server still sends one', async () => {
+    mockGet.mockResolvedValue({ data: { success: true, data: [{ ...row, userName: 'Jane', userEmail: 'jane@x.test' }] } });
+
+    const [booking] = await fetchRecentBookings(8);
+
+    expect(booking).not.toHaveProperty('userName');
+    expect(booking).not.toHaveProperty('userEmail');
+  });
+
+  it('converts the package price to a number', async () => {
+    mockGet.mockResolvedValue({ data: { success: true, data: [row] } });
+
+    const [booking] = await fetchRecentBookings(8);
+
+    expect(booking.packagePrice).toBe(1100);
   });
 });

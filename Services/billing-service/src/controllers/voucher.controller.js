@@ -1,6 +1,8 @@
 import prisma from '../db/client.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import AppError from '../utils/appError.js';
+import { assertPlanFeature } from '../services/plan.service.js';
+import { audit } from '../utils/audit.js';
 import logger from '../config/logger.js';
 import { nextVoucherNumber } from '../utils/docNumber.js';
 import { generateVoucherPDF } from '../utils/voucherPDFGenerator.js';
@@ -95,6 +97,10 @@ export const deleteVoucher = asyncHandler(async (req, res) => {
   const existing = await prisma.voucher.findUnique({ where: { id: req.params.id } });
   if (!existing) throw new AppError('Voucher not found', 404);
   await prisma.voucher.delete({ where: { id: req.params.id } });
+  await audit(req, {
+    action: 'billing.voucher_deleted', targetType: 'voucher', targetId: existing.id,
+    summary: `Deleted voucher ${existing.voucherNumber}`,
+  });
   res.json({ success: true, message: 'Voucher deleted' });
 });
 
@@ -110,6 +116,7 @@ export const sendVoucher = asyncHandler(async (req, res) => {
 
   try {
     if (channel === 'whatsapp') {
+      await assertPlanFeature('whatsapp'); // before the PDF is uploaded anywhere
       const recipient = phone || voucher.customerPhone;
       if (!recipient) throw new AppError('No phone number available for this voucher', 400);
       const mediaUrl = await uploadPdfBuffer(pdf);

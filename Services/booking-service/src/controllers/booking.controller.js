@@ -568,29 +568,44 @@ export const getUserBookings = asyncHandler(async (req, res) => {
   res.status(200).json({ success: true, data: withPackageSellPrice(bookings || []) });
 });
 
+const recentBookingsQuery = z.object({
+  limit: z.coerce.number().int().min(1).catch(10).transform((n) => Math.min(n, 50)),
+});
+
+// Anyone can call this (the website's "Recently booked" slider), so it answers only with the
+// package and when it was booked. Nothing about the traveller or the money is selected, and the
+// rows are rebuilt field by field so a column added to the query later cannot reach the public.
+const toPublicRecentBooking = (row) => ({
+  id: row.id,
+  packageId: row.packageId,
+  packageName: row.packageName ?? null,
+  packageDestination: row.packageDestination ?? null,
+  packageDuration: row.packageDuration ?? null,
+  packageCoverImage: row.packageCoverImage ?? null,
+  packageSlug: row.packageSlug ?? null,
+  packagePrice: row.packagePrice ?? null,
+  numberOfTravelers: row.numberOfTravelers ?? null,
+  createdAt: row.createdAt,
+});
+
 export const getRecentBookings = asyncHandler(async (req, res) => {
-  const limit = Math.min(parseInt(req.query.limit) || 10, 50);
+  const { limit } = recentBookingsQuery.parse({ limit: req.query.limit ?? 10 });
 
   const bookings = await prisma.$queryRaw`
     SELECT
-      b.id, b."userId", b."packageId", b."travelDate", b."endDate",
-      b."numberOfTravelers", b."totalAmount", b."paidAmount",
-      b."paymentStatus", b."bookingStatus", b."specialRequests",
-      b."confirmedAt", b."createdAt",
+      b.id, b."packageId", b."numberOfTravelers", b."createdAt",
       p.title AS "packageName", p.destination AS "packageDestination",
       p."duration_days" AS "packageDuration",
       p."base_price" AS "packageBasePrice",
       p."default_margin_type" AS "packageMarginType",
       p."default_margin_input" AS "packageMarginInput",
-      p."cover_image" AS "packageCoverImage", p.slug AS "packageSlug",
-      u.name AS "userName", u.email AS "userEmail"
+      p."cover_image" AS "packageCoverImage", p.slug AS "packageSlug"
     FROM crm_bookings."Booking" b
     LEFT JOIN crm_packages."Package" p ON p.id = b."packageId" AND p."tenantId" = b."tenantId"
-    LEFT JOIN crm_users."User" u ON u.id = b."userId"
     WHERE b."tenantId" = ${agency()}::uuid AND b."bookingStatus" IN ('pending','confirmed','completed')
     ORDER BY b."confirmedAt" DESC NULLS LAST, b."createdAt" DESC
     LIMIT ${limit}
   `;
 
-  res.status(200).json({ success: true, data: withPackageSellPrice(bookings || []) });
+  res.status(200).json({ success: true, data: withPackageSellPrice(bookings || []).map(toPublicRecentBooking) });
 });

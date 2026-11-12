@@ -1,7 +1,21 @@
 import { describe, it, expect, vi } from 'vitest';
+
+// Plan checks are covered in plan.service.test.js; here every agency has every module.
+vi.mock('../plan.service.js', () => ({ assertPlanFeature: vi.fn().mockResolvedValue(undefined), metered: vi.fn((_metric, send) => send()) }));
 import { sendWhatsappTemplate } from '../whatsapp.client.js';
+import { assertPlanFeature } from '../plan.service.js';
+import AppError from '../../utils/appError.js';
 
 describe('whatsapp.client sendWhatsappTemplate', () => {
+  it('never calls notification-service when the plan leaves WhatsApp out', async () => {
+    vi.mocked(assertPlanFeature).mockRejectedValueOnce(new AppError('not in plan', 403, { code: 'FEATURE_NOT_IN_PLAN' }));
+    const fetchImpl = vi.fn();
+
+    await expect(sendWhatsappTemplate({ to: '+15551234567', templateName: 'invoice_ready', fetchImpl }))
+      .rejects.toMatchObject({ code: 'FEATURE_NOT_IN_PLAN' });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   it('POSTs a template payload to notification-service with the internal token header', async () => {
     const fetchImpl = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ success: true, data: { messages: [{ id: 'wamid.1' }] } }) });
 

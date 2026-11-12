@@ -1,6 +1,7 @@
 import prisma from '../db/client.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import AppError from '../utils/appError.js';
+import { assertPlanFeature } from '../services/plan.service.js';
 import logger from '../config/logger.js';
 import { nextReceiptNumber, nextPaymentHistoryNumber } from '../utils/docNumber.js';
 import { emitLeadEvent, logLeadCommunication } from '../services/events.client.js';
@@ -214,6 +215,7 @@ export const sendPaymentReceipt = asyncHandler(async (req, res) => {
 
   try {
     if (channel === 'whatsapp') {
+      await assertPlanFeature('whatsapp'); // before the PDF is uploaded anywhere
       const recipient = phone || receipt.customerPhone;
       if (!recipient) throw new AppError('No phone number available for this receipt', 400);
       const mediaUrl = await uploadPdfBuffer(pdf);

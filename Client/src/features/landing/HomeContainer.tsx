@@ -25,20 +25,22 @@ import {
   InlineArrowRight,
 } from './components/icons';
 
-/** Raw shape of a recent booking as returned by `fetchRecentBookings`. */
+/** Raw shape of a recent booking as returned by `fetchRecentBookings`. It never names the traveller. */
 interface RecentBooking {
   id?: string;
-  packageId?: string;
-  packageName?: string;
-  packageDestination?: string;
-  packageDuration?: number;
-  packageCoverImage?: string;
-  packageSlug?: string;
-  packagePrice?: number;
+  packageId?: string | null;
+  packageName?: string | null;
+  packageDestination?: string | null;
+  packageDuration?: number | null;
+  packageCoverImage?: string | null;
+  packageSlug?: string | null;
+  packagePrice?: number | null;
   createdAt?: string;
-  numberOfTravelers?: number;
-  userName?: string;
+  numberOfTravelers?: number | null;
 }
+
+const travellerLabel = (count?: number | null) =>
+  count && count > 1 ? `${count} travellers` : 'A traveller';
 
 export default function HomeContainer() {
   const navigate = useNavigate();
@@ -163,7 +165,7 @@ export default function HomeContainer() {
     }
 
     return bookings
-      .map((booking, i) => {
+      .map((booking) => {
         try {
           if (!booking.packageId) return null;
 
@@ -195,20 +197,20 @@ export default function HomeContainer() {
 
           return {
             id: booking.packageId,
-            packageName: booking.packageName,
+            packageName: booking.packageName ?? undefined,
             image: booking.packageCoverImage || '',
             duration:
               booking.packageDuration && booking.packageDuration > 0
                 ? `${booking.packageDuration}D/${booking.packageDuration - 1}N`
                 : '',
-            price: booking.packagePrice,
-            pax: booking.numberOfTravelers,
+            price: booking.packagePrice ?? undefined,
+            pax: booking.numberOfTravelers ?? undefined,
             bookedAgo: bookedAgoText,
             traveler: {
-              name: booking.userName || `Traveler ${i + 1}`,
-              from: booking.packageDestination,
+              name: travellerLabel(booking.numberOfTravelers),
+              from: booking.packageDestination ?? undefined,
             },
-            slug: booking.packageSlug,
+            slug: booking.packageSlug ?? undefined,
           };
         } catch (error) {
           console.error('Error mapping booking:', error, booking);

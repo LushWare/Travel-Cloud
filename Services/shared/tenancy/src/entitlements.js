@@ -1,12 +1,34 @@
 import { requireTenantId } from './context.js';
 
+// Modules: whole areas of the product a plan can leave out. The gateway blocks their routes
+// (see gateway/src/planModules.js) and the services check again for actions that cross into one.
+export const MODULE_ENTITLEMENTS = Object.freeze({
+  finance_docs: 'Invoices, receipts, credit notes and vouchers',
+  whatsapp: 'WhatsApp delivery',
+  vendors: 'Vendors and suppliers',
+  travel_booking: 'Flight booking',
+  analytics_full: 'Full analytics',
+});
+
 export const FEATURE_ENTITLEMENTS = Object.freeze({
   ai_itinerary_builder: 'AI itinerary builder',
+  ...MODULE_ENTITLEMENTS,
+});
+
+// What a stored plan version means when it does not mention a feature. Modules were added
+// after the first plans were saved; reading their absence as "included" keeps those plans
+// (and every agency on them) working exactly as before until someone saves a new version.
+const FEATURE_DEFAULT_WHEN_MISSING = Object.freeze({
+  ai_itinerary_builder: false,
+  ...Object.fromEntries(Object.keys(MODULE_ENTITLEMENTS).map((key) => [key, true])),
 });
 
 export const LIMIT_ENTITLEMENTS = Object.freeze({
   staff_seats: 'Staff seats',
   packages: 'Packages',
+  // Customer-facing sends per calendar month (UTC); counted in crm_platform."UsageCounter".
+  emails_per_month: 'Customer emails per month',
+  whatsapp_per_month: 'WhatsApp messages per month',
 });
 
 const hasOwn = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
@@ -43,16 +65,32 @@ export function normalizePlanEntitlements(value) {
   return {
     ...limits,
     features: Object.fromEntries(
-      Object.keys(FEATURE_ENTITLEMENTS).map((key) => [key, suppliedFeatures[key] ?? false]),
+      Object.keys(FEATURE_ENTITLEMENTS).map((key) => [key, suppliedFeatures[key] ?? FEATURE_DEFAULT_WHEN_MISSING[key]]),
     ),
   };
+}
+
+// One error code and wording for "your plan doesn't include this", wherever it is refused
+// (gateway, or a service checking an action that reaches into a module from elsewhere).
+export const FEATURE_NOT_IN_PLAN = 'FEATURE_NOT_IN_PLAN';
+export const FEATURE_NOT_IN_PLAN_MESSAGE = "Your agency's plan doesn't include this. Ask your agency owner about upgrading.";
+
+/** Whether the current agency's plan includes a feature or module (live, not from the login token). */
+export async function hasPlanFeature(prisma, key) {
+  if (!hasOwn(FEATURE_ENTITLEMENTS, key)) throw new TypeError(`Unsupported feature: ${key}`);
+  const { entitlements } = await getCurrentTenantEntitlements(prisma);
+  return entitlements.features[key] === true;
+}
+
+// The modules an agency's plan leaves out, as carried in its staff login token.
+export function switchedOffModules(entitlements) {
+  return Object.keys(MODULE_ENTITLEMENTS).filter((key) => entitlements?.features?.[key] === false);
 }
 
 export function resolveEntitlements({ planVersion = null, overrides = [] } = {}) {
   const planValues = planVersion ? normalizePlanEntitlements(planVersion.entitlements) : null;
   const entitlements = planValues ?? {
-    staff_seats: null,
-    packages: null,
+    ...Object.fromEntries(Object.keys(LIMIT_ENTITLEMENTS).map((key) => [key, null])),
     features: Object.fromEntries(Object.keys(FEATURE_ENTITLEMENTS).map((key) => [key, true])),
   };
   const source = Object.fromEntries([

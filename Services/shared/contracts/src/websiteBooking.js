@@ -23,11 +23,10 @@ export const WebsiteBookingResult = z
   })
   .passthrough();
 
-// Mirrors booking-service's getUserBookings/getRecentBookings raw-SQL rows
-// (Services/booking-service/src/controllers/booking.controller.js) — flat,
-// with package fields prefixed `package*`. There is no nested `package`
-// object on the wire. confirmedAt/userName/userEmail only appear on
-// getRecentBookings' rows; packageMarginType/etc. never survive
+// Mirrors booking-service's getUserBookings raw-SQL rows (the signed-in
+// traveller's own bookings, Services/booking-service/src/controllers/booking.controller.js)
+// — flat, with package fields prefixed `package*`. There is no nested `package`
+// object on the wire. packageMarginType/etc. never survive
 // withPackageSellPrice() (replaced by packagePrice).
 export const UserBooking = z
   .object({
@@ -36,7 +35,6 @@ export const UserBooking = z
     packageId: z.string().optional(),
     travelDate: z.string().nullable().optional(),
     endDate: z.string().nullable().optional(),
-    confirmedAt: z.string().nullable().optional(),
     numberOfTravelers: z.number().optional(),
     totalAmount: moneyField.optional(),
     paidAmount: moneyField.optional(),
@@ -51,7 +49,27 @@ export const UserBooking = z
     packageCoverImage: z.string().nullable().optional(),
     packageSlug: z.string().nullable().optional(),
     packagePrice: moneyField.nullable().optional(),
-    userName: z.string().nullable().optional(),
-    userEmail: z.string().nullable().optional(),
   })
   .passthrough();
+
+// The public GET /bookings/recent row (website "Recently booked" slider). Anonymous visitors
+// read it, so it carries only package details and when it was booked — never the traveller,
+// amounts or payment state. Unknown keys are dropped rather than passed through.
+export const RecentBooking = z.object({
+  id: z.string(),
+  packageId: z.string().nullable(),
+  packageName: z.string().nullable(),
+  packageDestination: z.string().nullable(),
+  packageDuration: z.number().nullable(),
+  packageCoverImage: z.string().nullable(),
+  packageSlug: z.string().nullable(),
+  packagePrice: moneyField.nullable(),
+  numberOfTravelers: z.number().nullable(),
+  createdAt: z.string(),
+});
+
+// Fields that must never appear on a public recent-booking row.
+export const RECENT_BOOKING_PRIVATE_FIELDS = Object.freeze([
+  'userId', 'userName', 'userEmail', 'totalAmount', 'paidAmount', 'paymentStatus',
+  'bookingStatus', 'specialRequests', 'travelDate', 'endDate', 'confirmedAt',
+]);

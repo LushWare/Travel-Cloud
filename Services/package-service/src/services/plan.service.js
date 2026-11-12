@@ -1,6 +1,8 @@
 import prisma from '../db/client.js';
 import AppError from '../utils/appError.js';
-import { getCurrentTenantEntitlements, requireTenantId } from '../../../shared/tenancy/src/index.js';
+import {
+  FEATURE_NOT_IN_PLAN, FEATURE_NOT_IN_PLAN_MESSAGE, getCurrentTenantEntitlements, requireTenantId,
+} from '../../../shared/tenancy/src/index.js';
 
 export function createPackageWithinPlanLimit(data, options = {}) {
   const tenantId = requireTenantId();
@@ -25,7 +27,7 @@ export function requirePlanFeature(key) {
     try {
       const resolved = await getCurrentTenantEntitlements(prisma);
       if (resolved.entitlements.features[key] !== true) {
-        return next(new AppError('This feature is not included in your agency plan. Contact your platform administrator.', 403, { code: 'FEATURE_NOT_INCLUDED' }));
+        return next(new AppError(FEATURE_NOT_IN_PLAN_MESSAGE, 403, { code: FEATURE_NOT_IN_PLAN }));
       }
       return next();
     } catch (err) {

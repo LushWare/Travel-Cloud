@@ -11,7 +11,6 @@ import BillingInvoicing from "./pages/BillingInvoicing";
 import UserManagement from "./pages/UserManagement";
 import CareerManagement from "./pages/CareerManagement";
 import OrganizationSettings from "./pages/OrganizationSettings";
-import AuditLog from "./pages/AuditLog";
 import AIInsights from "./pages/AIInsights";
 import Login from "./pages/Login";
 import SalesRepLogin from "./pages/SalesRepLogin";
@@ -112,14 +111,6 @@ function AppContent() {
                     element={
                       <ProtectedRoute requiredRoles={["admin", "superAdmin"]}>
                         <OrganizationSettings />
-                      </ProtectedRoute>
-                    }
-                  />
-                  <Route
-                    path="/audit-log"
-                    element={
-                      <ProtectedRoute requiredRoles={["admin", "superAdmin"]}>
-                        <AuditLog />
                       </ProtectedRoute>
                     }
                   />

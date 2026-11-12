@@ -1,4 +1,5 @@
 import pino from 'pino';
+import { tenantLogFields } from '../../../shared/tenancy/src/logging.js';
 
 const isProduction = process.env.NODE_ENV === 'production';
 const level = process.env.LOG_LEVEL || (isProduction ? 'info' : 'debug');
@@ -25,6 +26,7 @@ const logger = pino({
     return {
       service: 'career-service',
       env: process.env.NODE_ENV || 'development',
+      ...tenantLogFields(),
     };
   },
   ...(isProduction

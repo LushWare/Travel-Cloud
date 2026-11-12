@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { getCurrentTenantEntitlements, normalizePlanEntitlements, resolveEntitlements } from '../../../../shared/tenancy/src/entitlements.js';
+import {
+  getCurrentTenantEntitlements, normalizePlanEntitlements, resolveEntitlements, switchedOffModules,
+} from '../../../../shared/tenancy/src/entitlements.js';
 import { runWithTenant } from '../../../../shared/tenancy/src/context.js';
 
 const TENANT_ID = '00000000-0000-4000-8000-000000000002';
@@ -42,6 +44,49 @@ describe('plan entitlements', () => {
   it('rejects invalid overrides instead of silently ignoring them', () => {
     expect(() => resolveEntitlements({ overrides: [{ entitlementKey: 'packages', value: -1 }] })).toThrow(/Invalid override/);
     expect(() => resolveEntitlements({ overrides: [{ entitlementKey: 'unlisted', value: 2 }] })).toThrow(/Unsupported entitlement override/);
+  });
+
+  it('treats a module a stored plan never mentions as included', () => {
+    const result = resolveEntitlements({
+      planVersion: { id: 'v', planId: 'p', version: 1, name: 'Starter', entitlements: { staff_seats: 5, features: { ai_itinerary_builder: false } } },
+    });
+
+    expect(result.entitlements.features).toMatchObject({ finance_docs: true, whatsapp: true, travel_booking: true });
+  });
+
+  it('still treats a missing AI itinerary builder as not included', () => {
+    expect(normalizePlanEntitlements({}).features.ai_itinerary_builder).toBe(false);
+  });
+
+  it('keeps a module a plan switches off switched off', () => {
+    const result = normalizePlanEntitlements({ features: { finance_docs: false, vendors: false } });
+
+    expect(result.features).toMatchObject({ finance_docs: false, vendors: false, whatsapp: true });
+  });
+
+  it('lets an agency override turn a module back on', () => {
+    const result = resolveEntitlements({
+      planVersion: { id: 'v', planId: 'p', version: 1, name: 'Starter', entitlements: { features: { finance_docs: false } } },
+      overrides: [{ entitlementKey: 'features.finance_docs', value: true }],
+    });
+
+    expect(result.entitlements.features.finance_docs).toBe(true);
+    expect(result.source['features.finance_docs']).toBe('override');
+  });
+
+  it('lists exactly the modules a plan switches off, and never the AI feature', () => {
+    const { entitlements } = resolveEntitlements({
+      planVersion: {
+        id: 'v', planId: 'p', version: 1, name: 'Starter',
+        entitlements: { features: { ai_itinerary_builder: false, finance_docs: false, travel_booking: false } },
+      },
+    });
+
+    expect(switchedOffModules(entitlements)).toEqual(['finance_docs', 'travel_booking']);
+  });
+
+  it('switches off no module for an agency with no plan', () => {
+    expect(switchedOffModules(resolveEntitlements().entitlements)).toEqual([]);
   });
 
   it('loads only the current agency assignment and overrides', async () => {

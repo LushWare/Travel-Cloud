@@ -9,6 +9,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 
 import PageHeader from '../components/PageHeader';
 import AgencyPlanSummary from '../components/AgencyPlanSummary';
+import SupportAccessNote from '../components/SupportAccessNote';
 
 interface SettingsForm {
   companyName: string;
@@ -286,6 +287,8 @@ const OrganizationSettings = () => {
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 space-y-6">
 
         <AgencyPlanSummary />
+
+        <SupportAccessNote />
 
         <Section
           title="Company Identity"

@@ -74,7 +74,7 @@ export async function findAgency(id) {
 
 /** Everything the detail page shows, as counts and yes/no answers. */
 export async function agencyDetail(id) {
-  const [people, owners, usage, activity, setup] = await Promise.all([
+  const [people, owners, usage, activity, setup, sends] = await Promise.all([
     pool.query(
       `SELECT role::text AS role, status::text AS status, COUNT(*)::int AS count
        FROM crm_users."Membership" WHERE "tenantId" = $1 AND role IN ${STAFF_ROLES}
@@ -110,7 +110,14 @@ export async function agencyDetail(id) {
        FROM crm_users."OrganizationSettings" WHERE "tenantId" = $1 LIMIT 1`,
       [id],
     ),
+    // Metered sends this month. The table arrives with a migration; until then show zero.
+    pool.query(
+      `SELECT "metric", "count" FROM crm_platform."UsageCounter"
+       WHERE "tenantId" = $1 AND "period" = date_trunc('month', NOW() AT TIME ZONE 'UTC')::date`,
+      [id],
+    ).catch(() => ({ rows: [] })),
   ]);
+  const sendCount = (metric) => sends.rows.find((row) => row.metric === metric)?.count ?? 0;
 
   const byRole = { owners: 0, admins: 0, salesReps: 0, vendors: 0 };
   const byStatus = { active: 0, invited: 0, suspended: 0 };
@@ -124,6 +131,7 @@ export async function agencyDetail(id) {
     people: { total: byStatus.active + byStatus.invited, byRole, byStatus },
     owners: owners.rows,
     usage: Object.fromEntries(usage.rows.map(({ metric, total, thisMonth }) => [metric, { total, thisMonth }])),
+    sends: { emails: sendCount('emails'), whatsapp: sendCount('whatsapp') },
     activity: activity.rows[0] ?? { lastActivityAt: null, activeUsers7d: 0, activeUsers30d: 0 },
     setup: setup.rows[0] ?? { companyDetails: false, logo: false, bankDetails: false },
   };

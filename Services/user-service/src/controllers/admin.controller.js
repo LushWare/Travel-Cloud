@@ -11,7 +11,8 @@ import {
 } from '../utils/accountGuard.js';
 import { audit } from '../utils/audit.js';
 import { idParamSchema, formatZodError, AVAILABLE_PERMISSIONS } from '../validators/common.js';
-import { getCurrentTenantEntitlements } from '../../../shared/tenancy/src/index.js';
+import { currentUsage, getCurrentTenantEntitlements } from '../../../shared/tenancy/src/index.js';
+import logger from '../config/logger.js';
 import { withStaffSeat } from '../services/plan.service.js';
 import {
   createStaffSchema, updateUserSchema, updateUserStatusSchema, updateAdminPermissionsSchema,
@@ -221,7 +222,7 @@ export const getOrganizationBranding = asyncHandler(async (req, res) => {
 });
 
 export const getAgencyPlan = asyncHandler(async (_req, res) => {
-  const [resolved, staffSeatsUsed, packageUsage] = await Promise.all([
+  const [resolved, staffSeatsUsed, packageUsage, sends] = await Promise.all([
     getCurrentTenantEntitlements(prisma),
     prisma.membership.count({
       where: {
@@ -230,6 +231,22 @@ export const getAgencyPlan = asyncHandler(async (_req, res) => {
       },
     }),
     prisma.$queryRaw`SELECT COUNT(*)::int AS count FROM crm_packages."Package"`,
+    // The counter table arrives with a migration; until then the screen shows zero sends.
+    currentUsage(prisma).catch((err) => {
+      logger.error({ err: { message: err.message, code: err.code } }, 'Could not read monthly send usage');
+      return { emails: 0, whatsapp: 0 };
+    }),
   ]);
-  res.json({ status: 'success', data: { ...resolved, usage: { staff_seats: staffSeatsUsed, packages: Number(packageUsage[0]?.count ?? 0) } } });
+  res.json({
+    status: 'success',
+    data: {
+      ...resolved,
+      usage: {
+        staff_seats: staffSeatsUsed,
+        packages: Number(packageUsage[0]?.count ?? 0),
+        emails_per_month: sends.emails,
+        whatsapp_per_month: sends.whatsapp,
+      },
+    },
+  });
 });

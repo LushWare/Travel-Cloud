@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { normalizePlanEntitlements, LIMIT_ENTITLEMENTS } from '../../shared/tenancy/src/index.js';
+import {
+  normalizePlanEntitlements, LIMIT_ENTITLEMENTS, MODULE_ENTITLEMENTS, switchedOffModules,
+} from '../../shared/tenancy/src/index.js';
 import { DEFAULT_ASSIGNMENTS, DEFAULT_PLANS } from '../src/planDefaults.js';
 
 describe('starting plan catalogue', () => {
@@ -29,6 +31,25 @@ describe('starting plan catalogue', () => {
     expect(growth.entitlements.packages).toBeGreaterThan(starter.entitlements.packages);
   });
 
+  it('switches no module off on the internal or Pro plans', () => {
+    for (const key of ['internal', 'pro']) {
+      const plan = DEFAULT_PLANS.find((p) => p.key === key);
+      expect(switchedOffModules(normalizePlanEntitlements(plan.entitlements))).toEqual([]);
+    }
+  });
+
+  it('switches every module off on Starter', () => {
+    const starter = DEFAULT_PLANS.find((p) => p.key === 'starter');
+
+    expect(switchedOffModules(normalizePlanEntitlements(starter.entitlements))).toEqual(Object.keys(MODULE_ENTITLEMENTS));
+  });
+
+  it('leaves only flight booking out of Growth', () => {
+    const growth = DEFAULT_PLANS.find((p) => p.key === 'growth');
+
+    expect(switchedOffModules(normalizePlanEntitlements(growth.entitlements))).toEqual(['travel_booking']);
+  });
+
   it('assigns only plans that exist', () => {
     const keys = new Set(DEFAULT_PLANS.map((p) => p.key));
 
@@ -48,5 +69,24 @@ describe('starting plan catalogue', () => {
 
   it('keeps the public-website agency on the unlimited internal plan', () => {
     expect(DEFAULT_ASSIGNMENTS.find((a) => a.slug === 'lush-demo').plan).toBe('internal');
+  });
+});
+
+describe('starting monthly sending allowances', () => {
+  const plan = (key) => DEFAULT_PLANS.find((p) => p.key === key);
+
+  it('leaves Lushware\'s own agency with no sending limit', () => {
+    expect(normalizePlanEntitlements(plan('internal').entitlements)).toMatchObject({ emails_per_month: null, whatsapp_per_month: null });
+  });
+
+  it('gives each paid plan a larger email allowance than the one below it', () => {
+    const [starter, growth, pro] = ['starter', 'growth', 'pro'].map((k) => plan(k).entitlements.emails_per_month);
+
+    expect(growth).toBeGreaterThan(starter);
+    expect(pro).toBeGreaterThan(growth);
+  });
+
+  it('gives Pro a larger WhatsApp allowance than Growth', () => {
+    expect(plan('pro').entitlements.whatsapp_per_month).toBeGreaterThan(plan('growth').entitlements.whatsapp_per_month);
   });
 });

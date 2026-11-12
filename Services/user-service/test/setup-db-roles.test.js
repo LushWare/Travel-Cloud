@@ -11,4 +11,12 @@ describe('platform plan table grants', () => {
       expect(sql).toContain(`REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON crm_platform."${table}" FROM crm_app;`);
     }
   });
+
+  it('lets tenant services count usage but never delete a counter', () => {
+    const sql = roleSql('x'.repeat(32)).join('\n');
+
+    expect(sql).toContain(`IF to_regclass('crm_platform."UsageCounter"') IS NOT NULL THEN`);
+    expect(sql).toContain('GRANT SELECT, INSERT, UPDATE ON crm_platform."UsageCounter" TO crm_app;');
+    expect(sql).toContain('REVOKE DELETE, TRUNCATE ON crm_platform."UsageCounter" FROM crm_app;');
+  });
 });

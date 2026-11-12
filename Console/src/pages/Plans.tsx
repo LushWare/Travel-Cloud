@@ -3,18 +3,19 @@ import { Archive, Copy, Loader2, Pencil, Plus, Save, X } from 'lucide-react';
 import AppShell from '../components/AppShell';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
-import { ApiError, plansApi, type PlanCatalogItem, type PlanEntitlements, type PlanInput, type PlatformUser } from '../lib/api';
+import {
+  ApiError, PLAN_FEATURES, PLAN_LIMITS, plansApi, withFeatureDefaults,
+  type PlanCatalogItem, type PlanEntitlements, type PlanInput, type PlanLimitKey, type PlatformUser,
+} from '../lib/api';
 
 type Props = { user: PlatformUser; onSignOut: () => void; onChangePassword: () => void };
 type Editor = { planId: string | null; key: string; input: PlanInput };
 
-const FEATURE_LABELS: Record<keyof PlanEntitlements['features'], string> = {
-  ai_itinerary_builder: 'AI itinerary builder',
-};
+const FEATURE_LABELS: Record<keyof PlanEntitlements['features'], string> = PLAN_FEATURES;
 
 const emptyInput = (): PlanInput => ({
   name: '', description: '', priceMinorUnits: null, currency: 'USD', billingInterval: 'monthly',
-  entitlements: { staff_seats: null, packages: null, features: { ai_itinerary_builder: false } },
+  entitlements: withFeatureDefaults({ staff_seats: null, packages: null }),
 });
 
 const numberValue = (value: string): number | null => value === '' ? null : Number(value);
@@ -46,7 +47,7 @@ export default function Plans({ user, onSignOut, onChangePassword }: Props) {
     setEditor({ planId: plan.id, key: plan.key, input: {
       name: current.name, description: current.description ?? '', priceMinorUnits: current.priceMinorUnits,
       currency: current.currency, billingInterval: current.billingInterval,
-      entitlements: current.entitlements,
+      entitlements: withFeatureDefaults(current.entitlements),
     } });
   };
 
@@ -57,11 +58,11 @@ export default function Plans({ user, onSignOut, onChangePassword }: Props) {
     setEditor({ planId: null, key: `${plan.key}-copy`, input: {
       name: `${current.name} copy`, description: current.description ?? '', priceMinorUnits: current.priceMinorUnits,
       currency: current.currency, billingInterval: current.billingInterval,
-      entitlements: current.entitlements,
+      entitlements: withFeatureDefaults(current.entitlements),
     } });
   };
 
-  const changeLimit = (key: 'staff_seats' | 'packages', value: string) => {
+  const changeLimit = (key: PlanLimitKey, value: string) => {
     if (!editor) return;
     setEditor({ ...editor, input: { ...editor.input, entitlements: { ...editor.input.entitlements, [key]: numberValue(value) } } });
   };
@@ -121,12 +122,14 @@ export default function Plans({ user, onSignOut, onChangePassword }: Props) {
           <fieldset className="mt-4">
             <legend className="mb-2 text-sm font-semibold">Limits</legend>
             <div className="grid gap-3 sm:grid-cols-2">
-              <label className="grid gap-1 text-sm">Staff seats<Input type="number" min="0" placeholder="Unlimited" value={editor.input.entitlements.staff_seats ?? ''} onChange={(event) => changeLimit('staff_seats', event.target.value)} /></label>
-              <label className="grid gap-1 text-sm">Packages<Input type="number" min="0" placeholder="Unlimited" value={editor.input.entitlements.packages ?? ''} onChange={(event) => changeLimit('packages', event.target.value)} /></label>
+              {(Object.keys(PLAN_LIMITS) as PlanLimitKey[]).map((key) => (
+                <label key={key} className="grid gap-1 text-sm">{PLAN_LIMITS[key]}<Input type="number" min="0" placeholder="Unlimited" value={editor.input.entitlements[key] ?? ''} onChange={(event) => changeLimit(key, event.target.value)} /></label>
+              ))}
             </div>
           </fieldset>
           <fieldset className="mt-4">
             <legend className="mb-2 text-sm font-semibold">Features</legend>
+            <p className="mb-2 text-xs text-muted-foreground">Switching a module off makes it read-only for agencies on this plan: they keep their existing records but cannot add or change any. Staff see the change at their next sign-in or within 15 minutes.</p>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {(Object.keys(FEATURE_LABELS) as (keyof PlanEntitlements['features'])[]).map((key) => (
                 <label key={key} className="flex min-h-10 items-center gap-2 border-b border-border py-2 text-sm">

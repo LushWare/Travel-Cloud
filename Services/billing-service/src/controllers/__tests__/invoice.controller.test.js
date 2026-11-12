@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+// Plan checks are covered in plan.service.test.js; here every agency has every module.
+vi.mock('../../services/plan.service.js', () => ({ assertPlanFeature: vi.fn().mockResolvedValue(undefined), metered: vi.fn((_metric, send) => send()) }));
+
 const {
   mockFindUnique, mockFindMany, mockCount, mockAggregate, mockQueryRaw, mockUpdate,
   mockGeneratePDF, mockSendEmail, mockSendWhatsapp, mockUpload, mockLogLeadCommunication,

@@ -22,7 +22,9 @@ export {
   WebsiteReviewRequest,
   WebsiteReview,
 } from './apiPackage.js';
-export { WebsiteBookingRequest, WebsiteBookingResult, UserBooking } from './websiteBooking.js';
+export {
+  WebsiteBookingRequest, WebsiteBookingResult, UserBooking, RecentBooking, RECENT_BOOKING_PRIVATE_FIELDS,
+} from './websiteBooking.js';
 export { WebsiteContactRequest, WebsiteContactResult } from './websiteContact.js';
 export { Vacancy, CareerApplicationRequest } from './careerApplication.js';
 export {

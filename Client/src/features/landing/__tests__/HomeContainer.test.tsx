@@ -85,6 +85,7 @@ const mockDestination = (overrides: Partial<AggregatedDestination> = {}): Aggreg
 
 const mockBookings = [
   {
+    id: 'bk-1',
     packageId: 'bk-pkg-1',
     packageName: 'Maldives Escape',
     packageCoverImage: '/maldives.jpg',
@@ -94,7 +95,6 @@ const mockBookings = [
     packageDestination: 'Maldives',
     createdAt: new Date(Date.now() - 2 * 3600 * 1000).toISOString(),
     numberOfTravelers: 2,
-    userName: 'Alice',
   },
 ];
 
@@ -149,6 +149,29 @@ describe('HomeContainer', () => {
     // The slider duplicates items for its seamless loop, so the booking
     // card appears more than once.
     expect(screen.getAllByText('Maldives Escape').length).toBeGreaterThan(0);
+  });
+
+  it('labels a recent booking by its party size, never by a traveller name', async () => {
+    render(
+      <MemoryRouter>
+        <HomeContainer />
+      </MemoryRouter>
+    );
+    await flushAsyncWork();
+
+    expect(screen.getAllByText('2 travellers').length).toBeGreaterThan(0);
+  });
+
+  it('labels a recent booking with no party size as "A traveller"', async () => {
+    fetchRecentBookingsMock.mockResolvedValue([{ ...mockBookings[0], numberOfTravelers: null }]);
+    render(
+      <MemoryRouter>
+        <HomeContainer />
+      </MemoryRouter>
+    );
+    await flushAsyncWork();
+
+    expect(screen.getAllByText('A traveller').length).toBeGreaterThan(0);
   });
 
   it('shows the error state when the packages fetch fails', async () => {

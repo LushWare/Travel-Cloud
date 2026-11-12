@@ -1,6 +1,8 @@
 import prisma from '../db/client.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import AppError from '../utils/appError.js';
+import { assertPlanFeature } from '../services/plan.service.js';
+import { audit } from '../utils/audit.js';
 import logger from '../config/logger.js';
 import { nextQuotationNumber, nextInvoiceNumber } from '../utils/docNumber.js';
 import { quotationTotals, createOrVersionQuotation } from '../services/quotation.service.js';
@@ -135,6 +137,10 @@ export const deleteQuotation = asyncHandler(async (req, res) => {
   const existing = await prisma.quotation.findUnique({ where: { id: req.params.id } });
   if (!existing) throw new AppError('Quotation not found', 404);
   await prisma.quotation.delete({ where: { id: req.params.id } });
+  await audit(req, {
+    action: 'billing.quotation_deleted', targetType: 'quotation', targetId: existing.id,
+    summary: `Deleted quotation ${existing.quotationNumber}`,
+  });
   res.json({ success: true, message: 'Quotation deleted' });
 });
 
@@ -155,6 +161,7 @@ export const sendQuotation = asyncHandler(async (req, res) => {
 
   try {
     if (channel === 'whatsapp') {
+      await assertPlanFeature('whatsapp'); // before the PDF is uploaded anywhere
       const recipient = phone || quotation.customerPhone;
       if (!recipient) throw new AppError('No phone number available for this quotation', 400);
       const mediaUrl = await uploadPdfBuffer(pdf);
@@ -364,6 +371,9 @@ export const rejectQuotation = asyncHandler(async (req, res) => {
  */
 export const convertQuotationToInvoice = asyncHandler(async (req, res) => {
   const overrides = convertToInvoiceSchema.parse(req.body || {});
+
+  // Lives under /quotations, so the gateway's route check for invoices never sees it.
+  await assertPlanFeature('finance_docs');
 
   const quotation = await prisma.quotation.findUnique({ where: { id: req.params.id }, include: { items: true } });
   if (!quotation) throw new AppError('Quotation not found', 404);

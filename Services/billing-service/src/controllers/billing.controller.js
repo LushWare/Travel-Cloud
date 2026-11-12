@@ -1,4 +1,6 @@
+import { z } from 'zod';
 import prisma from '../db/client.js';
+import { audit } from '../utils/audit.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import AppError from '../utils/appError.js';
 import { requireTenantId } from '../../../shared/tenancy/src/index.js';
@@ -178,8 +180,19 @@ export const getTopCustomers = asyncHandler(async (req, res) => {
   res.json({ success: true, data });
 });
 
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}/, 'Use a date like 2026-11-30.')
+  .refine((value) => !Number.isNaN(new Date(value).getTime()), 'Use a real date.');
+const exportQuerySchema = z.object({
+  type: z.enum(['invoices', 'quotations', 'receipts']).default('invoices'),
+  startDate: isoDate.optional(),
+  endDate: isoDate.optional(),
+});
+
+// A bulk copy of the agency's customer and financial records, so every export is audited.
 export const exportBillingData = asyncHandler(async (req, res) => {
-  const { startDate, endDate, type = 'invoices' } = req.query;
+  const parsed = exportQuerySchema.safeParse(req.query ?? {});
+  if (!parsed.success) throw new AppError(parsed.error.issues[0]?.message || 'Check the export options and try again.', 400);
+  const { startDate, endDate, type } = parsed.data;
   const dateRange = startDate && endDate
     ? { gte: new Date(startDate), lte: new Date(new Date(endDate).setHours(23, 59, 59, 999)) }
     : undefined;
@@ -190,5 +203,12 @@ export const exportBillingData = asyncHandler(async (req, res) => {
   else if (type === 'receipts') data = await prisma.paymentReceipt.findMany({ where, orderBy: { createdAt: 'desc' } });
   else data = await prisma.invoice.findMany({ where, orderBy: { createdAt: 'desc' } });
 
+  await audit(req, {
+    action: 'billing.exported',
+    targetType: 'export',
+    targetId: type,
+    summary: `Exported ${data.length} ${type}${dateRange ? ` from ${startDate} to ${endDate}` : ' (all dates)'}`,
+    details: { type, startDate: startDate ?? null, endDate: endDate ?? null, count: data.length },
+  });
   res.json({ success: true, count: data.length, data });
 });

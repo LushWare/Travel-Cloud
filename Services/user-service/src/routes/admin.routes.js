@@ -12,7 +12,7 @@ import {
   getPolicyDocuments, getPolicyDocument, postPolicyDocument, putPolicyDocument,
   deletePolicyDocumentHandler, getInternalPolicyDocuments,
 } from '../controllers/policyDocuments.controller.js';
-import { listAuditLog } from '../controllers/auditLog.controller.js';
+import { listSupportAccess } from '../controllers/auditLog.controller.js';
 
 const router = express.Router();
 
@@ -46,7 +46,7 @@ router.use(requireAuth, authorize('admin', 'superAdmin'));
 
 router.get('/stats', getDashboardStats);
 router.get('/plan', getAgencyPlan);
-router.get('/audit-log', listAuditLog);
+router.get('/support-access', listSupportAccess);
 router.get('/settings', getSettings);
 router.put('/settings', updateSettings);
 

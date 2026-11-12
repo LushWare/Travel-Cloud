@@ -13,6 +13,7 @@ import asyncHandler from '../utils/asyncHandler.js';
 import * as emailService from '../utils/email.js';
 import { signJwt, verifyJwt } from '../config/jwtKeys.js';
 import * as rateLimit from '../services/rateLimit.service.js';
+import { modulesSwitchedOffFor } from '../services/planModules.service.js';
 import {
   createSession, consumeSession, revokeFamily, revokeUserSessions, revokeSessionByToken,
 } from '../services/session.service.js';
@@ -39,7 +40,9 @@ const customerWorkspace = (user) => ({
 });
 
 // The role and permissions in a token come from the membership of the chosen agency, not from the global account.
-const signToken = (user, workspace) =>
+// `off` lists the plan modules the agency lacks; the gateway refuses changes in them. A plan change
+// reaches staff at their next token renewal (at most the 15-minute token lifetime).
+const signToken = (user, workspace, off = []) =>
   signJwt(
     {
       id: user.id,
@@ -50,6 +53,7 @@ const signToken = (user, workspace) =>
       name: user.name,
       permissions: workspace.permissions,
       isSuperAdmin: workspace.isOwner || workspace.role === 'superAdmin',
+      ...(off.length > 0 && { off }),
     },
     isCustomer(user) ? process.env.JWT_EXPIRE || '7d' : process.env.STAFF_ACCESS_TOKEN_TTL || '15m'
   );
@@ -82,7 +86,9 @@ const publicUser = (user, workspace) => ({
 });
 
 const issueSession = async (req, res, user, workspace, familyId) => {
-  const token = signToken(user, workspace);
+  // Website customers never reach a plan module, so their logins skip the lookup.
+  const off = isCustomer(user) ? [] : await modulesSwitchedOffFor(workspace.tenantId);
+  const token = signToken(user, workspace, off);
   const session = await createSession(user.id, {
     familyId, tenantId: workspace.tenantId, ipAddress: clientIp(req), userAgent: req.get('user-agent'),
   });
@@ -90,8 +96,11 @@ const issueSession = async (req, res, user, workspace, familyId) => {
   const lifetime = isCustomer(user) ? { maxAge: jwt.decode(token).exp * 1000 - Date.now() } : { expires: session.expiresAt };
   res.cookie(ACCESS_COOKIE, token, { ...cookieOptions(), ...lifetime });
   res.cookie(REFRESH_COOKIE, session.token, { ...cookieOptions(REFRESH_COOKIE_PATH), expires: session.expiresAt });
-  return token;
+  return { token, off };
 };
+
+// What Management needs to lock menu items ahead of time; the gateway enforces the same list.
+const sessionUser = (user, workspace, off) => ({ ...publicUser(user, workspace), planModulesOff: off });
 
 const TENANT_CHOICE_TTL = '5m';
 
@@ -127,14 +136,14 @@ const completeLogin = async (req, res, user, statusCode, message, { tenantId } =
 };
 
 const sendTokenResponse = async (req, res, user, workspace, statusCode, message = 'Success') => {
-  const token = await issueSession(req, res, user, workspace);
+  const { token, off } = await issueSession(req, res, user, workspace);
 
   await userDb.updateLastLogin(user.id).catch(() => {});
 
   res.status(statusCode).json({
     status: 'success',
     message,
-    data: { ...(isCustomer(user) && { token }), user: publicUser(user, workspace) },
+    data: { ...(isCustomer(user) && { token }), user: sessionUser(user, workspace, off) },
   });
 };
 
@@ -411,8 +420,8 @@ export const refresh = asyncHandler(async (req, res) => {
     throw new AppError('Your session has expired. Please sign in again.', 401);
   }
 
-  await issueSession(req, res, user, workspace, consumed.familyId);
-  res.status(200).json({ status: 'success', message: 'Session refreshed', data: { user: publicUser(user, workspace) } });
+  const { off } = await issueSession(req, res, user, workspace, consumed.familyId);
+  res.status(200).json({ status: 'success', message: 'Session refreshed', data: { user: sessionUser(user, workspace, off) } });
 });
 
 /** Second half of signing in for someone in several agencies: opens a session in the one they picked. */

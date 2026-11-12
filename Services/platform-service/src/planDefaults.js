@@ -2,6 +2,11 @@
 // decided; change them later in the console (that creates a new plan version, so agencies already
 // on a plan keep the price they were given). Used only by scripts/seed-plans.mjs.
 
+const ALL_FEATURES = Object.freeze({
+  ai_itinerary_builder: true, finance_docs: true, whatsapp: true, vendors: true,
+  travel_booking: true, analytics_full: true,
+});
+
 export const DEFAULT_PLANS = [
   {
     key: 'internal',
@@ -10,7 +15,7 @@ export const DEFAULT_PLANS = [
     priceMinorUnits: null,
     currency: 'USD',
     billingInterval: null,
-    entitlements: { staff_seats: null, packages: null, features: { ai_itinerary_builder: true } },
+    entitlements: { staff_seats: null, packages: null, features: ALL_FEATURES },
   },
   {
     key: 'starter',
@@ -19,7 +24,18 @@ export const DEFAULT_PLANS = [
     priceMinorUnits: 4900,
     currency: 'USD',
     billingInterval: 'monthly',
-    entitlements: { staff_seats: 5, packages: 25, features: { ai_itinerary_builder: false } },
+    // Leads, packages and quotations only: the modules are what the higher plans add.
+    entitlements: {
+      staff_seats: 5,
+      packages: 25,
+      emails_per_month: 1000,
+      // WhatsApp is not in Starter at all (features.whatsapp is false), so no allowance is needed.
+      whatsapp_per_month: null,
+      features: {
+        ai_itinerary_builder: false, finance_docs: false, whatsapp: false, vendors: false,
+        travel_booking: false, analytics_full: false,
+      },
+    },
   },
   {
     key: 'growth',
@@ -28,7 +44,7 @@ export const DEFAULT_PLANS = [
     priceMinorUnits: 14900,
     currency: 'USD',
     billingInterval: 'monthly',
-    entitlements: { staff_seats: 15, packages: 100, features: { ai_itinerary_builder: true } },
+    entitlements: { staff_seats: 15, packages: 100, emails_per_month: 5000, whatsapp_per_month: 2000, features: { ...ALL_FEATURES, travel_booking: false } },
   },
   {
     key: 'pro',
@@ -37,7 +53,7 @@ export const DEFAULT_PLANS = [
     priceMinorUnits: 34900,
     currency: 'USD',
     billingInterval: 'monthly',
-    entitlements: { staff_seats: null, packages: null, features: { ai_itinerary_builder: true } },
+    entitlements: { staff_seats: null, packages: null, emails_per_month: 20000, whatsapp_per_month: 10000, features: ALL_FEATURES },
   },
 ];
 

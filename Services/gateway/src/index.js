@@ -6,6 +6,7 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import cookieParser from 'cookie-parser';
 import { createAccessTokenVerifier, loadPublicKeys } from './accessToken.js';
+import { blockedModule } from './planModules.js';
 import { DEMO_TENANT_ID } from '../../shared/constants/src/index.js';
 import { correlationId, requestLogger } from './middleware/requestLogger.js';
 import logger from './config/logger.js';
@@ -184,7 +185,10 @@ const forwardIdentity = (req, user) => {
   req.headers['x-user-name']          = user.name;
   req.headers['x-user-permissions']   = JSON.stringify(user.permissions || []);
   req.headers['x-user-is-super-admin'] = String(user.isSuperAdmin || false);
-  if (user.tid) req.headers['x-tenant-id'] = user.tid;
+  if (user.tid) {
+    req.headers['x-tenant-id'] = user.tid;
+    req.verifiedTenantId = user.tid; // for the request log line; see requestLogProps
+  }
   // Lushware staff viewing an agency to help it. Clients cannot send this header (stripped above).
   if (user.help) req.headers['x-platform-help-grant'] = String(user.help);
 };
@@ -198,6 +202,23 @@ const refuseHelpWrite = (req, res, user) => {
     status: 'fail',
     code: 'HELP_ACCESS_READ_ONLY',
     message: 'This is view-only help access. Changes are not allowed.',
+    ...(req.requestId && { requestId: req.requestId }),
+  });
+  return true;
+};
+
+// A module the agency's plan leaves out: its records stay readable, nothing new can be made.
+const refuseModule = (req, res, user) => {
+  const module = blockedModule(req.method, req.path, user?.off);
+  if (!module) return false;
+  (req.log || logger).info({ module, path: req.path, tenantId: user.tid, requestId: req.requestId }, 'Plan module not included');
+  res.status(403).json({
+    success: false,
+    status: 'fail',
+    code: 'FEATURE_NOT_IN_PLAN',
+    module,
+    // Same wording as FEATURE_NOT_IN_PLAN_MESSAGE in shared/tenancy (the gateway does not load that package).
+    message: "Your agency's plan doesn't include this. Ask your agency owner about upgrading.",
     ...(req.requestId && { requestId: req.requestId }),
   });
   return true;
@@ -231,6 +252,7 @@ app.use((req, res, next) => {
       if (refuseHelpWrite(req, res, caller)) return undefined;
     }
     req.headers['x-tenant-id'] = PUBLIC_SITE_TENANT_ID;
+    req.verifiedTenantId = PUBLIC_SITE_TENANT_ID;
     // Public pages also serve signed-in staff (e.g. draft packages), so identify the caller when possible.
     if (!token || req.method !== 'GET' || req.path.startsWith('/api/v1/auth/')) return next();
     try {
@@ -248,7 +270,10 @@ app.use((req, res, next) => {
 
   try {
     const user = verifiedUser(token);
+    // Refused requests are logged against the agency too, so a burst of refusals is traceable.
+    if (user.tid) req.verifiedTenantId = user.tid;
     if (refuseHelpWrite(req, res, user)) return undefined;
+    if (refuseModule(req, res, user)) return undefined;
     forwardIdentity(req, user);
     next();
   } catch (err) {

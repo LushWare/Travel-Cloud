@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+// Plan checks are covered in plan.service.test.js; here every agency has every module.
+vi.mock('../../services/plan.service.js', () => ({ assertPlanFeature: vi.fn().mockResolvedValue(undefined), metered: vi.fn((_metric, send) => send()) }));
+
 const {
   mockFindUnique, mockFindMany, mockCount, mockUpdate,
   mockGeneratePDF, mockSendEmail, mockSendWhatsapp, mockUpload,
@@ -31,6 +34,8 @@ vi.mock('../../services/quotation.service.js', () => ({
 }));
 
 import { getAllQuotations, sendQuotation, sendVoiceQuotation, createQuotationFromLead } from '../quotation.controller.js';
+import { assertPlanFeature } from '../../services/plan.service.js';
+import AppError from '../../utils/appError.js';
 
 const quotation = {
   id: 'q-1',
@@ -118,6 +123,24 @@ describe('sendQuotation', () => {
     expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ status: 'sent', whatsappSent: true, pdfUrl: 'https://cdn.example.com/quotations/q.pdf' }),
     }));
+    expect(res.json).toHaveBeenCalled();
+  });
+
+  it('refuses a WhatsApp send the plan leaves out before uploading the PDF', async () => {
+    vi.mocked(assertPlanFeature).mockRejectedValueOnce(new AppError('not in plan', 403, { code: 'FEATURE_NOT_IN_PLAN' }));
+
+    const { nextErr } = await run(sendQuotation, { params: { id: 'q-1' }, body: { channel: 'whatsapp' } });
+
+    expect(nextErr).toMatchObject({ statusCode: 403, code: 'FEATURE_NOT_IN_PLAN' });
+    expect(vi.mocked(assertPlanFeature)).toHaveBeenCalledWith('whatsapp');
+    expect(mockUpload).not.toHaveBeenCalled();
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it('still emails a quotation when the plan leaves WhatsApp out', async () => {
+    const { res } = await run(sendQuotation, { params: { id: 'q-1' }, body: { channel: 'email' } });
+
+    expect(vi.mocked(assertPlanFeature)).not.toHaveBeenCalled();
     expect(res.json).toHaveBeenCalled();
   });
 

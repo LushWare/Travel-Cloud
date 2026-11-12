@@ -66,13 +66,45 @@ export type AgencyDetail = {
   setup: { companyDetails: boolean; logo: boolean; bankDetails: boolean };
   history: { id: string; action: string; summary: string; actorEmail: string | null; createdAt: string }[];
   plan: AgencyPlan;
+  // Customer emails and WhatsApp messages sent this calendar month (UTC).
+  sends?: { emails: number; whatsapp: number };
 };
 
-export type PlanEntitlements = {
-  staff_seats: number | null;
-  packages: number | null;
-  features: Record<'ai_itinerary_builder', boolean>;
+// Mirrors FEATURE_ENTITLEMENTS in Services/shared/tenancy/src/entitlements.js.
+export const PLAN_FEATURES = {
+  ai_itinerary_builder: 'AI itinerary builder',
+  finance_docs: 'Invoices, receipts, credit notes and vouchers',
+  whatsapp: 'WhatsApp delivery',
+  vendors: 'Vendors and suppliers',
+  travel_booking: 'Flight booking',
+  analytics_full: 'Full analytics',
+} as const;
+export type PlanFeatureKey = keyof typeof PLAN_FEATURES;
+
+// Mirrors LIMIT_ENTITLEMENTS in Services/shared/tenancy/src/entitlements.js. Null is unlimited.
+export const PLAN_LIMITS = {
+  staff_seats: 'Staff seats',
+  packages: 'Packages',
+  emails_per_month: 'Customer emails per month',
+  whatsapp_per_month: 'WhatsApp messages per month',
+} as const;
+export type PlanLimitKey = keyof typeof PLAN_LIMITS;
+
+export type PlanEntitlements = Record<PlanLimitKey, number | null> & {
+  features: Record<PlanFeatureKey, boolean>;
 };
+
+// A stored plan saved before a module existed does not mention it, and the server reads that as
+// "included" (only the AI builder defaults to off). Fill the gaps the same way so the form shows
+// what the agency really gets.
+export const withFeatureDefaults = (entitlements: Partial<Record<PlanLimitKey, number | null>> & {
+  features?: Partial<Record<PlanFeatureKey, boolean>>;
+}): PlanEntitlements => ({
+  ...(Object.fromEntries((Object.keys(PLAN_LIMITS) as PlanLimitKey[]).map((key) => [key, entitlements[key] ?? null])) as Record<PlanLimitKey, number | null>),
+  features: Object.fromEntries((Object.keys(PLAN_FEATURES) as PlanFeatureKey[]).map((key) => [
+    key, entitlements.features?.[key] ?? key !== 'ai_itinerary_builder',
+  ])) as Record<PlanFeatureKey, boolean>,
+});
 
 export type PlanVersion = {
   id: string;

@@ -10,8 +10,9 @@ import {
 } from '../features/analytics/components';
 import {
   Users, DollarSign, Globe, Briefcase,
-  TrendingUp, ArrowRight, Layers, Zap
+  TrendingUp, ArrowRight, Layers, Zap, Lock
 } from 'lucide-react';
+import { moduleLockReason } from '../lib/planModules';
 import { useAuth } from '../contexts/AuthContext';
 import { useSearchParams } from 'react-router-dom';
 
@@ -73,6 +74,23 @@ const Analytics = () => {
     setActiveTab(tab);
     setSearchParams({ tab });
   };
+
+  // The report endpoints refuse an agency whose plan leaves full analytics out; say so plainly
+  // instead of showing tabs that half-load. The dashboard's own figures stay in every plan.
+  const lockReason = moduleLockReason(user, 'analytics_full');
+  if (lockReason) {
+    return (
+      <>
+        <PageHeader title="Analytics" />
+        <div className="mx-auto max-w-xl px-4 py-16 text-center" role="status">
+          <Lock className="mx-auto h-8 w-8 text-muted-foreground" aria-hidden="true" />
+          <h2 className="mt-4 text-lg font-semibold text-foreground">Full analytics isn't in your plan</h2>
+          <p className="mt-2 text-sm text-muted-foreground">{lockReason}</p>
+          <p className="mt-1 text-sm text-muted-foreground">Your headline lead and billing figures are still on the Dashboard.</p>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>

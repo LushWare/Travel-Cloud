@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { ArrowLeft, CheckCircle2, CircleSlash, Eye, Loader2, RotateCcw, Save, Trash2, XCircle } from 'lucide-react';
-import { agencyApi, ApiError, plansApi, type AgencyDetail as Detail, type PlanCatalogItem, type PlatformUser } from '../lib/api';
+import {
+  agencyApi, ApiError, PLAN_FEATURES, plansApi,
+  type AgencyDetail as Detail, type PlanCatalogItem, type PlanFeatureKey, type PlatformUser,
+} from '../lib/api';
 import { formatDate, formatNumber, timeAgo } from '../lib/format';
 import AppShell from '../components/AppShell';
 import StatusBadge from '../components/StatusBadge';
@@ -14,7 +17,13 @@ type Props = { id: string; user: PlatformUser; onSignOut: () => void; onChangePa
 const USAGE_LABEL = { leads: 'Leads', quotations: 'Quotations', invoices: 'Invoices', bookings: 'Bookings', packages: 'Packages' } as const;
 const OVERRIDE_KEYS = [
   ['staff_seats', 'Staff seats'], ['packages', 'Packages'],
+  ['emails_per_month', 'Customer emails per month'], ['whatsapp_per_month', 'WhatsApp messages per month'],
   ['features.ai_itinerary_builder', 'AI itinerary builder'],
+  ['features.finance_docs', 'Invoices, receipts, credit notes and vouchers'],
+  ['features.whatsapp', 'WhatsApp delivery'],
+  ['features.vendors', 'Vendors and suppliers'],
+  ['features.travel_booking', 'Flight booking'],
+  ['features.analytics_full', 'Full analytics'],
 ] as const;
 
 const Panel = ({ title, children }: { title: string; children: ReactNode }) => (
@@ -179,11 +188,15 @@ export default function AgencyDetail({ id, user, onSignOut, onChangePassword }: 
                   hint={detail.plan?.resolved.plan ? `Version ${detail.plan.resolved.plan.version} · ${detail.plan.resolved.plan.key}` : 'No plan assigned'} />
                 <Stat label="Staff seats" value={`${detail.people.total} / ${detail.plan?.resolved.entitlements.staff_seats ?? 'Unlimited'}`} />
                 <Stat label="Packages" value={`${detail.usage.packages.total} / ${detail.plan?.resolved.entitlements.packages ?? 'Unlimited'}`} />
+                <Stat label="Customer emails" hint="This month"
+                  value={`${formatNumber(detail.sends?.emails ?? 0)} / ${detail.plan?.resolved.entitlements.emails_per_month ?? 'Unlimited'}`} />
+                <Stat label="WhatsApp messages" hint="This month"
+                  value={`${formatNumber(detail.sends?.whatsapp ?? 0)} / ${detail.plan?.resolved.entitlements.whatsapp_per_month ?? 'Unlimited'}`} />
               </div>
               <div className="mt-4 grid gap-2 sm:grid-cols-3">
                 {Object.entries(detail.plan?.resolved.entitlements.features ?? {}).map(([key, enabled]) => (
                   <p key={key} className="border-b border-border py-2 text-sm">
-                    <span className={enabled ? 'text-foreground' : 'text-muted-foreground'}>{key.replaceAll('_', ' ')}</span>
+                    <span className={enabled ? 'text-foreground' : 'text-muted-foreground'}>{PLAN_FEATURES[key as PlanFeatureKey] ?? key.replaceAll('_', ' ')}</span>
                     <span className="float-right text-xs">{enabled ? 'Enabled' : 'Disabled'}</span>
                   </p>
                 ))}

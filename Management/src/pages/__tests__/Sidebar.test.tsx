@@ -546,3 +546,46 @@ describe('Sidebar current agency', () => {
     expect(screen.queryByTestId('current-agency')).not.toBeInTheDocument();
   });
 });
+
+describe('Sidebar plan modules', () => {
+  it('marks Flights with a lock when the plan leaves flight booking out', async () => {
+    setUser({ ...ADMIN, planModulesOff: ['travel_booking'] });
+    render(<Sidebar />);
+
+    expect(await screen.findByTestId('plan-lock-travel_booking')).toBeInTheDocument();
+    expect(screen.getByLabelText('Flights (not in your plan)')).toHaveAttribute('title', expect.stringMatching(/^Flights: View only/));
+  });
+
+  it('keeps a switched-off module in the menu so its records stay reachable', async () => {
+    setUser({ ...ADMIN, planModulesOff: ['travel_booking'] });
+    const user = userEvent.setup();
+    render(<Sidebar />);
+
+    await user.click(screen.getByLabelText('Flights (not in your plan)'));
+
+    expect(mockNavigate).toHaveBeenCalledWith('/flights');
+  });
+
+  it('marks Analytics as not included, without "view only", when full analytics is off', async () => {
+    setUser({ ...ADMIN, planModulesOff: ['analytics_full'] });
+    render(<Sidebar />);
+
+    expect(await screen.findByTestId('plan-lock-analytics_full')).toBeInTheDocument();
+    expect(screen.getByLabelText('Analytics (not in your plan)').getAttribute('title')).not.toMatch(/View only/);
+  });
+
+  it('shows no lock when the plan includes every module', async () => {
+    setUser({ ...ADMIN, planModulesOff: [] });
+    render(<Sidebar />);
+
+    await screen.findByTitle('Flights');
+    expect(screen.queryByTestId(/^plan-lock-/)).not.toBeInTheDocument();
+  });
+
+  it('shows no lock for a user saved before plans existed (no planModulesOff)', async () => {
+    render(<Sidebar />);
+
+    await screen.findByTitle('Flights');
+    expect(screen.queryByTestId(/^plan-lock-/)).not.toBeInTheDocument();
+  });
+});

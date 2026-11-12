@@ -1,4 +1,5 @@
 import pino from 'pino';
+import { tenantLogFields } from '../../../shared/tenancy/src/logging.js';
 
 const isProduction = process.env.NODE_ENV === 'production';
 const level = process.env.LOG_LEVEL || (isProduction ? 'info' : 'debug');
@@ -16,7 +17,7 @@ const logger = pino({
     censor: '[REDACTED]',
   },
   mixin() {
-    return { service: 'voice-service', env: process.env.NODE_ENV || 'development' };
+    return { service: 'voice-service', env: process.env.NODE_ENV || 'development', ...tenantLogFields() };
   },
   ...(isProduction ? {} : {
     transport: { target: 'pino-pretty', options: { colorize: true, translateTime: 'HH:MM:ss', ignore: 'pid,hostname,service,env' } },

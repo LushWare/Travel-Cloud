@@ -3,8 +3,9 @@ import { useNavigate, useLocation } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
 import {
   Menu, X, Home, Users, MapPin, DollarSign, User, LogOut,
-  BarChart3, Briefcase, ChevronRight, PanelLeftClose, PanelLeftOpen, Sparkles, Plane, Hotel, Settings, Building2, History
+  BarChart3, Briefcase, ChevronRight, PanelLeftClose, PanelLeftOpen, Sparkles, Plane, Hotel, Settings, Building2, Lock
 } from "lucide-react";
+import { moduleLockReason, type PlanModule } from "../lib/planModules";
 import { useAuth } from "../contexts/AuthContext";
 import { usePermission } from "../contexts/PermissionContext";
 import toast from '@/lib/toast';
@@ -36,6 +37,9 @@ interface NavItem {
   requiredPermission?: string | null;
   allowedRoles?: string[];
   requiresAnyPermission?: string[];
+  // Plan module behind this page. When the agency's plan leaves it out the item stays (its
+  // records remain viewable) but is marked with a lock and the reason.
+  module?: PlanModule;
   customCheck?: (
     userRole: string | undefined,
     userIsSuperAdmin: boolean | undefined,
@@ -147,10 +151,10 @@ const Sidebar = () => {
         return false;
       }
     },
-    { icon: Plane, label: "Flights", path: "/flights", requiredPermission: null, allowedRoles: ["salesRep", "admin", "superAdmin"] },
+    { icon: Plane, label: "Flights", path: "/flights", requiredPermission: null, allowedRoles: ["salesRep", "admin", "superAdmin"], module: "travel_booking" },
     { icon: Hotel, label: "Hotels", path: "/hotels", requiredPermission: null, allowedRoles: ["salesRep", "admin", "superAdmin"] },
     { icon: DollarSign, label: "Billing", path: "/billing", requiredPermission: "manage_billing" },
-    { icon: BarChart3, label: "Analytics", path: "/analytics", requiredPermission: "view_reports" },
+    { icon: BarChart3, label: "Analytics", path: "/analytics", requiredPermission: "view_reports", module: "analytics_full" },
     { icon: Sparkles, label: "AI Insights", path: "/ai-insights", requiredPermission: null, allowedRoles: ["salesRep", "admin", "superAdmin"] },
     { icon: User, label: "Users", path: "/users", requiredPermission: null, requiresAnyPermission: ["manage_users", "manage_sales_reps", "manage_vendors", "manage_admins"] },
     {
@@ -164,13 +168,6 @@ const Sidebar = () => {
       icon: Settings,
       label: "Settings",
       path: "/settings",
-      requiredPermission: null,
-      allowedRoles: ["admin", "superAdmin"],
-    },
-    {
-      icon: History,
-      label: "Audit Log",
-      path: "/audit-log",
       requiredPermission: null,
       allowedRoles: ["admin", "superAdmin"],
     },
@@ -280,6 +277,7 @@ const Sidebar = () => {
         <nav className={`flex-1 overflow-y-auto relative z-10 ${isExpanded ? 'p-3 space-y-1' : 'p-2 space-y-0.5'}`}>
           {accessibleItems.map((item) => {
             const active = isActive(item.path);
+            const lockReason = item.module ? moduleLockReason(user, item.module) : null;
 
             return (
               <button
@@ -288,8 +286,8 @@ const Sidebar = () => {
                   navigate(item.path);
                   if (isMobile) setMobileOpen(false);
                 }}
-                title={item.label}
-                aria-label={item.label}
+                title={lockReason ? `${item.label}: ${lockReason}` : item.label}
+                aria-label={lockReason ? `${item.label} (not in your plan)` : item.label}
                 className={`flex items-center rounded-lg transition-colors duration-150 group relative overflow-hidden ${isExpanded ? 'w-full gap-3 px-4 py-2.5 text-left' : 'mx-auto h-9 w-9 justify-center p-0'} ${active
                   ? 'bg-sidebar-primary text-sidebar-primary-foreground'
                   : 'text-sidebar-foreground hover:bg-sidebar-accent'
@@ -302,6 +300,7 @@ const Sidebar = () => {
                     <span className={`text-[13px] font-medium flex-1 ${active ? 'text-sidebar-primary-foreground' : ''}`}>
                       {item.label}
                     </span>
+                    {lockReason && <Lock className="mr-4 h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" aria-hidden="true" data-testid={`plan-lock-${item.module}`} />}
                     <ChevronRight className={`absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 transition-all duration-200 group-hover:translate-x-1 ${active ? 'text-sidebar-primary-foreground/70 opacity-100' : 'text-muted-foreground opacity-0 group-hover:opacity-100'}`} />
                   </>
                 )}

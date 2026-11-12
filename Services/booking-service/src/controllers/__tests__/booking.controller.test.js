@@ -278,6 +278,71 @@ describe('createVoiceBooking — exact package booking gates', () => {
   });
 });
 
+describe('getRecentBookings — public slider data', () => {
+  const getRecentBookings = inAgency(controller.getRecentBookings);
+  const PRIVATE_FIELDS = [
+    'userId', 'userName', 'userEmail', 'totalAmount', 'paidAmount', 'paymentStatus',
+    'bookingStatus', 'specialRequests', 'travelDate', 'endDate', 'confirmedAt',
+  ];
+  const fullRow = {
+    id: 'booking-1', packageId: 'pkg-1', numberOfTravelers: 2, createdAt: '2026-11-01T10:00:00.000Z',
+    packageName: 'Bali Escape', packageDestination: 'Bali', packageDuration: 5,
+    packageBasePrice: 1000, packageMarginType: 'PERCENTAGE', packageMarginInput: 10,
+    packageCoverImage: 'https://img.test/bali.jpg', packageSlug: 'bali-escape',
+    // Columns a future query change could bring back; none may reach the response.
+    userId: 'user-1', userName: 'Jane Doe', userEmail: 'jane@test.com', totalAmount: 2200,
+    paidAmount: 500, paymentStatus: 'partial', bookingStatus: 'confirmed',
+    specialRequests: 'Gluten free', travelDate: '2027-01-01', endDate: '2027-01-06', confirmedAt: '2026-11-02',
+  };
+  const callWith = async (query) => {
+    const res = { status: vi.fn().mockReturnThis(), json: vi.fn() };
+    await getRecentBookings({ query }, res, vi.fn());
+    return res;
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockQueryRaw.mockResolvedValue([fullRow]);
+  });
+
+  it('answers with no traveller or payment field even when the query returns them', async () => {
+    const res = await callWith({});
+
+    const [row] = res.json.mock.calls[0][0].data;
+    for (const field of PRIVATE_FIELDS) expect(row).not.toHaveProperty(field);
+  });
+
+  it('keeps the package details the slider shows', async () => {
+    const res = await callWith({});
+
+    expect(res.json.mock.calls[0][0].data[0]).toEqual({
+      id: 'booking-1', packageId: 'pkg-1', packageName: 'Bali Escape', packageDestination: 'Bali',
+      packageDuration: 5, packageCoverImage: 'https://img.test/bali.jpg', packageSlug: 'bali-escape',
+      packagePrice: 1100, numberOfTravelers: 2, createdAt: '2026-11-01T10:00:00.000Z',
+    });
+  });
+
+  it('never selects the user table', async () => {
+    await callWith({});
+
+    const sql = mockQueryRaw.mock.calls[0][0].join('?');
+    expect(sql).not.toContain('crm_users');
+    expect(sql).not.toMatch(/totalAmount|paidAmount|specialRequests|paymentStatus/);
+  });
+
+  it.each([
+    ['500', 50],
+    ['3', 3],
+    ['abc', 10],
+    ['-4', 10],
+    [undefined, 10],
+  ])('limits the list to %s → %i rows', async (limit, expected) => {
+    await callWith(limit === undefined ? {} : { limit });
+
+    expect(mockQueryRaw.mock.calls[0].slice(1)).toContain(expected);
+  });
+});
+
 describe('agency in hand-written SQL', () => {
   const sqlCalls = () => [...mockQueryRaw.mock.calls, ...mockExecuteRaw.mock.calls];
   const sqlText = (call) => call[0].join('?');
