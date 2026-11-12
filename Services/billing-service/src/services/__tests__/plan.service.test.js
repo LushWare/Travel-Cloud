@@ -1,7 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockQueryRawUnsafe } = vi.hoisted(() => ({ mockQueryRawUnsafe: vi.fn() }));
-vi.mock('../../db/client.js', () => ({ default: { $queryRawUnsafe: mockQueryRawUnsafe } }));
+const { mockQueryRawUnsafe, mockExecuteRaw, mockUsageWarningEmail } = vi.hoisted(() => ({
+  mockQueryRawUnsafe: vi.fn(),
+  mockExecuteRaw: vi.fn(),
+  mockUsageWarningEmail: vi.fn(),
+}));
+vi.mock('../../db/client.js', () => ({
+  default: { $queryRawUnsafe: mockQueryRawUnsafe, $executeRaw: mockExecuteRaw },
+}));
+vi.mock('../../../../shared/tenancy/src/index.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  sendUsageWarningEmail: mockUsageWarningEmail,
+}));
 
 import { assertPlanFeature, metered } from '../plan.service.js';
 import { runWithTenant } from '../../../../shared/tenancy/src/index.js';
@@ -15,7 +25,11 @@ const onPlan = (features) => mockQueryRawUnsafe
   .mockResolvedValueOnce([]);
 const inAgency = (fn) => runWithTenant(AGENCY, fn);
 
-beforeEach(() => mockQueryRawUnsafe.mockReset());
+beforeEach(() => {
+  mockQueryRawUnsafe.mockReset();
+  mockExecuteRaw.mockReset().mockResolvedValue(1);
+  mockUsageWarningEmail.mockReset().mockResolvedValue(undefined);
+});
 
 describe('assertPlanFeature', () => {
   it('refuses a module the plan switches off with 403 FEATURE_NOT_IN_PLAN', async () => {
@@ -61,6 +75,29 @@ describe('assertPlanFeature', () => {
 });
 
 describe('metered', () => {
+  it('emails the agency owner after a successful send reaches 80% of its allowance', async () => {
+    mockQueryRawUnsafe.mockImplementation(async (sql) => {
+      if (String(sql).includes('"TenantPlan"')) {
+        return [{ id: 'v', planId: 'p', version: 1, name: 'Starter', entitlements: { emails_per_month: 10 }, catalogPlanId: 'p', planKey: 'starter' }];
+      }
+      if (String(sql).includes('"PlanEntitlementOverride"')) return [];
+      if (String(sql).includes('INSERT INTO crm_platform."UsageCounter"')) {
+        return [{ count: 8, warnedAt: null }];
+      }
+      if (String(sql).includes('SET "warnedAt"')) return [{ count: 8 }];
+      return [];
+    });
+
+    await expect(inAgency(() => metered('emails', vi.fn().mockResolvedValue('sent')))).resolves.toBe('sent');
+
+    expect(mockUsageWarningEmail).toHaveBeenCalledOnce();
+    expect(mockUsageWarningEmail).toHaveBeenCalledWith(
+      expect.any(Object),
+      { metric: 'emails', limit: 10, used: 8 },
+    );
+    expect(mockExecuteRaw).toHaveBeenCalledOnce();
+  });
+
   it('refuses a send past the monthly allowance with 429 USAGE_LIMIT_REACHED and a clear message', async () => {
     // The plan allows 100 emails a month and the counter is already full, so the
     // conditional increment matches no row and returns nothing.

@@ -3,7 +3,7 @@ import logger from '../config/logger.js';
 import AppError from '../utils/appError.js';
 import {
   FEATURE_NOT_IN_PLAN, FEATURE_NOT_IN_PLAN_MESSAGE, USAGE_LIMIT_REACHED,
-  hasPlanFeature, meteredSend, recordAudit, usageLimitMessage, usageWarningAudit,
+  hasPlanFeature, meteredSend, recordAudit, sendUsageWarningEmail, usageLimitMessage, usageWarningAudit,
 } from '../../../shared/tenancy/src/index.js';
 
 /**
@@ -28,6 +28,7 @@ export function metered(metric, send) {
     onWarning: async (usage) => {
       logger.warn({ ...usage }, 'Agency reached 80% of a monthly sending allowance');
       await recordAudit(prisma, null, usageWarningAudit(usage), { logger });
+      await sendUsageWarningEmail(prisma, usage);
     },
   });
 }

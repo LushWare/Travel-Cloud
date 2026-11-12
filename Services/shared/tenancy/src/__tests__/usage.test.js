@@ -26,7 +26,7 @@ function fakeDb(entitlements, { used = 0, warned = false } = {}) {
       if (sql.includes('SET "warnedAt"')) {
         if (state.warnedAt) return [];
         state.warnedAt = new Date();
-        return [{ tenantId: params[0] }];
+        return [{ count: state.count }];
       }
       if (sql.includes('SELECT "metric", "count"')) return [{ metric: 'emails', count: state.count }];
       return [];
@@ -151,6 +151,21 @@ describe('meteredSend', () => {
 
     await inAgency(() => meteredSend(db, 'emails', send(), { onWarning }));
 
+    expect(onWarning).toHaveBeenCalledWith({ metric: 'emails', limit: 10, used: 8 });
+  });
+
+  it('does not consume the warning when a send that reaches 80% fails', async () => {
+    const { db, state } = fakeDb({ emails_per_month: 10 }, { used: 7 });
+    const onWarning = vi.fn();
+
+    await expect(inAgency(() => meteredSend(db, 'emails', vi.fn().mockRejectedValue(new Error('smtp down')), {
+      onWarning,
+    }))).rejects.toThrow('smtp down');
+    expect(state.warnedAt).toBeNull();
+
+    await inAgency(() => meteredSend(db, 'emails', send(), { onWarning }));
+
+    expect(onWarning).toHaveBeenCalledOnce();
     expect(onWarning).toHaveBeenCalledWith({ metric: 'emails', limit: 10, used: 8 });
   });
 

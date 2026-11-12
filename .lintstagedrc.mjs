@@ -3,8 +3,12 @@ import path from 'node:path';
 // Each package installs its own eslint independently (no npm workspace —
 // see CLAUDE.md), so there's no hoisted binary to call from root. Route
 // staged files to the eslint installed in their own package directory.
-const cmd = (dir) => (files) =>
-  `bash -c "cd ${dir} && npx eslint ${files.map((f) => `'${path.relative(path.resolve(dir), f)}'`).join(' ')}"`;
+const cmd = (dir) => (files) => {
+  const eslint = path.resolve(dir, 'node_modules/eslint/bin/eslint.js').replaceAll('\\', '/');
+  const config = path.resolve(dir, 'eslint.config.js').replaceAll('\\', '/');
+  const paths = files.map((file) => `"${file.replaceAll('\\', '/')}"`).join(' ');
+  return `node "${eslint}" --config "${config}" ${paths}`;
+};
 
 export default {
   'Client/**/*.{js,jsx,ts,tsx}': cmd('Client'),

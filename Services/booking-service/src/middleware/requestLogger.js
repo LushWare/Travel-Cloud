@@ -1,6 +1,7 @@
 import pinoHttp from 'pino-http';
 import { v4 as uuidv4 } from 'uuid';
 import logger from '../config/logger.js';
+import { tenantRequestLogFields } from '../../../shared/tenancy/src/logging.js';
 
 /**
  * pino-http middleware — replaces morgan.
@@ -14,6 +15,7 @@ import logger from '../config/logger.js';
  */
 export const requestLogger = pinoHttp({
   logger,
+  customProps: tenantRequestLogFields,
   useLevel: 'info',
   genReqId: (req) => req.headers['x-request-id'] || uuidv4(),
 

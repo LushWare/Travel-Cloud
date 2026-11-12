@@ -48,8 +48,8 @@ function metricLimitKey(metric) {
  *
  * Returns { allowed: false, limit, used } when the allowance is used up (nothing was counted),
  * or { allowed: true, limit, used, crossedWarning, release } where `release()` gives the unit
- * back if the send then fails, and `crossedWarning` is true for exactly one send per month: the
- * first to reach USAGE_WARNING_SHARE of the limit.
+ * back if the send then fails. `crossedWarning` is a candidate; its once-per-month claim is made
+ * only after a successful send so a failed send cannot consume the warning.
  *
  * `prisma` is the service's tenant-scoped client, whose raw SQL runs with the agency set for
  * row-level security.
@@ -75,16 +75,9 @@ export async function reserveUsage(prisma, metric, { now = new Date() } = {}) {
   if (rows.length === 0) return { allowed: false, limit, used: limit };
 
   const used = Number(rows[0].count);
-  let crossedWarning = false;
-  if (limit !== null && rows[0].warnedAt == null && used >= Math.ceil(limit * USAGE_WARNING_SHARE)) {
-    const marked = await prisma.$queryRawUnsafe(
-      `UPDATE crm_platform."UsageCounter" SET "warnedAt" = CURRENT_TIMESTAMP
-       WHERE "tenantId" = $1::uuid AND "metric" = $2 AND "period" = $3::date AND "warnedAt" IS NULL
-       RETURNING "tenantId"`,
-      tenantId, metric, period,
-    );
-    crossedWarning = marked.length > 0;
-  }
+  const crossedWarning = limit !== null
+    && rows[0].warnedAt == null
+    && used >= Math.ceil(limit * USAGE_WARNING_SHARE);
 
   const release = () => prisma.$executeRawUnsafe(
     `UPDATE crm_platform."UsageCounter" SET "count" = GREATEST("count" - 1, 0), "updatedAt" = CURRENT_TIMESTAMP
@@ -92,7 +85,19 @@ export async function reserveUsage(prisma, metric, { now = new Date() } = {}) {
     tenantId, metric, period,
   );
 
-  return { allowed: true, limit, used, crossedWarning, release };
+  return { allowed: true, limit, used, crossedWarning, period, release };
+}
+
+async function claimUsageWarning(prisma, metric, limit, period) {
+  const tenantId = requireTenantId();
+  const rows = await prisma.$queryRawUnsafe(
+    `UPDATE crm_platform."UsageCounter" SET "warnedAt" = CURRENT_TIMESTAMP
+     WHERE "tenantId" = $1::uuid AND "metric" = $2 AND "period" = $3::date
+       AND "warnedAt" IS NULL AND "count" >= $4::int
+     RETURNING "count"`,
+    tenantId, metric, period, Math.ceil(limit * USAGE_WARNING_SHARE),
+  );
+  return rows.length > 0 ? Number(rows[0].count) : null;
 }
 
 /**
@@ -131,11 +136,12 @@ export async function meteredSend(prisma, metric, send, { onLimit, onWarning, lo
     throw err;
   }
 
-  if (reservation.crossedWarning && onWarning) {
+  if (reservation.crossedWarning) {
     try {
-      await onWarning({ metric, limit: reservation.limit, used: reservation.used });
+      const used = await claimUsageWarning(prisma, metric, reservation.limit, reservation.period);
+      if (used !== null && onWarning) await onWarning({ metric, limit: reservation.limit, used });
     } catch (err) {
-      logger?.error?.({ err: { message: err.message }, metric }, 'Usage warning could not be recorded');
+      logger?.error?.({ err: { message: err.message }, metric }, 'Usage warning could not be claimed or delivered');
     }
   }
   return result;

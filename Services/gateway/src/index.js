@@ -11,6 +11,7 @@ import { DEMO_TENANT_ID } from '../../shared/constants/src/index.js';
 import { correlationId, requestLogger } from './middleware/requestLogger.js';
 import logger from './config/logger.js';
 import { GoogleAuth } from 'google-auth-library';
+import { createRateLimitStores } from './rateLimitStore.js';
 
 const app = express();
 
@@ -78,18 +79,28 @@ app.use((req, res, next) => {
 });
 
 // ─── Rate limiting ─────────────────────────────────────────────────────────────
-const globalLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 300 });
-const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10 });
+const rateLimitStores = await createRateLimitStores();
+const withRateLimitStore = (name) => rateLimitStores ? { store: rateLimitStores[name] } : {};
+const globalLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 300, ...withRateLimitStore('global') });
+const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, ...withRateLimitStore('auth') });
 // Stricter than authLimiter: each request is a real, billed Gemini call, not a login attempt.
-const aiItineraryPreviewLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 5 });
+const aiItineraryPreviewLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, max: 5, ...withRateLimitStore('ai-itinerary-preview'),
+});
 // Higher ceiling than aiItineraryPreviewLimiter: a single conversation to
 // "ready" plus a couple of follow-up messages is several billed Gemini
 // calls, not one — 30/15min gives roughly 3x a typical conversation's
 // turn count while still bounding cost per IP.
-const itineraryChatLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 30 });
-const recommendationsLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 60 });
+const itineraryChatLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, max: 30, ...withRateLimitStore('itinerary-chat'),
+});
+const recommendationsLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, max: 60, ...withRateLimitStore('recommendations'),
+});
 // Console sign-in: both steps together, per IP. The service also locks an account after 5 failures.
-const platformLoginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10 });
+const platformLoginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, max: 10, ...withRateLimitStore('platform-login'),
+});
 app.use(globalLimiter);
 
 // ─── Health check ──────────────────────────────────────────────────────────────

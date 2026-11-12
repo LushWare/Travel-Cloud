@@ -21,7 +21,10 @@ import logger from '../config/logger.js';
  * from the verified login or the public-website pin.
  */
 export function requestLogProps(req) {
-  return req.verifiedTenantId ? { tenantId: req.verifiedTenantId } : {};
+  return {
+    ...(req.verifiedTenantId ? { tenantId: req.verifiedTenantId } : {}),
+    ...(req.requestId ? { requestId: req.requestId } : {}),
+  };
 }
 
 export const requestLogger = pinoHttp({

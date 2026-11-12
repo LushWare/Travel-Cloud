@@ -30,7 +30,12 @@ export default (err, req, res, next) => {
 
   const log = req.log || logger;
   if (statusCode >= 500) {
-    log.error({ err, requestId: req.requestId, route: req.originalUrl }, 'Unhandled server error');
+    log.error({
+      ...(err.code === 'TENANT_CONTEXT_MISSING' ? { alertType: 'missing_tenant_context', errorCode: err.code } : {}),
+      err,
+      requestId: req.requestId,
+      route: req.originalUrl,
+    }, 'Unhandled server error');
   } else {
     log.warn({ err: { message: err.message }, requestId: req.requestId }, `Client error: ${err.message}`);
   }

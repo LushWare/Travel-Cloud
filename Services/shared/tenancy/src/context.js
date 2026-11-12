@@ -15,12 +15,13 @@ export class TenantContextMissingError extends Error {
 }
 
 /** Runs `fn` with every database access inside it limited to `tenantId`. */
-export function runWithTenant(tenantId, fn) {
+export function runWithTenant(tenantId, fn, requestId = null) {
   if (!isTenantId(tenantId)) throw new TypeError(`Invalid tenant id: ${tenantId}`);
-  return storage.run({ tenantId, inTransaction: false }, fn);
+  return storage.run({ tenantId, requestId, inTransaction: false }, fn);
 }
 
 export const getTenantId = () => storage.getStore()?.tenantId ?? null;
+export const getRequestId = () => storage.getStore()?.requestId ?? null;
 
 export function requireTenantId() {
   const tenantId = getTenantId();
@@ -42,5 +43,5 @@ export function tenantMiddleware(req, res, next) {
   const tenantId = req.headers['x-tenant-id'];
   if (!isTenantId(tenantId)) return next();
   req.tenantId = tenantId;
-  return runWithTenant(tenantId, next);
+  return runWithTenant(tenantId, next, req.requestId);
 }

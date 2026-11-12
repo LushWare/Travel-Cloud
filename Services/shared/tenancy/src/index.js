@@ -1,5 +1,5 @@
 export {
-  isTenantId, runWithTenant, getTenantId, requireTenantId, tenantMiddleware,
+  isTenantId, runWithTenant, getTenantId, getRequestId, requireTenantId, tenantMiddleware,
   isInTenantTransaction, runInTenantTransaction, TenantContextMissingError,
 } from './context.js';
 export {
@@ -15,7 +15,9 @@ export {
   hasPlanFeature, FEATURE_NOT_IN_PLAN, FEATURE_NOT_IN_PLAN_MESSAGE,
 } from './entitlements.js';
 export { recordAudit, redactDetails } from './audit.js';
+export { tenantLogFields, tenantRequestLogFields } from './logging.js';
 export {
   USAGE_METRICS, USAGE_WARNING_SHARE, USAGE_LIMIT_REACHED, usagePeriod, reserveUsage, currentUsage, meteredSend,
   usageLimitMessage, usageWarningAudit,
 } from './usage.js';
+export { sendUsageWarningEmail } from './usageNotification.js';

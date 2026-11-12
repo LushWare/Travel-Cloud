@@ -99,11 +99,25 @@ Before deploying a schema change, run the assistant migration through the existi
 
 - **External LB + Cloud Armor** — revisit when: sustained production traffic, a compliance requirement, or a real abuse/DDoS incident.
 - **Custom `api.` domain for the gateway** — revisit when: a mobile client or third-party integration needs a stable branded API host (today only the two first-party SPAs call it). Options at that point: move the gateway's Cloud Run service to a domain-mapping-supported region, or add one LB serverless NEG in front of just the gateway.
-- **Redis (Memorystore/Upstash)** — revisit only when a real code path starts reading `REDIS_URL` (currently none does).
+- **Redis rate-limit store** — the gateway now reads `REDIS_URL` for shared limits across Cloud Run instances. It is required in production; local development may omit it and use process-local limits. Redis is not provisioned by this Terraform stack, so deployment remains blocked until a managed Redis endpoint is chosen and `REDIS_URL` is supplied securely to the gateway. Prefer a TLS endpoint reachable from Cloud Run; do not put credentials in checked-in env files.
 
-Context on Redis: not provisioned. `REDIS_URL` is declared in `Services/billing-service/.env.example` and `Services/lead-service/.env.example` but grep of both services' `src/` trees found zero references — dead config, not a real dependency. Left untouched in `.env.example` (out of scope to remove undocumented planned-but-unbuilt config); no Memorystore/Upstash resource is created.
+## 6. Cloud Logging and agency visibility
 
-## 6. Region
+Agency-aware services emit request log entries with the gateway-forwarded `tenantId` and `requestId`. Save a Logs Explorer query or use the same filter in a Cloud Logging dashboard to inspect one agency:
+
+```text
+jsonPayload.tenantId="AGENCY_UUID"
+```
+
+Tenant-context failures are logged with `jsonPayload.alertType="missing_tenant_context"` and `jsonPayload.errorCode="TENANT_CONTEXT_MISSING"` (with the request ID for tracing). Create a log-based alert using:
+
+```text
+jsonPayload.alertType="missing_tenant_context"
+```
+
+Route that alert to the operations notification channel. These log fields and filters are implemented in the services; the Cloud Logging dashboard, alert policy, and notification channel must be created in the target GCP project during deployment.
+
+## 7. Region
 
 Cloud Run, Artifact Registry, and Secret Manager run in `asia-south1` (matches the app's `en-IN`/INR defaults and the `lushtravelcloud.com` production domain). The Supabase project region is `ap-south-1` (Mumbai), chosen at manual Supabase project-creation time.
 

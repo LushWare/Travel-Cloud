@@ -1,4 +1,4 @@
-import { getTenantId } from './context.js';
+import { getRequestId, getTenantId, isTenantId } from './context.js';
 
 /**
  * Fields every log line carries while code runs for an agency, for a pino `mixin()`.
@@ -10,5 +10,19 @@ import { getTenantId } from './context.js';
  */
 export function tenantLogFields() {
   const tenantId = getTenantId();
-  return tenantId ? { tenantId } : {};
+  const requestId = getRequestId();
+  return {
+    ...(tenantId ? { tenantId } : {}),
+    ...(requestId ? { requestId } : {}),
+  };
+}
+
+/** Request-level tenant attribution uses only the gateway-forwarded, UUID-validated header. */
+export function tenantRequestLogFields(req) {
+  const tenantId = req.headers['x-tenant-id'];
+  const requestId = req.requestId || req.id;
+  return {
+    ...(isTenantId(tenantId) ? { tenantId } : {}),
+    ...(requestId ? { requestId } : {}),
+  };
 }
