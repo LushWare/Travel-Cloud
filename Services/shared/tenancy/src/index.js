@@ -8,3 +8,9 @@ export {
 export { installTenantFetch, internalOrigins, withTenantHeader } from './fetch.js';
 export { CURRENT_TENANT, createTenantPool, scopeSqlToTenant } from './sql.js';
 export { agencyFolder, isAgencyFile } from './storage.js';
+export { createTenantCache } from './cache.js';
+export {
+  FEATURE_ENTITLEMENTS, LIMIT_ENTITLEMENTS, getCurrentTenantEntitlements,
+  normalizePlanEntitlements, resolveEntitlements,
+} from './entitlements.js';
+export { recordAudit, redactDetails } from './audit.js';

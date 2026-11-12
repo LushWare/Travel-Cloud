@@ -8,6 +8,8 @@
 // etc.). Duplicated rather than shared: these are independently deployable
 // services with no shared workspace.
 
+import { createTenantCache } from '../../../shared/tenancy/src/index.js';
+
 const USER_SERVICE_URL = process.env.USER_SERVICE_URL || 'http://localhost:3002';
 const INTERNAL_SERVICE_KEY = process.env.INTERNAL_SERVICE_KEY || '';
 const CACHE_TTL_MS = 60_000;
@@ -26,7 +28,9 @@ const FALLBACK = {
   whatsappNumber: process.env.COMPANY_WHATSAPP_NUMBER || '',
 };
 
-let cache = null; // { value, expiresAt }
+// Keyed by the requesting agency — a single shared slot would put the first
+// agency's name and logo on every other agency's package PDFs.
+const cache = createTenantCache({ ttlMs: CACHE_TTL_MS });
 
 async function fetchFromUserService(fetchImpl) {
   const res = await fetchImpl(`${USER_SERVICE_URL}/api/v1/admin/internal/organization-settings`, {
@@ -45,8 +49,8 @@ async function fetchFromUserService(fetchImpl) {
  * branding lookup never blocks PDF generation.
  */
 export async function getOrgSettings({ fetchImpl = fetch } = {}) {
-  const now = Date.now();
-  if (cache && cache.expiresAt > now) return cache.value;
+  const cached = cache.get();
+  if (cached) return cached;
   try {
     const settings = await fetchFromUserService(fetchImpl);
     const value = {
@@ -61,15 +65,14 @@ export async function getOrgSettings({ fetchImpl = fetch } = {}) {
       supportEmail: settings.supportEmail || FALLBACK.supportEmail,
       whatsappNumber: settings.whatsappNumber || FALLBACK.whatsappNumber,
     };
-    cache = { value, expiresAt: now + CACHE_TTL_MS };
+    cache.set(value);
     return value;
   } catch {
-    if (cache) return cache.value;
-    return FALLBACK;
+    return cache.getStale() ?? FALLBACK;
   }
 }
 
-/** Test-only: clear the module-level cache between test cases. */
+/** Test-only: clear the cache between test cases. */
 export function _resetCache() {
-  cache = null;
+  cache.clear();
 }

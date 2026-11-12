@@ -1,9 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
-import { buildUserRow, authHeaders } from '../factories/user.factory.js';
+import { buildUserRow, authHeaders, stubMemberships, stubPlanChecks } from '../factories/user.factory.js';
 
 const { mockPrisma } = vi.hoisted(() => ({
   mockPrisma: {
+    membership: {
+      findFirst: vi.fn(), findMany: vi.fn(), count: vi.fn(), groupBy: vi.fn(), update: vi.fn(), delete: vi.fn(),
+    },
     user: { findUnique: vi.fn(), findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
   },
 }));
@@ -16,6 +19,8 @@ const ID = 'a0000000-0000-4000-8000-000000000001';
 
 beforeEach(() => {
   vi.clearAllMocks();
+  stubPlanChecks(mockPrisma);
+  stubMemberships(mockPrisma.membership);
   mockPrisma.user.findUnique.mockResolvedValue(null);
 });
 
@@ -44,7 +49,7 @@ describe('staff forms', () => {
   });
 
   it('accepts the Edit Sales Rep form', async () => {
-    mockPrisma.user.findFirst.mockResolvedValue(buildUserRow({ id: ID, role: 'salesRep' }));
+    mockPrisma.user.findFirst.mockResolvedValue(buildUserRow({ id: ID, role: 'salesRep', email: 'priya@test.com' }));
     mockPrisma.user.update.mockResolvedValue(buildUserRow({ id: ID, role: 'salesRep' }));
 
     const res = await request(app)
@@ -53,6 +58,18 @@ describe('staff forms', () => {
       .send({ name: 'Priya N', email: 'priya@test.com', phone: '+94771234567', phoneCountry: 'LK' });
 
     expect(res.status).toBe(200);
+  });
+
+  it("rejects an Edit Sales Rep form that changes the rep's login email", async () => {
+    mockPrisma.user.findFirst.mockResolvedValue(buildUserRow({ id: ID, role: 'salesRep', email: 'priya@test.com' }));
+
+    const res = await request(app)
+      .put(`/api/v1/sales-reps/${ID}`)
+      .set(authHeaders({ role: 'admin' }))
+      .send({ name: 'Priya N', email: 'someone-else@test.com' });
+
+    expect(res.status).toBe(400);
+    expect(mockPrisma.user.update).not.toHaveBeenCalled();
   });
 
   it('rejects a phone country that is not a 2-letter code', async () => {

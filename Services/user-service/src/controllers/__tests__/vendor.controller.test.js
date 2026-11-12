@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+const AGENCY = '00000000-0000-4000-8000-000000000001';
+vi.mock('../../../../shared/tenancy/src/index.js', async (original) => ({
+  ...(await original()),
+  requireTenantId: () => AGENCY,
+}));
+
 const { mockFindUnique, mockFindFirst, mockFindMany, mockCount, mockCreate, mockUpdate, mockDelete, mockVpGroupBy, mockVpUpdate } = vi.hoisted(() => ({
   mockFindUnique: vi.fn(),
   mockFindFirst: vi.fn(),
@@ -10,6 +16,9 @@ const { mockFindUnique, mockFindFirst, mockFindMany, mockCount, mockCreate, mock
   mockDelete: vi.fn(),
   mockVpGroupBy: vi.fn(),
   mockVpUpdate: vi.fn(),
+}));
+const { mockM } = vi.hoisted(() => ({
+  mockM: { findFirst: vi.fn(), findMany: vi.fn(), count: vi.fn(), update: vi.fn(), delete: vi.fn() },
 }));
 
 vi.mock('../../db/client.js', () => {
@@ -27,9 +36,13 @@ vi.mock('../../db/client.js', () => {
       groupBy: mockVpGroupBy,
       update: mockVpUpdate,
     },
+    membership: mockM,
   };
   return { default: client, identityPrisma: client };
 });
+vi.mock('../../services/plan.service.js', () => ({
+  withStaffSeat: (operation) => operation({ user: { create: mockCreate }, membership: mockM }),
+}));
 
 import {
   getAllVendors, getVendorById, createVendor, updateVendor, deleteVendor, getVendorStats,
@@ -38,6 +51,8 @@ import {
 } from '../vendor.controller.js';
 
 const ID = '11111111-1111-4111-8111-111111111111';
+const VENDOR_MEMBERSHIP = { id: 'm-1', userId: ID, role: 'vendor', permissions: [], isOwner: false, status: 'active', joinedAt: new Date() };
+const inAgency = (where) => ({ memberships: { some: { tenantId: AGENCY, ...where } } });
 const ACTOR = { id: '22222222-2222-4222-8222-222222222222', role: 'admin', tenantId: '00000000-0000-4000-8000-000000000001' };
 
 function buildReqRes({ body = {}, params = {}, query = {}, user = ACTOR } = {}) {
@@ -58,6 +73,9 @@ beforeEach(() => {
   mockVpGroupBy.mockReset();
   mockVpUpdate.mockReset();
   mockFindFirst.mockResolvedValue({ id: ID, role: 'vendor' });
+  Object.values(mockM).forEach((fn) => fn.mockReset());
+  mockM.findFirst.mockResolvedValue(VENDOR_MEMBERSHIP);
+  mockM.findMany.mockResolvedValue([]);
 });
 
 describe('getAllVendors', () => {
@@ -68,7 +86,7 @@ describe('getAllVendors', () => {
 
     await getAllVendors(req, res, next);
 
-    expect(mockFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: { role: 'vendor' } }));
+    expect(mockFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: inAgency({ role: 'vendor' }) }));
     expect(res.json).toHaveBeenCalledWith({
       status: 'success',
       data: [{ id: ID, role: 'vendor' }],
@@ -84,7 +102,7 @@ describe('getAllVendors', () => {
     await getAllVendors(req, res, next);
 
     expect(mockFindMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: { role: 'vendor', vendorProfile: { serviceType: 'hotel' } },
+      where: { ...inAgency({ role: 'vendor' }), vendorProfile: { serviceType: 'hotel' } },
     }));
   });
 
@@ -96,7 +114,7 @@ describe('getAllVendors', () => {
     await getAllVendors(req, res, next);
 
     expect(mockFindMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: { role: 'vendor', vendorProfile: { vendorStatus: 'suspended' } },
+      where: { ...inAgency({ role: 'vendor' }), vendorProfile: { vendorStatus: 'suspended' } },
     }));
   });
 
@@ -108,7 +126,7 @@ describe('getAllVendors', () => {
     await getAllVendors(req, res, next);
 
     expect(mockFindMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: { role: 'vendor', vendorProfile: { serviceType: 'hotel', vendorStatus: 'verified' } },
+      where: { ...inAgency({ role: 'vendor' }), vendorProfile: { serviceType: 'hotel', vendorStatus: 'verified' } },
     }));
   });
 
@@ -186,20 +204,31 @@ describe('updateVendor', () => {
 });
 
 describe('deleteVendor', () => {
-  it('returns 404 when the vendor does not exist', async () => {
-    mockFindFirst.mockResolvedValue(null);
+  it('returns 404 when the vendor is not in this agency', async () => {
+    mockM.findFirst.mockResolvedValue(null);
     const { req, res, next } = buildReqRes({ params: { id: ID } });
 
     await deleteVendor(req, res, next);
 
+    expect(mockM.delete).not.toHaveBeenCalled();
     expect(mockDelete).not.toHaveBeenCalled();
     expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 404 }));
+  });
+
+  it("removes the vendor from this agency only, leaving their account", async () => {
+    const { req, res, next } = buildReqRes({ params: { id: ID } });
+
+    await deleteVendor(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(mockM.delete).toHaveBeenCalledWith({ where: { id: 'm-1' } });
+    expect(mockDelete).not.toHaveBeenCalled();
   });
 });
 
 describe('getVendorStats', () => {
   it('returns total/active/inactive/byServiceType', async () => {
-    mockCount.mockResolvedValueOnce(3).mockResolvedValueOnce(2);
+    mockM.count.mockResolvedValueOnce(3).mockResolvedValueOnce(2);
     mockVpGroupBy.mockResolvedValue([{ serviceType: 'hotel', _count: 3 }]);
     const { req, res, next } = buildReqRes();
 
@@ -213,20 +242,35 @@ describe('getVendorStats', () => {
 });
 
 describe('toggleVendorStatus', () => {
-  it('flips isActive for an existing vendor', async () => {
-    mockFindFirst.mockResolvedValue({ id: ID, role: 'vendor', isActive: false });
-    mockUpdate.mockResolvedValue({ id: ID, isActive: true });
+  it("reactivates a suspended vendor in this agency without touching their account", async () => {
+    const suspended = { ...VENDOR_MEMBERSHIP, status: 'suspended' };
+    mockFindFirst.mockResolvedValue({ id: ID, role: 'vendor', isActive: true });
+    mockM.findFirst.mockResolvedValue(suspended);
+    mockM.findMany.mockResolvedValue([suspended]);
     const { req, res, next } = buildReqRes({ params: { id: ID } });
 
     await toggleVendorStatus(req, res, next);
 
-    expect(mockUpdate).toHaveBeenCalledWith({ where: { id: ID }, data: { isActive: true } });
+    expect(next).not.toHaveBeenCalled();
+    expect(mockM.update).toHaveBeenCalledWith({ where: { id: 'm-1' }, data: { status: 'active' } });
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it('suspends an active vendor in this agency only', async () => {
+    mockFindFirst.mockResolvedValue({ id: ID, role: 'vendor', isActive: true });
+    mockM.findMany.mockResolvedValue([VENDOR_MEMBERSHIP]);
+    const { req, res, next } = buildReqRes({ params: { id: ID } });
+
+    await toggleVendorStatus(req, res, next);
+
+    expect(mockM.update).toHaveBeenCalledWith({ where: { id: 'm-1' }, data: { status: 'suspended' } });
+    expect(mockUpdate).not.toHaveBeenCalled();
   });
 });
 
 describe('vendor account protection', () => {
-  it('returns 404 instead of editing an account that is not a vendor', async () => {
-    mockFindFirst.mockResolvedValue(null);
+  it('returns 404 instead of editing an account that is not a vendor here', async () => {
+    mockM.findFirst.mockResolvedValue(null);
     const { req, res, next } = buildReqRes({ params: { id: ID }, body: { name: 'x' } });
 
     await updateVendor(req, res, next);
@@ -236,7 +280,7 @@ describe('vendor account protection', () => {
   });
 
   it('only changes the status of a vendor account', async () => {
-    mockFindFirst.mockResolvedValue(null);
+    mockM.findFirst.mockResolvedValue(null);
     const { req, res, next } = buildReqRes({ params: { id: ID }, body: { vendorStatus: 'verified' } });
 
     await updateVendorStatus(req, res, next);
@@ -305,7 +349,7 @@ describe('getVendorsByServiceType', () => {
     await getVendorsByServiceType(req, res, next);
 
     expect(mockFindMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: { role: 'vendor', vendorProfile: { serviceType: 'hotel' } },
+      where: { vendorProfile: { serviceType: 'hotel' }, ...inAgency({ role: 'vendor' }) },
     }));
     expect(res.json).toHaveBeenCalledWith({ status: 'success', count: 1, data: [{ id: ID }] });
   });

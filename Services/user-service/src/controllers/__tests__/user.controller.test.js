@@ -1,5 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+const AGENCY = '00000000-0000-4000-8000-000000000001';
+vi.mock('../../../../shared/tenancy/src/index.js', async (original) => ({
+  ...(await original()),
+  requireTenantId: () => AGENCY,
+}));
+const { mockM } = vi.hoisted(() => ({
+  mockM: { findFirst: vi.fn(), findMany: vi.fn(), count: vi.fn(), groupBy: vi.fn(), update: vi.fn(), delete: vi.fn() },
+}));
+
 const { mockFindUnique, mockFindMany, mockCount, mockCreate, mockUpdate, mockDelete, mockGroupBy } = vi.hoisted(() => ({
   mockFindUnique: vi.fn(),
   mockFindMany: vi.fn(),
@@ -29,6 +38,7 @@ vi.mock('../../db/client.js', () => {
       delete: mockDelete,
       groupBy: mockGroupBy,
     },
+    membership: mockM,
   };
   return { default: client, identityPrisma: client };
 });
@@ -46,6 +56,8 @@ import {
 
 const ID = '11111111-1111-4111-8111-111111111111';
 const SECOND_ID = '33333333-3333-4333-8333-333333333333';
+const MEMBERSHIP = { id: 'm-1', userId: ID, role: 'salesRep', permissions: [], isOwner: false, status: 'active', joinedAt: new Date() };
+const inAgency = (where) => ({ memberships: { some: { tenantId: AGENCY, ...where } } });
 const ACTOR = { id: '22222222-2222-4222-8222-222222222222', role: 'admin', tenantId: '00000000-0000-4000-8000-000000000001' };
 
 function buildReqRes({ body = {}, params = {}, query = {}, user = ACTOR } = {}) {
@@ -64,6 +76,9 @@ beforeEach(() => {
   mockUpdate.mockReset();
   mockDelete.mockReset();
   mockGroupBy.mockReset();
+  Object.values(mockM).forEach((fn) => fn.mockReset());
+  mockM.findFirst.mockResolvedValue(MEMBERSHIP);
+  mockM.findMany.mockResolvedValue([]);
 });
 
 describe('getCurrentUserProfile', () => {
@@ -160,8 +175,7 @@ describe('getAllUsers', () => {
 
     expect(mockFindMany).toHaveBeenCalledWith(expect.objectContaining({
       where: {
-        role: 'vendor',
-        isActive: true,
+        ...inAgency({ role: 'vendor', status: { in: ['active', 'invited'] } }),
         OR: [
           { name: { contains: 'sun', mode: 'insensitive' } },
           { email: { contains: 'sun', mode: 'insensitive' } },
@@ -291,13 +305,14 @@ describe('updateUser', () => {
 });
 
 describe('deleteUser', () => {
-  it('deletes when canBeDeleted is true', async () => {
+  it("removes the person from this agency only, keeping their account", async () => {
     mockFindUnique.mockResolvedValue({ id: ID, canBeDeleted: true });
     const { req, res, next } = buildReqRes({ params: { id: ID } });
 
     await deleteUser(req, res, next);
 
-    expect(mockDelete).toHaveBeenCalledWith({ where: { id: ID } });
+    expect(mockM.delete).toHaveBeenCalledWith({ where: { id: 'm-1' } });
+    expect(mockDelete).not.toHaveBeenCalled();
     expect(res.json).toHaveBeenCalledWith({ status: 'success', message: 'User deleted', data: {} });
   });
 
@@ -307,34 +322,38 @@ describe('deleteUser', () => {
 
     await deleteUser(req, res, next);
 
-    expect(mockDelete).not.toHaveBeenCalled();
+    expect(mockM.delete).not.toHaveBeenCalled();
     expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 403 }));
   });
 
-  it('returns 404 when the user does not exist', async () => {
+  it('returns 404 when the user is not in this agency', async () => {
+    mockM.findFirst.mockResolvedValue(null);
     mockFindUnique.mockResolvedValue(null);
     const { req, res, next } = buildReqRes({ params: { id: ID } });
 
     await deleteUser(req, res, next);
 
+    expect(mockM.delete).not.toHaveBeenCalled();
     expect(mockDelete).not.toHaveBeenCalled();
     expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 404 }));
   });
 });
 
 describe('toggleUserStatus', () => {
-  it('flips isActive from true to false', async () => {
+  it('suspends an active member in this agency without deactivating their account', async () => {
     mockFindUnique.mockResolvedValue({ id: ID, isActive: true });
-    mockUpdate.mockResolvedValue({ id: ID, isActive: false });
+    mockM.findMany.mockResolvedValueOnce([MEMBERSHIP]).mockResolvedValueOnce([{ ...MEMBERSHIP, status: 'suspended' }]);
     const { req, res, next } = buildReqRes({ params: { id: ID } });
 
     await toggleUserStatus(req, res, next);
 
-    expect(mockUpdate).toHaveBeenCalledWith({ where: { id: ID }, data: { isActive: false } });
+    expect(mockM.update).toHaveBeenCalledWith({ where: { id: 'm-1' }, data: { status: 'suspended' } });
+    expect(mockUpdate).not.toHaveBeenCalled();
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ message: 'User deactivated' }));
   });
 
-  it('returns 404 when the user does not exist', async () => {
+  it('returns 404 when the user is not in this agency', async () => {
+    mockM.findFirst.mockResolvedValue(null);
     mockFindUnique.mockResolvedValue(null);
     const { req, res, next } = buildReqRes({ params: { id: ID } });
 
@@ -351,7 +370,7 @@ describe('getUsersByRole', () => {
 
     await getUsersByRole(req, res, next);
 
-    expect(mockFindMany).toHaveBeenCalledWith({ where: { role: 'salesRep' }, orderBy: { name: 'asc' } });
+    expect(mockFindMany).toHaveBeenCalledWith({ where: inAgency({ role: 'salesRep' }), orderBy: { name: 'asc' } });
     expect(res.json).toHaveBeenCalledWith({ status: 'success', count: 1, data: [{ id: ID, name: 'Rep' }] });
   });
 
@@ -366,20 +385,21 @@ describe('getUsersByRole', () => {
 });
 
 describe('assignUserRole', () => {
-  it('updates the role', async () => {
-    mockUpdate.mockResolvedValue({ id: ID, role: 'vendor' });
+  it("changes the role in this agency only, not the person's account", async () => {
     const { req, res, next } = buildReqRes({ params: { id: ID }, body: { role: 'vendor' } });
 
     await assignUserRole(req, res, next);
 
-    expect(mockUpdate).toHaveBeenCalledWith({ where: { id: ID }, data: { role: 'vendor' } });
+    expect(next).not.toHaveBeenCalled();
+    expect(mockM.update).toHaveBeenCalledWith({ where: { id: 'm-1' }, data: { role: 'vendor', isOwner: false } });
+    expect(mockUpdate).not.toHaveBeenCalled();
   });
 });
 
 describe('getUserStats', () => {
   it('returns total/active/inactive/byRole', async () => {
-    mockCount.mockResolvedValueOnce(10).mockResolvedValueOnce(7);
-    mockGroupBy.mockResolvedValue([{ role: 'customer', _count: 8 }, { role: 'admin', _count: 2 }]);
+    mockM.count.mockResolvedValueOnce(7).mockResolvedValueOnce(3);
+    mockM.groupBy.mockResolvedValue([{ role: 'customer', _count: 8 }, { role: 'admin', _count: 2 }]);
     const { req, res, next } = buildReqRes();
 
     await getUserStats(req, res, next);

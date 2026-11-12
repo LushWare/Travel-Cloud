@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { runWithTenant } from '../../../../shared/tenancy/src/index.js';
 import { getOrgSettings, _resetCache } from '../orgSettings.js';
+
+const ACME = '00000000-0000-4000-8000-000000000002';
+const GLOBE = '00000000-0000-4000-8000-000000000003';
 
 function fakeSettingsResponse(overrides = {}) {
   return {
@@ -65,17 +69,30 @@ describe('getOrgSettings', () => {
 
   it('serves the cached value on a second call within the TTL, without refetching', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(fakeSettingsResponse());
-    await getOrgSettings({ fetchImpl });
-    await getOrgSettings({ fetchImpl });
+    await runWithTenant(ACME, () => getOrgSettings({ fetchImpl }));
+    await runWithTenant(ACME, () => getOrgSettings({ fetchImpl }));
     expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("never serves one agency's cached branding to another agency", async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(fakeSettingsResponse({ companyName: 'Acme Tours', logoUrl: 'https://cdn.example.com/acme.png' }))
+      .mockResolvedValueOnce(fakeSettingsResponse({ companyName: 'Globe DMC', logoUrl: 'https://cdn.example.com/globe.png' }));
+
+    const acme = await runWithTenant(ACME, () => getOrgSettings({ fetchImpl }));
+    const globe = await runWithTenant(GLOBE, () => getOrgSettings({ fetchImpl }));
+
+    expect(acme.logoUrl).toBe('https://cdn.example.com/acme.png');
+    expect(globe.logoUrl).toBe('https://cdn.example.com/globe.png');
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
   it('refetches once the cache TTL has expired', async () => {
     vi.useFakeTimers();
     const fetchImpl = vi.fn().mockResolvedValue(fakeSettingsResponse());
-    await getOrgSettings({ fetchImpl });
+    await runWithTenant(ACME, () => getOrgSettings({ fetchImpl }));
     vi.advanceTimersByTime(61_000);
-    await getOrgSettings({ fetchImpl });
+    await runWithTenant(ACME, () => getOrgSettings({ fetchImpl }));
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
@@ -97,9 +114,9 @@ describe('getOrgSettings', () => {
     const fetchImpl = vi.fn()
       .mockResolvedValueOnce(fakeSettingsResponse({ companyName: 'Lush Travel' }))
       .mockRejectedValueOnce(new Error('ECONNREFUSED'));
-    await getOrgSettings({ fetchImpl });
+    await runWithTenant(ACME, () => getOrgSettings({ fetchImpl }));
     vi.advanceTimersByTime(61_000);
-    const settings = await getOrgSettings({ fetchImpl });
+    const settings = await runWithTenant(ACME, () => getOrgSettings({ fetchImpl }));
     expect(settings.companyName).toBe('Lush Travel');
   });
 });

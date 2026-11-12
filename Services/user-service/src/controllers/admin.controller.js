@@ -4,9 +4,15 @@ import { OrganizationSettingsUpdate } from '@travel-crm/contracts';
 import prisma, { identityPrisma } from '../db/client.js';
 import AppError from '../utils/appError.js';
 import asyncHandler from '../utils/asyncHandler.js';
-import { getOrCreateSingleton, updateSingleton } from '../services/organizationSettings.service.js';
-import { assertMayGrantRole, assertNotSelf, findManageableUser, newMembership } from '../utils/accountGuard.js';
+import { getOrCreateSingleton, updateSingleton, changedSettingsFields, BANK_FIELDS } from '../services/organizationSettings.service.js';
+import {
+  agencyMemberWhere, assertMayGrantRole, assertNotSelf, changeAccess, findManageableUser, newMembership,
+  removeAccess, withAgencyAccess, auditStaffCreated,
+} from '../utils/accountGuard.js';
+import { audit } from '../utils/audit.js';
 import { idParamSchema, formatZodError, AVAILABLE_PERMISSIONS } from '../validators/common.js';
+import { getCurrentTenantEntitlements } from '../../../shared/tenancy/src/index.js';
+import { withStaffSeat } from '../services/plan.service.js';
 import {
   createStaffSchema, updateUserSchema, updateUserStatusSchema, updateAdminPermissionsSchema,
   listUsersQuerySchema, promoteSuperAdminSchema, demoteSuperAdminSchema,
@@ -21,20 +27,21 @@ function parseOrThrow(schema, value) {
 }
 
 export const getDashboardStats = asyncHandler(async (req, res) => {
-  const [total, byRole, active, recentUsers] = await Promise.all([
-    prisma.user.count(),
-    prisma.user.groupBy({ by: ['role'], _count: true }),
-    prisma.user.count({ where: { isActive: true } }),
-    prisma.user.findMany({ orderBy: { createdAt: 'desc' }, take: 5, select: { id: true, name: true, email: true, role: true, createdAt: true } }),
+  const [byRole, active, suspended, recentUsers] = await Promise.all([
+    prisma.membership.groupBy({ by: ['role'], _count: true }),
+    prisma.membership.count({ where: { status: { in: ['active', 'invited'] } } }),
+    prisma.membership.count({ where: { status: 'suspended' } }),
+    prisma.user.findMany({ where: agencyMemberWhere(), orderBy: { createdAt: 'desc' }, take: 5, select: { id: true, name: true, email: true, role: true, createdAt: true } }),
   ]);
-  res.json({ status: 'success', data: { total, active, inactive: total - active, byRole, recentUsers } });
+  res.json({
+    status: 'success',
+    data: { total: active + suspended, active, inactive: suspended, byRole, recentUsers: await withAgencyAccess(recentUsers) },
+  });
 });
 
 export const getAllUsers = asyncHandler(async (req, res) => {
   const { page = 1, limit = 10, role, search, isActive } = parseOrThrow(listUsersQuerySchema, req.query);
-  const where = {};
-  if (role) where.role = role;
-  if (isActive !== undefined) where.isActive = isActive === 'true';
+  const where = { ...agencyMemberWhere({ role, isActive: isActive === undefined ? undefined : isActive === 'true' }) };
   if (search) where.OR = [
     { name: { contains: search, mode: 'insensitive' } },
     { email: { contains: search, mode: 'insensitive' } },
@@ -44,14 +51,14 @@ export const getAllUsers = asyncHandler(async (req, res) => {
     prisma.user.findMany({ where, skip, take: limit, orderBy: { createdAt: 'desc' } }),
     prisma.user.count({ where }),
   ]);
-  res.json({ status: 'success', data: users.map(safeUser), pagination: { total, page, limit, pages: Math.ceil(total / limit) } });
+  res.json({ status: 'success', data: (await withAgencyAccess(users)).map(safeUser), pagination: { total, page, limit, pages: Math.ceil(total / limit) } });
 });
 
 export const getUserById = asyncHandler(async (req, res) => {
   const { id } = parseOrThrow(idParamSchema, req.params);
-  const user = await prisma.user.findUnique({ where: { id }, include: { vendorProfile: true } });
+  const user = await prisma.user.findFirst({ where: { id }, include: { vendorProfile: true } });
   if (!user) throw new AppError('User not found', 404);
-  res.json({ status: 'success', data: { user: safeUser(user) } });
+  res.json({ status: 'success', data: { user: safeUser(await withAgencyAccess(user)) } });
 });
 
 export const createStaff = asyncHandler(async (req, res) => {
@@ -64,7 +71,7 @@ export const createStaff = asyncHandler(async (req, res) => {
   const tempPassword = crypto.randomBytes(8).toString('hex');
   const hashedPassword = await bcrypt.hash(tempPassword, 12);
 
-  const user = await prisma.user.create({
+  const user = await withStaffSeat((tx) => tx.user.create({
     data: {
       name, email, phone: phone || null,
       password: hashedPassword, role,
@@ -73,63 +80,63 @@ export const createStaff = asyncHandler(async (req, res) => {
       isTempPassword: true, mustChangePassword: true,
       memberships: newMembership(req.user, role, permissions.filter((p) => AVAILABLE_PERMISSIONS.includes(p))),
     },
-  });
+  }));
+  await auditStaffCreated(req, user, role);
 
   res.status(201).json({ status: 'success', message: 'Staff created', data: { user: safeUser(user) } });
 });
 
+// Name and phone belong to the person's account; role, permissions and status to this agency.
 export const updateUser = asyncHandler(async (req, res) => {
   const { id } = parseOrThrow(idParamSchema, req.params);
   const { name, phone, role, isActive, permissions } = parseOrThrow(updateUserSchema, req.body);
-  await findManageableUser(req.user, id);
+  const target = await findManageableUser(req.user, id);
   if (role || isActive !== undefined || permissions) assertNotSelf(req.user, id);
   assertMayGrantRole(req.user, role);
-  const user = await prisma.user.update({
-    where: { id },
-    data: {
-      ...(name && { name }), ...(phone !== undefined && { phone }),
-      ...(role && { role }), ...(isActive !== undefined && { isActive }),
-      ...(permissions && { permissions: permissions.filter((p) => AVAILABLE_PERMISSIONS.includes(p)) }),
-    },
-  });
-  res.json({ status: 'success', data: { user: safeUser(user) } });
+  await changeAccess(target, {
+    role, isActive,
+    permissions: permissions && permissions.filter((p) => AVAILABLE_PERMISSIONS.includes(p)),
+  }, req);
+  const user = name || phone !== undefined
+    ? await prisma.user.update({ where: { id }, data: { ...(name && { name }), ...(phone !== undefined && { phone }) } })
+    : await prisma.user.findFirst({ where: { id } });
+  res.json({ status: 'success', data: { user: safeUser(await withAgencyAccess(user)) } });
 });
 
 export const deleteUser = asyncHandler(async (req, res) => {
   const { id } = parseOrThrow(idParamSchema, req.params);
-  const user = await findManageableUser(req.user, id);
+  const target = await findManageableUser(req.user, id);
   assertNotSelf(req.user, id);
-  if (!user.canBeDeleted) throw new AppError('This user cannot be deleted', 403);
-  await prisma.user.delete({ where: { id } });
+  if (!target.canBeDeleted) throw new AppError('This user cannot be deleted', 403);
+  await removeAccess(target, req);
   res.json({ status: 'success', data: {} });
 });
 
 export const updateUserStatus = asyncHandler(async (req, res) => {
   const { id } = parseOrThrow(idParamSchema, req.params);
   const { isActive } = parseOrThrow(updateUserStatusSchema, req.body);
-  await findManageableUser(req.user, id);
+  const target = await findManageableUser(req.user, id);
   assertNotSelf(req.user, id);
-  const user = await prisma.user.update({ where: { id }, data: { isActive } });
-  res.json({ status: 'success', data: { user: safeUser(user) } });
+  await changeAccess(target, { isActive }, req);
+  const user = await prisma.user.findFirst({ where: { id } });
+  res.json({ status: 'success', data: { user: safeUser(await withAgencyAccess(user)) } });
 });
 
 export const getAdminPermissions = asyncHandler(async (req, res) => {
   const { id } = parseOrThrow(idParamSchema, req.params);
-  const user = await prisma.user.findUnique({ where: { id }, select: { permissions: true, role: true } });
-  if (!user) throw new AppError('User not found', 404);
-  res.json({ status: 'success', data: { permissions: user.permissions, role: user.role } });
+  const membership = await prisma.membership.findFirst({ where: { userId: id }, select: { permissions: true, role: true } });
+  if (!membership) throw new AppError('User not found', 404);
+  res.json({ status: 'success', data: { permissions: membership.permissions, role: membership.role } });
 });
 
 export const updateAdminPermissions = asyncHandler(async (req, res) => {
   const { id } = parseOrThrow(idParamSchema, req.params);
   const { permissions } = parseOrThrow(updateAdminPermissionsSchema, req.body);
-  await findManageableUser(req.user, id);
+  const target = await findManageableUser(req.user, id);
   assertNotSelf(req.user, id);
-  const user = await prisma.user.update({
-    where: { id },
-    data: { permissions },
-  });
-  res.json({ status: 'success', data: { user: safeUser(user) } });
+  await changeAccess(target, { permissions }, req);
+  const user = await prisma.user.findFirst({ where: { id } });
+  res.json({ status: 'success', data: { user: safeUser(await withAgencyAccess(user)) } });
 });
 
 export const getAvailablePermissions = asyncHandler(async (req, res) => {
@@ -137,31 +144,34 @@ export const getAvailablePermissions = asyncHandler(async (req, res) => {
 });
 
 export const getSuperAdminInfo = asyncHandler(async (req, res) => {
-  const user = await prisma.user.findUnique({ where: { id: req.user.id } });
-  res.json({ status: 'success', data: { user: safeUser(user) } });
+  const user = await prisma.user.findFirst({ where: { id: req.user.id } });
+  res.json({ status: 'success', data: { user: safeUser(await withAgencyAccess(user)) } });
 });
 
 export const listSuperAdmins = asyncHandler(async (req, res) => {
-  const users = await prisma.user.findMany({ where: { role: 'superAdmin' } });
-  res.json({ status: 'success', data: users.map(safeUser) });
+  const users = await prisma.user.findMany({ where: agencyMemberWhere({ role: 'superAdmin' }) });
+  res.json({ status: 'success', data: (await withAgencyAccess(users)).map(safeUser) });
 });
 
+// "Super admin" in an agency is its owner. These only change the role within this agency.
 export const promoteSuperAdmin = asyncHandler(async (req, res) => {
   const { userId } = parseOrThrow(promoteSuperAdminSchema, req.body);
-  const user = await prisma.user.update({
-    where: { id: userId },
-    data: { role: 'superAdmin', isSuperAdmin: true },
-  });
-  res.json({ status: 'success', message: 'User promoted to superAdmin', data: { user: safeUser(user) } });
+  assertMayGrantRole(req.user, 'superAdmin');
+  assertNotSelf(req.user, userId);
+  const target = await findManageableUser(req.user, userId);
+  if (!target.membership) throw new AppError('User not found', 404);
+  await changeAccess(target, { role: 'superAdmin' }, req);
+  const user = await prisma.user.findFirst({ where: { id: userId } });
+  res.json({ status: 'success', message: 'User promoted to superAdmin', data: { user: safeUser(await withAgencyAccess(user)) } });
 });
 
 export const demoteSuperAdmin = asyncHandler(async (req, res) => {
   const { userId } = parseOrThrow(demoteSuperAdminSchema, req.body);
-  const user = await prisma.user.update({
-    where: { id: userId },
-    data: { role: 'admin', isSuperAdmin: false },
-  });
-  res.json({ status: 'success', message: 'SuperAdmin demoted to admin', data: { user: safeUser(user) } });
+  assertNotSelf(req.user, userId);
+  const target = await findManageableUser(req.user, userId, { role: 'superAdmin' });
+  await changeAccess(target, { role: 'admin' }, req);
+  const user = await prisma.user.findFirst({ where: { id: userId } });
+  res.json({ status: 'success', message: 'SuperAdmin demoted to admin', data: { user: safeUser(await withAgencyAccess(user)) } });
 });
 
 export const getSettings = asyncHandler(async (req, res) => {
@@ -175,7 +185,18 @@ export const updateSettings = asyncHandler(async (req, res) => {
     const messages = parsed.error.issues.map((e) => `${e.path.join('.')}: ${e.message}`).join('; ');
     throw new AppError(messages, 400);
   }
+  const before = await getOrCreateSingleton();
   const settings = await updateSingleton(parsed.data, req.user.id);
+  const changed = changedSettingsFields(before, settings);
+  const bank = changed.filter((f) => BANK_FIELDS.includes(f));
+  const other = changed.filter((f) => !BANK_FIELDS.includes(f));
+  // Bank details decide where customers send money, so their change is its own, easy-to-find entry.
+  if (bank.length) {
+    await audit(req, { action: 'settings.bank_details_changed', targetType: 'settings', summary: 'Changed bank / payment details', details: { fields: bank } });
+  }
+  if (other.length) {
+    await audit(req, { action: 'settings.updated', targetType: 'settings', summary: `Changed organization settings: ${other.join(', ')}`.slice(0, 300), details: { fields: other } });
+  }
   res.json({ status: 'success', message: 'Settings updated', data: { settings } });
 });
 
@@ -197,4 +218,18 @@ export const getOrganizationBranding = asyncHandler(async (req, res) => {
     status: 'success',
     data: { branding: { companyName, companyShortName, tagline, logoUrl, invoicePaymentTerms, invoicePaymentInstructions } },
   });
+});
+
+export const getAgencyPlan = asyncHandler(async (_req, res) => {
+  const [resolved, staffSeatsUsed, packageUsage] = await Promise.all([
+    getCurrentTenantEntitlements(prisma),
+    prisma.membership.count({
+      where: {
+        role: { in: ['superAdmin', 'admin', 'salesRep', 'vendor'] },
+        status: { in: ['active', 'invited'] },
+      },
+    }),
+    prisma.$queryRaw`SELECT COUNT(*)::int AS count FROM crm_packages."Package"`,
+  ]);
+  res.json({ status: 'success', data: { ...resolved, usage: { staff_seats: staffSeatsUsed, packages: Number(packageUsage[0]?.count ?? 0) } } });
 });

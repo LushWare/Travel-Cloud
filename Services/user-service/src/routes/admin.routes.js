@@ -6,11 +6,13 @@ import {
   getAvailablePermissions, promoteSuperAdmin, demoteSuperAdmin, getSuperAdminInfo,
   listSuperAdmins, createStaff, getSettings, updateSettings, getInternalOrganizationSettings,
   getOrganizationBranding,
+  getAgencyPlan,
 } from '../controllers/admin.controller.js';
 import {
   getPolicyDocuments, getPolicyDocument, postPolicyDocument, putPolicyDocument,
   deletePolicyDocumentHandler, getInternalPolicyDocuments,
 } from '../controllers/policyDocuments.controller.js';
+import { listAuditLog } from '../controllers/auditLog.controller.js';
 
 const router = express.Router();
 
@@ -40,10 +42,11 @@ router.get('/internal/policy-documents', (req, res, next) => {
 // Any logged-in Management user — see getOrganizationBranding for why this
 // isn't behind the admin/superAdmin gate below.
 router.get('/organization-branding', requireAuth, getOrganizationBranding);
-
 router.use(requireAuth, authorize('admin', 'superAdmin'));
 
 router.get('/stats', getDashboardStats);
+router.get('/plan', getAgencyPlan);
+router.get('/audit-log', listAuditLog);
 router.get('/settings', getSettings);
 router.put('/settings', updateSettings);
 

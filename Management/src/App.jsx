@@ -11,6 +11,7 @@ import BillingInvoicing from "./pages/BillingInvoicing";
 import UserManagement from "./pages/UserManagement";
 import CareerManagement from "./pages/CareerManagement";
 import OrganizationSettings from "./pages/OrganizationSettings";
+import AuditLog from "./pages/AuditLog";
 import AIInsights from "./pages/AIInsights";
 import Login from "./pages/Login";
 import SalesRepLogin from "./pages/SalesRepLogin";
@@ -20,6 +21,7 @@ import SetPassword from "./pages/SetPassword";
 import ChooseAgency from "./pages/ChooseAgency";
 import ProtectedRoute from "./components/ProtectedRoute";
 import HomeRoute from "./components/HomeRoute";
+import HelpAccessBanner from "./components/HelpAccessBanner";
 import { useAuth } from "./contexts/AuthContext";
 import { NotificationProvider } from "./features/notifications/NotificationProvider";
 
@@ -75,6 +77,7 @@ function AppContent() {
             <div className="flex h-screen bg-background">
               <Sidebar />
               <div className="flex-1 overflow-auto min-w-0">
+                <HelpAccessBanner />
                 <Routes>
                   <Route path="/" element={<HomeRoute />} />
                   <Route path="/analytics" element={<Analytics />} />
@@ -109,6 +112,14 @@ function AppContent() {
                     element={
                       <ProtectedRoute requiredRoles={["admin", "superAdmin"]}>
                         <OrganizationSettings />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/audit-log"
+                    element={
+                      <ProtectedRoute requiredRoles={["admin", "superAdmin"]}>
+                        <AuditLog />
                       </ProtectedRoute>
                     }
                   />

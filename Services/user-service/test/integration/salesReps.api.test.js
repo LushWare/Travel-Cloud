@@ -1,9 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
-import { buildUserRow, authHeaders } from '../factories/user.factory.js';
+import { buildUserRow, authHeaders, stubMemberships, stubPlanChecks } from '../factories/user.factory.js';
 
 const { mockPrisma } = vi.hoisted(() => ({
   mockPrisma: {
+    membership: {
+      findFirst: vi.fn(), findMany: vi.fn(), count: vi.fn(), groupBy: vi.fn(), update: vi.fn(), delete: vi.fn(),
+    },
     user: {
       findUnique: vi.fn(),
       findFirst: vi.fn(),
@@ -25,6 +28,8 @@ const ID = 'a0000000-0000-4000-8000-000000000001';
 describe('Sales Rep API — /api/v1/sales-reps', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    stubPlanChecks(mockPrisma);
+    stubMemberships(mockPrisma.membership);
     mockPrisma.user.findFirst.mockResolvedValue(buildUserRow({ role: 'salesRep' }));
   });
 

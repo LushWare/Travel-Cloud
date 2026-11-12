@@ -1,9 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
-import { buildUserRow, authHeaders } from '../factories/user.factory.js';
+import { buildUserRow, authHeaders, stubMemberships, stubPlanChecks } from '../factories/user.factory.js';
 
 const { mockPrisma } = vi.hoisted(() => ({
   mockPrisma: {
+    membership: {
+      findFirst: vi.fn(), findMany: vi.fn(), count: vi.fn(), groupBy: vi.fn(), update: vi.fn(), delete: vi.fn(),
+    },
     user: { findUnique: vi.fn(), findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
   },
 }));
@@ -22,6 +25,8 @@ const create = (body) => request(app).post('/api/v1/sales-reps').set(admin())
 
 beforeEach(() => {
   vi.clearAllMocks();
+  stubPlanChecks(mockPrisma);
+  stubMemberships(mockPrisma.membership);
   mockPrisma.user.findUnique.mockResolvedValue(null);
   mockPrisma.user.findFirst.mockResolvedValue(buildUserRow({ id: ID, role: 'salesRep' }));
   mockPrisma.user.create.mockImplementation(async ({ data }) => buildUserRow({ ...data, commissionRate: decimal(data.commissionRate) }));

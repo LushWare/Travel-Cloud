@@ -3,6 +3,7 @@ import { ROUTE_TYPE, PRICING_MODEL } from '../../../shared/constants/src/index.j
 import prisma from '../db/client.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import AppError from '../utils/appError.js';
+import { createPackageWithinPlanLimit } from '../services/plan.service.js';
 import logger from '../config/logger.js';
 import { serializePackage, resolveActivityCatalogIds, buildItineraryDaysData, buildInclude } from '../services/package.service.js';
 import { generateStructured } from '../ai/geminiClient.js';
@@ -134,8 +135,7 @@ export const generateAIPackage = asyncHandler(async (req, res) => {
   const { days: resolvedDays } = await resolveActivityCatalogIds(normalizedDays);
   const slug = slugify(pkgBody.title || packageData.title || 'package', { lower: true, strict: true }) + '-' + Date.now();
 
-  const pkg = await prisma.package.create({
-    data: {
+  const pkg = await createPackageWithinPlanLimit({
       title: pkgBody.title || packageData.title || 'AI Generated Package',
       description: pkgBody.description || '',
       destination: pkgBody.destination || destination,
@@ -154,9 +154,7 @@ export const generateAIPackage = asyncHandler(async (req, res) => {
       isFeatured: false,
       createdBy: req.user.id,
       itineraryDays: { create: buildItineraryDaysData(resolvedDays) },
-    },
-    include: buildInclude(),
-  });
+    }, { include: buildInclude() });
 
   res.status(201).json({ success: true, data: serializePackage(pkg) });
 });

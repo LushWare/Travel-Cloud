@@ -1,6 +1,7 @@
 import prisma from '../db/client.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import AppError from '../utils/appError.js';
+import { createPackageWithinPlanLimit } from '../services/plan.service.js';
 import { computeMargin } from '../../../shared/pricing-engine/src/index.js';
 import {
   serializePackage,
@@ -171,10 +172,7 @@ export const createPackage = asyncHandler(async (req, res) => {
     data.basePrice = pricing.basePrice;
   }
 
-  const pkg = await prisma.package.create({
-    data,
-    include: buildInclude(),
-  });
+  const pkg = await createPackageWithinPlanLimit(data, { include: buildInclude() });
   res.status(201).json({ success: true, data: serializePackage(pkg) });
 });
 

@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import axios from 'axios';
 import toast from '@/lib/toast';
 import { apiErrorMessage } from '@/lib/apiErrorMessage';
-import { API_BASE_URL, refreshSession, SESSION_EXPIRED_EVENT } from '@/lib/authFetch';
+import { API_BASE_URL, helpSessionUser, refreshSession, SESSION_EXPIRED_EVENT } from '@/lib/authFetch';
 import { setPendingPasswordReset } from '@/lib/pendingPasswordReset';
 import { nextStepAfterSignIn } from '@/lib/pendingTenantChoice';
 
@@ -38,14 +38,23 @@ export const AuthProvider = ({ children }) => {
       localStorage.removeItem('token');
       sessionStorage.removeItem('token');
 
-      const hasSavedUser = Boolean(localStorage.getItem('user'));
+      const savedUser = localStorage.getItem('user');
+      const hasSavedUser = Boolean(savedUser);
       const lastActivity = Number(localStorage.getItem(LAST_ACTIVITY_KEY));
       const inactive = lastActivity > 0 && Date.now() - lastActivity > INACTIVITY_LIMIT_MS;
 
-      const freshUser = hasSavedUser && !inactive ? await refreshSession() : null;
+      // Arriving from the console's help link (?help=1), or reloading during that help session.
+      const helpExpected = new URLSearchParams(window.location.search).has('help')
+        || (hasSavedUser && savedUser.includes('"helpAccess"'));
+      let freshUser = hasSavedUser && !inactive ? await refreshSession() : null;
+      if (!freshUser && helpExpected) freshUser = await helpSessionUser();
+      if (!cancelled && freshUser?.helpAccess && window.location.search.includes('help=')) {
+        window.history.replaceState(null, '', window.location.pathname);
+      }
       if (cancelled) return;
       if (freshUser) {
         localStorage.setItem('user', JSON.stringify(freshUser));
+        if (freshUser.helpAccess) localStorage.setItem(LAST_ACTIVITY_KEY, Date.now().toString());
         setUser(freshUser);
         setIsAuthenticated(true);
       } else {

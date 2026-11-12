@@ -43,10 +43,32 @@ END $$;`,
       `ALTER DEFAULT PRIVILEGES IN SCHEMA ${schema} GRANT USAGE, SELECT ON SEQUENCES TO ${APP_ROLE};`,
     );
   }
-  // The agency list is read-only for the services.
+  // The agency list is read-only for the services; the audit log is add-and-read only.
   statements.push(
     `GRANT USAGE ON SCHEMA crm_platform TO ${APP_ROLE};`,
     `GRANT SELECT ON crm_platform."Tenant" TO ${APP_ROLE};`,
+    `DO $$ BEGIN
+  IF to_regclass('crm_platform."AuditLog"') IS NOT NULL THEN
+    GRANT INSERT, SELECT ON crm_platform."AuditLog" TO ${APP_ROLE};
+    REVOKE UPDATE, DELETE, TRUNCATE ON crm_platform."AuditLog" FROM ${APP_ROLE};
+  END IF;
+  IF to_regclass('crm_platform."Plan"') IS NOT NULL THEN
+    GRANT SELECT ON crm_platform."Plan" TO ${APP_ROLE};
+    REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON crm_platform."Plan" FROM ${APP_ROLE};
+  END IF;
+  IF to_regclass('crm_platform."PlanVersion"') IS NOT NULL THEN
+    GRANT SELECT ON crm_platform."PlanVersion" TO ${APP_ROLE};
+    REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON crm_platform."PlanVersion" FROM ${APP_ROLE};
+  END IF;
+  IF to_regclass('crm_platform."TenantPlan"') IS NOT NULL THEN
+    GRANT SELECT ON crm_platform."TenantPlan" TO ${APP_ROLE};
+    REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON crm_platform."TenantPlan" FROM ${APP_ROLE};
+  END IF;
+  IF to_regclass('crm_platform."PlanEntitlementOverride"') IS NOT NULL THEN
+    GRANT SELECT ON crm_platform."PlanEntitlementOverride" TO ${APP_ROLE};
+    REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON crm_platform."PlanEntitlementOverride" FROM ${APP_ROLE};
+  END IF;
+END $$;`,
   );
   return statements;
 }

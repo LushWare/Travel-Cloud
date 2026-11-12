@@ -9,7 +9,10 @@ import {
   updateVendorRatingSchema, listVendorsQuerySchema,
 } from '../validators/vendor.validator.js';
 import { z } from 'zod';
-import { findManageableUser, newMembership } from '../utils/accountGuard.js';
+import { withStaffSeat } from '../services/plan.service.js';
+import {
+  agencyMemberWhere, changeAccess, findManageableUser, newMembership, removeAccess, withAgencyAccess, auditStaffCreated,
+} from '../utils/accountGuard.js';
 
 const findVendor = (req, id) => findManageableUser(req.user, id, { role: 'vendor', notFound: 'Vendor not found' });
 
@@ -25,8 +28,7 @@ const serviceTypeParamSchema = z.object({ serviceType: z.enum(SERVICE_TYPES) });
 
 export const getAllVendors = asyncHandler(async (req, res) => {
   const { page = 1, limit = 10, search, isActive, serviceType, vendorStatus } = parseOrThrow(listVendorsQuerySchema, req.query);
-  const where = { role: 'vendor' };
-  if (isActive !== undefined) where.isActive = isActive === 'true';
+  const where = agencyMemberWhere({ role: 'vendor', isActive: isActive === undefined ? undefined : isActive === 'true' });
   if (search) where.OR = [{ name: { contains: search, mode: 'insensitive' } }, { email: { contains: search, mode: 'insensitive' } }];
   const vpWhere = {};
   if (serviceType || vendorStatus) {
@@ -40,14 +42,14 @@ export const getAllVendors = asyncHandler(async (req, res) => {
     prisma.user.findMany({ where: { ...where, ...vpWhere }, skip, take: limit, orderBy: { name: 'asc' }, include: { vendorProfile: true } }),
     prisma.user.count({ where: { ...where, ...vpWhere } }),
   ]);
-  res.json({ status: 'success', data: vendors.map(safeUser), pagination: { total, page, limit, pages: Math.ceil(total / limit) } });
+  res.json({ status: 'success', data: (await withAgencyAccess(vendors)).map(safeUser), pagination: { total, page, limit, pages: Math.ceil(total / limit) } });
 });
 
 export const getVendorById = asyncHandler(async (req, res) => {
   const { id } = parseOrThrow(idParamSchema, req.params);
-  const vendor = await prisma.user.findFirst({ where: { id, role: 'vendor' }, include: { vendorProfile: true } });
+  const vendor = await prisma.user.findFirst({ where: { id, ...agencyMemberWhere({ role: 'vendor' }) }, include: { vendorProfile: true } });
   if (!vendor) throw new AppError('Vendor not found', 404);
-  res.json({ status: 'success', data: { vendor: safeUser(vendor) } });
+  res.json({ status: 'success', data: { vendor: safeUser(await withAgencyAccess(vendor)) } });
 });
 
 export const createVendor = asyncHandler(async (req, res) => {
@@ -60,7 +62,7 @@ export const createVendor = asyncHandler(async (req, res) => {
   const tempPassword = crypto.randomBytes(8).toString('hex');
   const hashed = await bcrypt.hash(tempPassword, 12);
 
-  const vendor = await prisma.user.create({
+  const vendor = await withStaffSeat((tx) => tx.user.create({
     data: {
       name, email, phone: phone || null, ...(phoneCountry && { phoneCountry }),
       password: hashed, role: 'vendor',
@@ -92,7 +94,8 @@ export const createVendor = asyncHandler(async (req, res) => {
       },
     },
     include: { vendorProfile: true },
-  });
+  }));
+  await auditStaffCreated(req, vendor, 'vendor');
   res.status(201).json({ status: 'success', data: { vendor: safeUser(vendor) } });
 });
 
@@ -124,16 +127,14 @@ export const updateVendor = asyncHandler(async (req, res) => {
 
 export const deleteVendor = asyncHandler(async (req, res) => {
   const { id } = parseOrThrow(idParamSchema, req.params);
-  const vendor = await prisma.user.findFirst({ where: { id, role: 'vendor' } });
-  if (!vendor) throw new AppError('Vendor not found', 404);
-  await prisma.user.delete({ where: { id } });
+  await removeAccess(await findVendor(req, id), req);
   res.json({ status: 'success', data: {} });
 });
 
 export const getVendorStats = asyncHandler(async (req, res) => {
   const [total, active, byService] = await Promise.all([
-    prisma.user.count({ where: { role: 'vendor' } }),
-    prisma.user.count({ where: { role: 'vendor', isActive: true } }),
+    prisma.membership.count({ where: { role: 'vendor' } }),
+    prisma.membership.count({ where: { role: 'vendor', status: { in: ['active', 'invited'] } } }),
     prisma.vendorProfile.groupBy({ by: ['serviceType'], _count: true }),
   ]);
   res.json({ status: 'success', data: { total, active, inactive: total - active, byServiceType: byService } });
@@ -141,15 +142,16 @@ export const getVendorStats = asyncHandler(async (req, res) => {
 
 export const toggleVendorStatus = asyncHandler(async (req, res) => {
   const { id } = parseOrThrow(idParamSchema, req.params);
-  const vendor = await prisma.user.findFirst({ where: { id, role: 'vendor' } });
-  if (!vendor) throw new AppError('Vendor not found', 404);
-  const updated = await prisma.user.update({ where: { id }, data: { isActive: !vendor.isActive } });
+  const target = await findVendor(req, id);
+  const current = await withAgencyAccess(target);
+  await changeAccess(target, { isActive: !current.isActive }, req);
+  const updated = await withAgencyAccess(await prisma.user.findFirst({ where: { id } }));
   res.json({ status: 'success', data: { vendor: safeUser(updated) } });
 });
 
 export const getVendorPerformance = asyncHandler(async (req, res) => {
   const { id } = parseOrThrow(idParamSchema, req.params);
-  const vendor = await prisma.user.findFirst({ where: { id, role: 'vendor' }, include: { vendorProfile: true } });
+  const vendor = await prisma.user.findFirst({ where: { id, ...agencyMemberWhere({ role: 'vendor' }) }, include: { vendorProfile: true } });
   if (!vendor) throw new AppError('Vendor not found', 404);
   res.json({ status: 'success', data: { vendorId: id, profile: vendor.vendorProfile } });
 });
@@ -173,8 +175,8 @@ export const updateVendorRating = asyncHandler(async (req, res) => {
 export const getVendorsByServiceType = asyncHandler(async (req, res) => {
   const { serviceType } = parseOrThrow(serviceTypeParamSchema, req.params);
   const vendors = await prisma.user.findMany({
-    where: { role: 'vendor', vendorProfile: { serviceType } },
+    where: { vendorProfile: { serviceType }, ...agencyMemberWhere({ role: 'vendor' }) },
     include: { vendorProfile: true },
   });
-  res.json({ status: 'success', count: vendors.length, data: vendors.map(safeUser) });
+  res.json({ status: 'success', count: vendors.length, data: (await withAgencyAccess(vendors)).map(safeUser) });
 });

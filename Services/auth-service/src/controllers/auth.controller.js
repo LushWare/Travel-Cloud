@@ -4,7 +4,10 @@ import bcrypt from 'bcryptjs';
 import prisma from '../db/client.js';
 import * as userDb from '../db/userQueries.js';
 import * as membershipDb from '../db/membershipQueries.js';
+import * as helpDb from '../db/helpAccessQueries.js';
 import { DEMO_TENANT_ID } from '../../../shared/constants/src/index.js';
+import { recordAudit, runWithTenant } from '../../../shared/tenancy/src/index.js';
+import logger from '../config/logger.js';
 import AppError from '../utils/appError.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import * as emailService from '../utils/email.js';
@@ -436,11 +439,89 @@ export const selectTenant = asyncHandler(async (req, res) => {
 
 export const logout = asyncHandler(async (req, res) => {
   await revokeSessionByToken(req.cookies?.[REFRESH_COOKIE]);
+  const helpGrant = helpGrantIn(req.cookies?.[ACCESS_COOKIE]);
+  if (helpGrant) {
+    await helpDb.endGrant(helpGrant).catch((err) => logger.error({ err, requestId: req.requestId }, 'Failed to end help access'));
+  }
   clearAuthCookies(res);
   res.status(200).json({ status: 'success', message: 'Logged out successfully', data: null });
 });
 
+// ─── View-only help access by Lushware staff ─────────────────────────────────────
+// Every permission, so support can see any page; the gateway refuses every change for these tokens.
+const HELP_PERMISSIONS = [
+  'manage_users', 'manage_sales_reps', 'manage_vendors', 'manage_admins',
+  'view_reports', 'manage_billing', 'view_billing', 'manage_leads', 'manage_packages',
+];
+const HELP_CODE = /^[A-Za-z0-9_-]{30,100}$/;
+
+/** The help session id carried by an access token, if it is one. */
+function helpGrantIn(token) {
+  if (!token) return null;
+  try {
+    const decoded = verifyJwt(token);
+    return decoded.help && decoded.ro === true ? decoded.help : null;
+  } catch {
+    return null;
+  }
+}
+
+const helpLinkFailed = (res) => res.status(410).type('text/plain')
+  .send('This help link has expired or was already used. Start help access again from the console.');
+
+/**
+ * Opens the Management session for a help-access link from the console. The link works once and
+ * only for two minutes; the session it opens is view-only and ends when the help access does.
+ */
+export const redeemHelpAccess = asyncHandler(async (req, res) => {
+  const code = typeof req.query.code === 'string' ? req.query.code : '';
+  if (!HELP_CODE.test(code)) return helpLinkFailed(res);
+  await enforceLimits(res, [['help-redeem-ip', clientIp(req), LIMITS.loginIp]]);
+
+  const grant = await helpDb.redeemHandoff(hashToken(code));
+  if (!grant) return helpLinkFailed(res);
+
+  const secondsLeft = Math.floor((new Date(grant.expiresAt).getTime() - Date.now()) / 1000);
+  if (secondsLeft <= 0) return helpLinkFailed(res);
+  const token = signJwt({
+    id: grant.platformUserId,
+    tid: grant.tenantId,
+    mid: null,
+    role: 'admin',
+    email: grant.email,
+    name: `Lushware support · ${grant.name}`,
+    permissions: HELP_PERMISSIONS,
+    isSuperAdmin: false,
+    help: grant.id,
+    ro: true,
+  }, secondsLeft);
+
+  // No refresh cookie: the session cannot be renewed past the help access.
+  res.clearCookie(REFRESH_COOKIE, cookieOptions(REFRESH_COOKIE_PATH));
+  res.cookie(ACCESS_COOKIE, token, { ...cookieOptions(), expires: new Date(grant.expiresAt) });
+  res.redirect(302, `${process.env.MANAGEMENT_URL || 'http://localhost:5174'}/?help=1`);
+});
+
+/** Who Management should show as signed in during a help session. */
+async function helpSessionUser(req) {
+  const grant = await helpDb.findOpenGrant(req.headers['x-platform-help-grant']);
+  if (!grant) throw new AppError('This help session has ended.', 401);
+  return {
+    id: req.headers['x-user-id'],
+    name: req.headers['x-user-name'],
+    email: req.headers['x-user-email'],
+    role: 'admin',
+    isSuperAdmin: false,
+    permissions: HELP_PERMISSIONS,
+    tenant: { id: req.headers['x-tenant-id'], slug: grant.tenantSlug, name: grant.tenantName },
+    helpAccess: { grantId: grant.id, expiresAt: grant.expiresAt, viewOnly: true },
+  };
+}
+
 export const getMe = asyncHandler(async (req, res) => {
+  if (req.headers['x-platform-help-grant']) {
+    return res.status(200).json({ status: 'success', data: { user: await helpSessionUser(req) } });
+  }
   const userId = req.headers['x-user-id'];
   if (!userId) throw new AppError('Not authenticated', 401);
 
@@ -557,6 +638,13 @@ export const sendSetPasswordLink = asyncHandler(async (req, res) => {
     req.log?.error({ err, requestId: req.requestId }, 'Failed to send set-password email');
     throw new AppError('The email could not be sent. Please try again later.', 502);
   }
+
+  // A set-password link hands over an account, so who sent it to whom is always recorded.
+  await runWithTenant(membership.tenantId, () => recordAudit(prisma, req, {
+    action: invite ? 'staff.invitation_sent' : 'staff.password_reset_sent',
+    targetType: 'user', targetId: user.id,
+    summary: `${invite ? 'Sent an invitation' : 'Sent a password reset link'} to ${user.name ? `${user.name} (${user.email})` : user.email}`,
+  }, { logger }));
 
   res.status(200).json({ status: 'success', message: invite ? 'Invitation sent' : 'Password reset email sent', data: { invite } });
 });

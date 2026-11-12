@@ -3,7 +3,7 @@ import {
   register, login, logout, getMe, changePassword,
   forgotPassword, resetPassword, resetTempPassword,
   verifyEmail, resendVerification, updateProfile,
-  loginStep1, loginStep2, resendOTP, refresh, sendSetPasswordLink, selectTenant,
+  loginStep1, loginStep2, resendOTP, refresh, sendSetPasswordLink, selectTenant, redeemHelpAccess,
 } from '../controllers/auth.controller.js';
 
 const router = express.Router();
@@ -24,6 +24,7 @@ router.post('/logout', logout);
 
 // Protected (user info from gateway headers)
 router.get('/me', getMe);
+router.get('/help-access/redeem', redeemHelpAccess);
 router.post('/users/:userId/set-password-link', sendSetPasswordLink);
 router.put('/change-password', changePassword);
 router.post('/resend-verification', resendVerification);

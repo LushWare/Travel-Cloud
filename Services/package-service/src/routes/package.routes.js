@@ -18,6 +18,7 @@ import {
 } from '../validators/package.schema.js';
 import * as packageController from '../controllers/package.controller.js';
 import * as packageImageController from '../controllers/packageImage.controller.js';
+import { requirePlanFeature } from '../services/plan.service.js';
 import {
   generateAIPackage,
   generateContentFromTitle,
@@ -32,6 +33,7 @@ import { downloadAIPdf } from '../controllers/aiPdf.controller.js';
 import { wizardTurn } from '../controllers/wizard.controller.js';
 
 const router = Router();
+const requireAIBuilder = requirePlanFeature('ai_itinerary_builder');
 
 // ── Public: static sub-paths must come before /:id ───────────────────────────
 router.get('/featured/all',       packageController.getFeaturedPackages);
@@ -48,8 +50,8 @@ router.get('/', packageController.getPackages);
 router.get('/:id', validateParams(packageIdParamSchema), packageController.getPackageById);
 
 // ── AI: full-package generation ───────────────────────────────────────────────
-router.post('/generate-ai',         requireAuth, authorize('admin', 'staff'), validateBody(generateAIPackageSchema),  generateAIPackage);
-router.post('/generate-from-title', requireAuth, authorize('admin', 'staff'), validateBody(generateFromTitleSchema), generateContentFromTitle);
+router.post('/generate-ai',         requireAuth, authorize('admin', 'staff'), requireAIBuilder, validateBody(generateAIPackageSchema),  generateAIPackage);
+router.post('/generate-from-title', requireAuth, authorize('admin', 'staff'), requireAIBuilder, validateBody(generateFromTitleSchema), generateContentFromTitle);
 // Public: non-persisting customer-facing itinerary preview — no DB write, rate-limited at the gateway.
 router.post('/generate-itinerary-preview', validateBody(generateItineraryPreviewSchema), generateItineraryPreview);
 // Public: non-persisting conversational turn — no DB write, rate-limited at the gateway.
@@ -70,8 +72,8 @@ router.put('/:id',    requireAuth, authorize('admin', 'staff', 'salesRep'), requ
 router.delete('/:id', requireAuth, authorize('admin', 'salesRep'),          requirePackagePermissionForSalesRep, validateParams(packageIdParamSchema), packageController.deletePackage);
 
 // ── Per-package AI operations (two-segment paths — no conflict with /:id) ─────
-router.post('/:id/generate-ai-content', requireAuth, authorize('admin', 'staff'), generateAndSaveAIContent);
-router.get('/:id/preview-ai-content',   requireAuth, authorize('admin', 'staff'), previewAIContent);
+router.post('/:id/generate-ai-content', requireAuth, authorize('admin', 'staff'), requireAIBuilder, generateAndSaveAIContent);
+router.get('/:id/preview-ai-content',   requireAuth, authorize('admin', 'staff'), requireAIBuilder, previewAIContent);
 router.get('/:id/ai-pdf',               requireAuth,                               downloadAIPdf);
 
 // ── Misc per-package updates ──────────────────────────────────────────────────

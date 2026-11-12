@@ -121,6 +121,42 @@ test('the services\' database user gets no access to login tables', () => {
   assert.equal(roleSql('a'.repeat(40)).some((s) => s.includes('crm_auth')), false);
 });
 
+test("the services' database user may only add and read audit entries", () => {
+  const sql = roleSql('a'.repeat(40)).join('\n');
+
+  assert.ok(sql.includes('GRANT INSERT, SELECT ON crm_platform."AuditLog"'));
+  assert.ok(sql.includes('REVOKE UPDATE, DELETE, TRUNCATE ON crm_platform."AuditLog"'));
+});
+
+test('the audit log migration blocks edits and deletes and limits reads to the current agency', () => {
+  const sql = readFileSync(path.join(HERE, 'user-service/prisma/migrations/20261111100000_add_audit_log/migration.sql'), 'utf8');
+
+  assert.ok(sql.includes('BEFORE UPDATE OR DELETE ON "crm_platform"."AuditLog"'));
+  assert.ok(sql.includes('FORCE ROW LEVEL SECURITY'));
+  assert.ok(sql.includes('FOR SELECT'));
+  assert.ok(sql.includes('FOR INSERT'));
+  assert.ok(!/FOR (UPDATE|DELETE|ALL)/.test(sql));
+});
+
+test("the agency services' database user can never read platform staff accounts or sessions", () => {
+  const roles = roleSql('a'.repeat(40)).join('\n');
+  const sql = readFileSync(path.join(HERE, 'user-service/prisma/migrations/20261111110000_add_platform_staff/migration.sql'), 'utf8');
+
+  assert.ok(!/PlatformUser|PlatformSession/.test(roles));
+  assert.ok(sql.includes('REVOKE ALL ON "crm_platform"."PlatformUser" FROM crm_app'));
+  assert.ok(sql.includes('REVOKE ALL ON "crm_platform"."PlatformSession" FROM crm_app'));
+  assert.ok(sql.includes('ALTER TABLE "crm_platform"."PlatformUser" FORCE ROW LEVEL SECURITY'));
+  assert.ok(!/CREATE POLICY/.test(sql));
+});
+
+test('help access is capped at 30 minutes and hidden from the agency services', () => {
+  const sql = readFileSync(path.join(HERE, 'user-service/prisma/migrations/20261111130000_add_help_access_grant/migration.sql'), 'utf8');
+
+  assert.ok(sql.includes(`CHECK ("expiresAt" <= "createdAt" + INTERVAL '30 minutes')`));
+  assert.ok(sql.includes('REVOKE ALL ON "crm_platform"."HelpAccessGrant" FROM crm_app'));
+  assert.ok(sql.includes('ALTER TABLE "crm_platform"."HelpAccessGrant" FORCE ROW LEVEL SECURITY'));
+});
+
 test('refuses a short or unsafe database password', () => {
   assert.throws(() => roleSql('short'), /32–128/);
   assert.throws(() => roleSql(`${'a'.repeat(40)}'; DROP ROLE x; --`), /32–128/);

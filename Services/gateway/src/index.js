@@ -37,6 +37,7 @@ const allowedOrigins = new Set(
   [
     process.env.CLIENT_URL,
     process.env.MANAGEMENT_URL,
+    process.env.CONSOLE_URL,
     'https://lushtravelcloud.com',
     'https://www.lushtravelcloud.com',
     ...(process.env.CORS_ALLOWED_ORIGINS || '').split(','),
@@ -62,7 +63,7 @@ app.use(cookieParser());
 // Cookies are sent automatically, so a cookie-authenticated write must come from one of our own sites.
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 app.use((req, res, next) => {
-  const usesAuthCookie = req.cookies?.token || req.cookies?.refresh_token;
+  const usesAuthCookie = req.cookies?.token || req.cookies?.refresh_token || req.cookies?.platform_session;
   const { origin } = req.headers;
   if (SAFE_METHODS.has(req.method) || !usesAuthCookie || !origin || isAllowedOrigin(origin)) return next();
   logger.warn({ origin, path: req.path, requestId: req.requestId }, 'Cross-site cookie request rejected');
@@ -86,6 +87,8 @@ const aiItineraryPreviewLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 5 }
 // turn count while still bounding cost per IP.
 const itineraryChatLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 30 });
 const recommendationsLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 60 });
+// Console sign-in: both steps together, per IP. The service also locks an account after 5 failures.
+const platformLoginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10 });
 app.use(globalLimiter);
 
 // ─── Health check ──────────────────────────────────────────────────────────────
@@ -108,7 +111,12 @@ const SERVICES = {
   assistant:    process.env.ASSISTANT_SERVICE_URL     || 'http://localhost:3011',
   recommendations: process.env.RECOMMENDATION_SERVICE_URL || 'http://localhost:3013',
   voice:        process.env.VOICE_SERVICE_URL         || 'http://localhost:3012',
+  platform:     process.env.PLATFORM_SERVICE_URL      || 'http://localhost:3014',
 };
+
+// The platform console has its own sign-in (password + authenticator code) checked by
+// platform-service. Agency logins mean nothing there and are never forwarded to it.
+const PLATFORM_PATH = /^\/api\/v1\/platform(\/|$)/;
 
 // ─── Public routes (no JWT required) ──────────────────────────────────────────
 const PUBLIC_PATTERNS = [
@@ -116,6 +124,8 @@ const PUBLIC_PATTERNS = [
   [/^\/api\/v1\/auth\/(register|login|login-step[12]|resend-otp|forgot-password|reset-temp-password|verify-email)/, 'ALL'],
   [/^\/api\/v1\/auth\/(refresh|logout|select-tenant)$/, 'POST'],
   [/^\/api\/v1\/auth\/reset-password\//, 'ALL'],
+  // The console's one-time link that opens view-only help access (see auth-service).
+  [/^\/api\/v1\/auth\/help-access\/redeem$/, 'GET'],
   // Public package browsing — explicit paths only; admin/AI sub-routes remain protected
   [/^\/api\/v1\/packages\/?(\?.*)?$/,           'GET'], // list
   [/^\/api\/v1\/packages\/featured\//,           'GET'], // featured
@@ -175,6 +185,22 @@ const forwardIdentity = (req, user) => {
   req.headers['x-user-permissions']   = JSON.stringify(user.permissions || []);
   req.headers['x-user-is-super-admin'] = String(user.isSuperAdmin || false);
   if (user.tid) req.headers['x-tenant-id'] = user.tid;
+  // Lushware staff viewing an agency to help it. Clients cannot send this header (stripped above).
+  if (user.help) req.headers['x-platform-help-grant'] = String(user.help);
+};
+
+// A help session may look at everything and change nothing, whichever page or API is used.
+const HELP_WRITE_ALLOWED = new Set(['/api/v1/auth/logout']);
+const refuseHelpWrite = (req, res, user) => {
+  if (!user?.ro || SAFE_METHODS.has(req.method) || HELP_WRITE_ALLOWED.has(req.path)) return false;
+  res.status(403).json({
+    success: false,
+    status: 'fail',
+    code: 'HELP_ACCESS_READ_ONLY',
+    message: 'This is view-only help access. Changes are not allowed.',
+    ...(req.requestId && { requestId: req.requestId }),
+  });
+  return true;
 };
 
 // Anonymous visitors of the public website see this agency's catalogue.
@@ -193,7 +219,17 @@ app.use((req, res, next) => {
   const bearer = req.headers.authorization?.startsWith('Bearer ') ? req.headers.authorization.split(' ')[1] : undefined;
   const token = bearer || req.cookies?.token;
 
+  if (PLATFORM_PATH.test(req.path)) {
+    delete req.headers.authorization;
+    return next();
+  }
+
   if (isPublicRoute(req.method, req.path)) {
+    if (token && !SAFE_METHODS.has(req.method)) {
+      let caller = null;
+      try { caller = verifiedUser(token); } catch { /* an invalid token on a public form is just anonymous */ }
+      if (refuseHelpWrite(req, res, caller)) return undefined;
+    }
     req.headers['x-tenant-id'] = PUBLIC_SITE_TENANT_ID;
     // Public pages also serve signed-in staff (e.g. draft packages), so identify the caller when possible.
     if (!token || req.method !== 'GET' || req.path.startsWith('/api/v1/auth/')) return next();
@@ -211,7 +247,9 @@ app.use((req, res, next) => {
   }
 
   try {
-    forwardIdentity(req, verifiedUser(token));
+    const user = verifiedUser(token);
+    if (refuseHelpWrite(req, res, user)) return undefined;
+    forwardIdentity(req, user);
     next();
   } catch (err) {
     return unauthenticated(req, res, err.name === 'TokenExpiredError' ? 'Token expired. Please login again.' : 'Invalid token.');
@@ -293,6 +331,7 @@ app.use(`${V1}/auth/login-step2`,    authLimiter, proxy(SERVICES.auth));
 app.use(`${V1}/auth/resend-otp`,     authLimiter, proxy(SERVICES.auth));
 app.use(`${V1}/auth/register`,       authLimiter, proxy(SERVICES.auth));
 app.use(`${V1}/auth/forgot-password`,authLimiter, proxy(SERVICES.auth));
+app.use(`${V1}/auth/help-access`,    authLimiter, proxy(SERVICES.auth));
 app.use(`${V1}/auth`,                proxy(SERVICES.auth));
 
 // User management → user-service
@@ -362,6 +401,14 @@ app.use(`${V1}/assistant/turn`, itineraryChatLimiter, proxy(SERVICES.assistant))
 app.use(`${V1}/assistant`, proxy(SERVICES.assistant));
 
 app.use(`${V1}/voice`, proxy(SERVICES.voice));
+
+// Platform console → platform-service
+app.use(`${V1}/platform/auth/login`, platformLoginLimiter, proxy(SERVICES.platform));
+app.use(`${V1}/platform/auth/mfa`,   platformLoginLimiter, proxy(SERVICES.platform));
+app.use(`${V1}/platform/auth/change-password`, platformLoginLimiter, proxy(SERVICES.platform));
+// Staff invitation / authenticator-reset links: same ceiling as sign-in.
+app.use(`${V1}/platform/auth/setup`, platformLoginLimiter, proxy(SERVICES.platform));
+app.use(`${V1}/platform`,            proxy(SERVICES.platform));
 // ─── 404 ───────────────────────────────────────────────────────────────────────
 // Generic rather than echoing the method and path back: the response should not
 // describe the routing table to whoever asked.

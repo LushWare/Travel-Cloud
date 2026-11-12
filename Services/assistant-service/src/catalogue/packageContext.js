@@ -1,5 +1,6 @@
 import { executeTool, PUBLIC_TOOL_NAMES } from '../tools/toolRegistry.js';
 import { canonicalScalar, canonicalScalars, proseNumericTokens } from '../ai/groundingValidator.js';
+import { getTenantId } from '../../../shared/tenancy/src/index.js';
 
 // ─── The package context for one public turn ──────────────────────────────
 // The site-wide assistant had no package data at all: its only external read
@@ -46,14 +47,17 @@ const FILTER_KEYS = ['destination', 'category', 'priceMin', 'priceMax', 'duratio
 // stay the point.
 export const BROWSE_PREVIEW_LIMIT = 3;
 
-let cachedFacts = null;
-let cachedAt = 0;
-const detailCache = new Map();
+// Both memos are keyed by the requesting agency, so one agency's catalogue can
+// never surface in another agency's conversation. Identity-less callers share
+// one 'public' bucket; in production the gateway pins those to the demo agency.
+const tenantKey = () => getTenantId() ?? 'public';
+
+const catalogueCache = new Map(); // tenantKey -> { facts, at }
+const detailCache = new Map(); // `${tenantKey}|${packageId}` -> { detail, at }
 
 /** Test seam: drops the memoized catalogue, matching `_resetPolicyDocumentsCache`. */
 export function _resetPackageCatalogueCache() {
-  cachedFacts = null;
-  cachedAt = 0;
+  catalogueCache.clear();
 }
 
 /** Test seam: drops the memoized package details. */
@@ -92,23 +96,23 @@ function toFact(row) {
  * cached, so one bad minute does not blind every visitor for the next one.
  */
 export async function loadPackageCatalogue({ signal } = {}) {
-  if (cachedFacts && Date.now() - cachedAt < CATALOGUE_TTL_MS) return cachedFacts;
+  const entry = catalogueCache.get(tenantKey());
+  if (entry && Date.now() - entry.at < CATALOGUE_TTL_MS) return entry.facts;
 
   let result = null;
   try {
     result = await executeTool('listPackages', { limit: CATALOGUE_LIMIT }, {}, PUBLIC_CATALOGUE_TOOLS, signal);
   } catch {
-    return cachedFacts ?? [];
+    return entry?.facts ?? [];
   }
 
   if (!result || result.error || result.unavailable || result.notAuthorized) {
-    return cachedFacts ?? [];
+    return entry?.facts ?? [];
   }
 
   const rows = Array.isArray(result.data) ? result.data : [];
   const facts = rows.map(toFact).filter((fact) => fact.id && fact.title);
-  cachedFacts = facts;
-  cachedAt = Date.now();
+  catalogueCache.set(tenantKey(), { facts, at: Date.now() });
   return facts;
 }
 
@@ -121,7 +125,8 @@ export async function loadPackageCatalogue({ signal } = {}) {
 export async function loadPackageDetail(id, { signal } = {}) {
   if (!id) return null;
 
-  const cached = detailCache.get(id);
+  const cacheKey = `${tenantKey()}|${id}`;
+  const cached = detailCache.get(cacheKey);
   if (cached && Date.now() - cached.at < DETAIL_TTL_MS) return cached.detail;
 
   let result = null;
@@ -137,7 +142,7 @@ export async function loadPackageDetail(id, { signal } = {}) {
 
   // A failed read is deliberately not cached, so one bad minute does not blind
   // the rest of the conversation.
-  detailCache.set(id, { detail: record, at: Date.now() });
+  detailCache.set(cacheKey, { detail: record, at: Date.now() });
   return record;
 }
 

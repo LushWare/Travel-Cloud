@@ -1,9 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
-import { buildUserRow, authHeaders } from '../factories/user.factory.js';
+import { buildUserRow, authHeaders, stubMemberships, stubPlanChecks } from '../factories/user.factory.js';
 
 const { mockPrisma } = vi.hoisted(() => ({
   mockPrisma: {
+    membership: {
+      findFirst: vi.fn(), findMany: vi.fn(), count: vi.fn(), groupBy: vi.fn(), update: vi.fn(), delete: vi.fn(),
+    },
     user: {
       findUnique: vi.fn(),
       findFirst: vi.fn(),
@@ -24,6 +27,8 @@ const { default: app } = await import('../../src/app.js');
 describe('User API — /api/v1/users', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    stubPlanChecks(mockPrisma);
+    stubMemberships(mockPrisma.membership);
     mockPrisma.user.findFirst.mockResolvedValue(buildUserRow({ role: 'salesRep' }));
   });
 
@@ -137,7 +142,7 @@ describe('User API — /api/v1/users', () => {
 
   describe('GET /:id', () => {
     it('returns 404 when the user is not found', async () => {
-      mockPrisma.user.findUnique.mockResolvedValue(null);
+      mockPrisma.user.findFirst.mockResolvedValue(null);
 
       const res = await request(app)
         .get('/api/v1/users/a0000000-0000-4000-8000-000000000001')
@@ -168,23 +173,29 @@ describe('User API — /api/v1/users', () => {
   });
 
   describe('PATCH /:id/role', () => {
-    it('updates the role for a valid role value', async () => {
-      mockPrisma.user.update.mockResolvedValue(buildUserRow({ role: 'vendor' }));
+    it("changes the person's role in this agency, not on their account", async () => {
+      const userId = 'a0000000-0000-4000-8000-000000000001';
+      mockPrisma.membership.findMany.mockResolvedValue([
+        { id: 'm-1', userId, role: 'vendor', permissions: [], isOwner: false, status: 'active' },
+      ]);
+      mockPrisma.user.findFirst.mockResolvedValue(buildUserRow({ id: userId, role: 'salesRep' }));
 
       const res = await request(app)
-        .patch('/api/v1/users/a0000000-0000-4000-8000-000000000001/role')
+        .patch(`/api/v1/users/${userId}/role`)
         .set(authHeaders({ role: 'admin' }))
         .send({ role: 'vendor' });
 
       expect(res.status).toBe(200);
+      expect(mockPrisma.membership.update).toHaveBeenCalledWith(expect.objectContaining({ data: { role: 'vendor', isOwner: false } }));
+      expect(mockPrisma.user.update).not.toHaveBeenCalled();
       expect(res.body.data.user.role).toBe('vendor');
     });
   });
 
   describe('GET /stats', () => {
     it('returns aggregate stats for an admin', async () => {
-      mockPrisma.user.count.mockResolvedValueOnce(10).mockResolvedValueOnce(8);
-      mockPrisma.user.groupBy.mockResolvedValue([{ role: 'customer', _count: 10 }]);
+      mockPrisma.membership.count.mockResolvedValueOnce(8).mockResolvedValueOnce(2);
+      mockPrisma.membership.groupBy.mockResolvedValue([{ role: 'salesRep', _count: 10 }]);
 
       const res = await request(app)
         .get('/api/v1/users/stats')

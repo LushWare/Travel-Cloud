@@ -1,15 +1,19 @@
 import prisma from '../db/client.js';
+import { requireTenantId } from '../../../shared/tenancy/src/index.js';
 
-// Single row, enforced here rather than at the DB level — same convention as
-// lead-service's Settings model. Column @default()s on the Prisma model cover
-// the fields that previously had hardcoded literal defaults in billing-service's
-// and Management's branding.js (company name, currency, theme colors, validity
-// window), so a freshly-seeded row behaves identically to the pre-migration
-// env-var-driven config until an admin actually edits something.
+// One row per agency (unique on tenantId). A new agency starts with its own name,
+// never the column default, so its first documents don't carry another company's name.
 export async function getOrCreateSingleton() {
   const existing = await prisma.organizationSettings.findFirst();
   if (existing) return existing;
-  return prisma.organizationSettings.create({ data: {} });
+  const tenant = await prisma.tenant.findUnique({ where: { id: requireTenantId() }, select: { name: true } });
+  try {
+    return await prisma.organizationSettings.create({ data: tenant?.name ? { companyName: tenant.name } : {} });
+  } catch (err) {
+    // Two first requests raced; the other one created the row.
+    if (err?.code !== 'P2002') throw err;
+    return prisma.organizationSettings.findFirst();
+  }
 }
 
 const EDITABLE_FIELDS = [
@@ -22,6 +26,18 @@ const EDITABLE_FIELDS = [
   'bankName', 'bankAccountName', 'bankAccountNumber', 'bankIfscCode', 'bankSwiftCode',
   'bankBranch', 'bankAccountType', 'upiId',
 ];
+
+export const BANK_FIELDS = [
+  'bankName', 'bankAccountName', 'bankAccountNumber', 'bankIfscCode', 'bankSwiftCode', 'bankBranch', 'bankAccountType', 'upiId',
+];
+
+// Prisma Decimals serialise to their string value, so equal amounts compare equal.
+const comparable = (v) => JSON.stringify(v ?? null);
+
+/** Names of the editable fields whose value differs between two settings rows. */
+export function changedSettingsFields(before = {}, after = {}) {
+  return EDITABLE_FIELDS.filter((f) => comparable(before[f]) !== comparable(after[f]));
+}
 
 export async function updateSingleton(data, updatedById) {
   const singleton = await getOrCreateSingleton();

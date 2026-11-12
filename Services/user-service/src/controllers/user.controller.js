@@ -10,7 +10,12 @@ import {
 } from '../validators/user.validator.js';
 import { z } from 'zod';
 import { USER_ROLES } from '../validators/common.js';
-import { assertMayGrantRole, assertNotSelf, findManageableUser, newMembership } from '../utils/accountGuard.js';
+import {
+  agencyMemberWhere, assertMayGrantRole, assertNotSelf, changeAccess, findManageableUser, newMembership,
+  removeAccess, withAgencyAccess, auditStaffCreated,
+} from '../utils/accountGuard.js';
+import { audit } from '../utils/audit.js';
+import { withStaffSeat } from '../services/plan.service.js';
 
 const roleParamSchema = z.object({ role: z.enum(USER_ROLES) });
 
@@ -29,7 +34,7 @@ function parseOrThrow(schema, value) {
 export const getCurrentUserProfile = asyncHandler(async (req, res) => {
   const user = await prisma.user.findUnique({ where: { id: req.user.id }, include: { vendorProfile: true } });
   if (!user) throw new AppError('User not found', 404);
-  res.json({ status: 'success', data: { user: safeUser(user) } });
+  res.json({ status: 'success', data: { user: safeUser(await withAgencyAccess(user)) } });
 });
 
 export const updateCurrentUserProfile = asyncHandler(async (req, res) => {
@@ -46,14 +51,16 @@ export const updateCurrentUserProfile = asyncHandler(async (req, res) => {
     }
     throw error;
   }
+  // A login email change is a classic account-takeover step, so it is always recorded.
+  if (email && email !== req.user.email) {
+    await audit(req, { action: 'account.email_changed', targetType: 'user', targetId: req.user.id, summary: `Changed own login email to ${email}` });
+  }
   res.json({ status: 'success', message: 'Profile updated', data: { user: safeUser(user) } });
 });
 
 export const getAllUsers = asyncHandler(async (req, res) => {
   const { page = 1, limit = 10, role, search, isActive, ids } = parseOrThrow(listUsersQuerySchema, req.query);
-  const where = {};
-  if (role) where.role = role;
-  if (isActive !== undefined) where.isActive = isActive === 'true';
+  const where = { ...agencyMemberWhere({ role, isActive: isActive === undefined ? undefined : isActive === 'true' }) };
   if (ids) where.id = { in: ids.split(',') };
   if (search) {
     where.OR = [
@@ -68,16 +75,16 @@ export const getAllUsers = asyncHandler(async (req, res) => {
   ]);
   res.json({
     status: 'success',
-    data: users.map(safeUser),
+    data: (await withAgencyAccess(users)).map(safeUser),
     pagination: { total, page, limit, pages: Math.ceil(total / limit) },
   });
 });
 
 export const getUser = asyncHandler(async (req, res) => {
   const { id } = parseOrThrow(idParamSchema, req.params);
-  const user = await prisma.user.findUnique({ where: { id }, include: { vendorProfile: true } });
+  const user = await prisma.user.findFirst({ where: { id }, include: { vendorProfile: true } });
   if (!user) throw new AppError('User not found', 404);
-  res.json({ status: 'success', data: { user: safeUser(user) } });
+  res.json({ status: 'success', data: { user: safeUser(await withAgencyAccess(user)) } });
 });
 
 export const createUser = asyncHandler(async (req, res) => {
@@ -90,7 +97,7 @@ export const createUser = asyncHandler(async (req, res) => {
   const tempPassword = password || crypto.randomBytes(8).toString('hex');
   const hashedPassword = await bcrypt.hash(tempPassword, 12);
 
-  const user = await prisma.user.create({
+  const create = (client) => client.user.create({
     data: {
       name,
       email,
@@ -104,6 +111,9 @@ export const createUser = asyncHandler(async (req, res) => {
       ...(role !== 'customer' && { memberships: newMembership(req.user, role, [], { active: Boolean(password) }) }),
     },
   });
+  const user = role === 'customer' ? await create(prisma) : await withStaffSeat(create);
+
+  if (role !== 'customer') await auditStaffCreated(req, user, role);
 
   res.status(201).json({
     status: 'success',
@@ -112,69 +122,64 @@ export const createUser = asyncHandler(async (req, res) => {
   });
 });
 
+// Name and phone belong to the person's account; role, permissions and status to this agency.
 export const updateUser = asyncHandler(async (req, res) => {
   const { id } = parseOrThrow(idParamSchema, req.params);
   const { name, phone, role, isActive, permissions } = parseOrThrow(updateUserSchema, req.body);
-  await findManageableUser(req.user, id);
+  const target = await findManageableUser(req.user, id);
   if (role || isActive !== undefined || permissions) assertNotSelf(req.user, id);
   assertMayGrantRole(req.user, role);
-  const user = await prisma.user.update({
-    where: { id },
-    data: {
-      ...(name && { name }),
-      ...(phone !== undefined && { phone }),
-      ...(role && { role }),
-      ...(isActive !== undefined && { isActive }),
-      ...(permissions && { permissions }),
-    },
-  });
-  res.json({ status: 'success', data: { user: safeUser(user) } });
+  await changeAccess(target, { role, isActive, permissions }, req);
+  const user = name || phone !== undefined
+    ? await prisma.user.update({ where: { id }, data: { ...(name && { name }), ...(phone !== undefined && { phone }) } })
+    : await prisma.user.findFirst({ where: { id } });
+  res.json({ status: 'success', data: { user: safeUser(await withAgencyAccess(user)) } });
 });
 
 export const deleteUser = asyncHandler(async (req, res) => {
   const { id } = parseOrThrow(idParamSchema, req.params);
-  const user = await findManageableUser(req.user, id);
+  const target = await findManageableUser(req.user, id);
   assertNotSelf(req.user, id);
-  if (!user.canBeDeleted) throw new AppError('This user cannot be deleted', 403);
-  await prisma.user.delete({ where: { id } });
+  if (!target.canBeDeleted) throw new AppError('This user cannot be deleted', 403);
+  await removeAccess(target, req);
   res.json({ status: 'success', message: 'User deleted', data: {} });
 });
 
 export const toggleUserStatus = asyncHandler(async (req, res) => {
   const { id } = parseOrThrow(idParamSchema, req.params);
-  const user = await findManageableUser(req.user, id);
+  const target = await findManageableUser(req.user, id);
   assertNotSelf(req.user, id);
-  const updated = await prisma.user.update({
-    where: { id },
-    data: { isActive: !user.isActive },
-  });
+  const current = await withAgencyAccess(target);
+  await changeAccess(target, { isActive: !current.isActive }, req);
+  const updated = await withAgencyAccess(await prisma.user.findFirst({ where: { id } }));
   res.json({ status: 'success', message: `User ${updated.isActive ? 'activated' : 'deactivated'}`, data: { user: safeUser(updated) } });
 });
 
 export const getUsersByRole = asyncHandler(async (req, res) => {
   const { role } = parseOrThrow(roleParamSchema, req.params);
   const users = await prisma.user.findMany({
-    where: { role },
+    where: agencyMemberWhere({ role }),
     orderBy: { name: 'asc' },
   });
-  res.json({ status: 'success', count: users.length, data: users.map(safeUser) });
+  res.json({ status: 'success', count: users.length, data: (await withAgencyAccess(users)).map(safeUser) });
 });
 
 export const assignUserRole = asyncHandler(async (req, res) => {
   const { id } = parseOrThrow(idParamSchema, req.params);
   const { role } = parseOrThrow(assignUserRoleSchema, req.body);
-  await findManageableUser(req.user, id);
+  const target = await findManageableUser(req.user, id);
   assertNotSelf(req.user, id);
   assertMayGrantRole(req.user, role);
-  const user = await prisma.user.update({ where: { id }, data: { role } });
+  await changeAccess(target, { role }, req);
+  const user = await withAgencyAccess(await prisma.user.findFirst({ where: { id } }));
   res.json({ status: 'success', message: 'Role updated', data: { user: safeUser(user) } });
 });
 
 export const getUserStats = asyncHandler(async (req, res) => {
-  const [total, byRole, active] = await Promise.all([
-    prisma.user.count(),
-    prisma.user.groupBy({ by: ['role'], _count: true }),
-    prisma.user.count({ where: { isActive: true } }),
+  const [byRole, active, suspended] = await Promise.all([
+    prisma.membership.groupBy({ by: ['role'], _count: true }),
+    prisma.membership.count({ where: { status: { in: ['active', 'invited'] } } }),
+    prisma.membership.count({ where: { status: 'suspended' } }),
   ]);
-  res.json({ status: 'success', data: { total, active, inactive: total - active, byRole } });
+  res.json({ status: 'success', data: { total: active + suspended, active, inactive: suspended, byRole } });
 });

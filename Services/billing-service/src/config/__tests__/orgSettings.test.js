@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { runWithTenant } from '../../../../shared/tenancy/src/index.js';
 import { getOrgSettings, _resetCache, toBrandingShape, getBankDetails, hasBankDetails, hasRequiredOrgFieldsForInvoice, hasRequiredOrgFieldsForVoucher } from '../orgSettings.js';
+
+const ACME = '00000000-0000-4000-8000-000000000002';
+const GLOBE = '00000000-0000-4000-8000-000000000003';
 
 const COMPLETE_SETTINGS = {
   companyName: 'Lush Travel',
@@ -41,17 +45,30 @@ describe('getOrgSettings', () => {
 
   it('serves the cached value on a second call within the TTL, without refetching', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(fakeSettingsResponse());
-    await getOrgSettings({ fetchImpl });
-    await getOrgSettings({ fetchImpl });
+    await runWithTenant(ACME, () => getOrgSettings({ fetchImpl }));
+    await runWithTenant(ACME, () => getOrgSettings({ fetchImpl }));
     expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("never serves one agency's cached settings to another agency", async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(fakeSettingsResponse({ companyName: 'Acme Tours', bankAccountNumber: 'ACME-1' }))
+      .mockResolvedValueOnce(fakeSettingsResponse({ companyName: 'Globe DMC', bankAccountNumber: 'GLOBE-1' }));
+
+    const acme = await runWithTenant(ACME, () => getOrgSettings({ fetchImpl }));
+    const globe = await runWithTenant(GLOBE, () => getOrgSettings({ fetchImpl }));
+
+    expect(acme.bankAccountNumber).toBe('ACME-1');
+    expect(globe.bankAccountNumber).toBe('GLOBE-1');
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
   it('refetches once the cache TTL has expired', async () => {
     vi.useFakeTimers();
     const fetchImpl = vi.fn().mockResolvedValue(fakeSettingsResponse());
-    await getOrgSettings({ fetchImpl });
+    await runWithTenant(ACME, () => getOrgSettings({ fetchImpl }));
     vi.advanceTimersByTime(61_000);
-    await getOrgSettings({ fetchImpl });
+    await runWithTenant(ACME, () => getOrgSettings({ fetchImpl }));
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
@@ -74,10 +91,22 @@ describe('getOrgSettings', () => {
     const fetchImpl = vi.fn()
       .mockResolvedValueOnce(fakeSettingsResponse({ companyName: 'Lush Travel' }))
       .mockRejectedValueOnce(new Error('ECONNREFUSED'));
-    await getOrgSettings({ fetchImpl });
+    await runWithTenant(ACME, () => getOrgSettings({ fetchImpl }));
     vi.advanceTimersByTime(61_000);
-    const settings = await getOrgSettings({ fetchImpl });
+    const settings = await runWithTenant(ACME, () => getOrgSettings({ fetchImpl }));
     expect(settings.companyName).toBe('Lush Travel');
+  });
+
+  it("serves the static fallback, not another agency's stale value, when an agency's own fetch fails", async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(fakeSettingsResponse({ companyName: 'Acme Tours', bankAccountNumber: 'ACME-1' }))
+      .mockRejectedValueOnce(new Error('ECONNREFUSED'));
+
+    await runWithTenant(ACME, () => getOrgSettings({ fetchImpl }));
+    const globe = await runWithTenant(GLOBE, () => getOrgSettings({ fetchImpl }));
+
+    expect(globe.companyName).toBe('Travel CRM');
+    expect(globe.bankAccountNumber).not.toBe('ACME-1');
   });
 });
 

@@ -1,5 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+const AGENCY = '00000000-0000-4000-8000-000000000001';
+vi.mock('../../../../shared/tenancy/src/index.js', async (original) => ({
+  ...(await original()),
+  requireTenantId: () => AGENCY,
+}));
+const { mockM } = vi.hoisted(() => ({
+  mockM: { findFirst: vi.fn(), findMany: vi.fn(), count: vi.fn(), update: vi.fn(), delete: vi.fn() },
+}));
+
 const { mockFindUnique, mockFindFirst, mockFindMany, mockCount, mockCreate, mockUpdate, mockDelete } = vi.hoisted(() => ({
   mockFindUnique: vi.fn(),
   mockFindFirst: vi.fn(),
@@ -21,9 +30,13 @@ vi.mock('../../db/client.js', () => {
       update: mockUpdate,
       delete: mockDelete,
     },
+    membership: mockM,
   };
   return { default: client, identityPrisma: client };
 });
+vi.mock('../../services/plan.service.js', () => ({
+  withStaffSeat: (operation) => operation({ user: { create: mockCreate }, membership: mockM }),
+}));
 
 import {
   getAllSalesReps, getSalesRepById, createSalesRep, updateSalesRep, deleteSalesRep,
@@ -32,6 +45,8 @@ import {
 } from '../salesRep.controller.js';
 
 const ID = '11111111-1111-4111-8111-111111111111';
+const REP_MEMBERSHIP = { id: 'm-1', userId: ID, role: 'salesRep', permissions: [], isOwner: false, status: 'active', joinedAt: new Date() };
+const inAgency = (where) => ({ memberships: { some: { tenantId: AGENCY, ...where } } });
 const ACTOR = { id: '22222222-2222-4222-8222-222222222222', role: 'admin', tenantId: '00000000-0000-4000-8000-000000000001' };
 
 function buildReqRes({ body = {}, params = {}, query = {}, user = ACTOR } = {}) {
@@ -49,6 +64,9 @@ beforeEach(() => {
   mockCreate.mockReset();
   mockUpdate.mockReset();
   mockDelete.mockReset();
+  Object.values(mockM).forEach((fn) => fn.mockReset());
+  mockM.findFirst.mockResolvedValue(REP_MEMBERSHIP);
+  mockM.findMany.mockResolvedValue([]);
 });
 
 describe('getAllSalesReps', () => {
@@ -59,7 +77,7 @@ describe('getAllSalesReps', () => {
 
     await getAllSalesReps(req, res, next);
 
-    expect(mockFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: { role: 'salesRep' } }));
+    expect(mockFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: inAgency({ role: 'salesRep' }) }));
     expect(res.json).toHaveBeenCalledWith({
       status: 'success',
       data: [{ id: ID, role: 'salesRep', commissionRate: null }],
@@ -116,18 +134,18 @@ describe('updateSalesRep', () => {
     expect(mockUpdate).toHaveBeenCalledWith({ where: { id: ID }, data: { name: 'Updated Rep' } });
   });
 
-  it('only reaches sales rep accounts', async () => {
+  it('only reaches people who are sales reps in this agency', async () => {
     mockFindFirst.mockResolvedValue({ id: ID, role: 'salesRep' });
     mockUpdate.mockResolvedValue({ id: ID });
     const { req, res, next } = buildReqRes({ params: { id: ID }, body: { name: 'x' } });
 
     await updateSalesRep(req, res, next);
 
-    expect(mockFindFirst.mock.calls[0][0].where).toEqual({ id: ID, role: 'salesRep' });
+    expect(mockM.findFirst.mock.calls[0][0].where).toEqual({ userId: ID, role: 'salesRep' });
   });
 
-  it('returns 404 instead of editing an account that is not a sales rep', async () => {
-    mockFindFirst.mockResolvedValue(null);
+  it('returns 404 instead of editing someone who is not a sales rep here', async () => {
+    mockM.findFirst.mockResolvedValue(null);
     const { req, res, next } = buildReqRes({ params: { id: ID }, body: { email: 'attacker@evil.com' } });
 
     await updateSalesRep(req, res, next);
@@ -136,8 +154,9 @@ describe('updateSalesRep', () => {
     expect(mockUpdate).not.toHaveBeenCalled();
   });
 
-  it('stops a normal admin from changing a super admin\'s email through this endpoint', async () => {
-    mockFindFirst.mockResolvedValue({ id: ID, role: 'salesRep', isSuperAdmin: true });
+  it('stops a normal admin from editing an agency owner through this endpoint', async () => {
+    mockFindFirst.mockResolvedValue({ id: ID, role: 'salesRep' });
+    mockM.findFirst.mockResolvedValue({ ...REP_MEMBERSHIP, isOwner: true });
     const { req, res, next } = buildReqRes({ params: { id: ID }, body: { email: 'attacker@evil.com' }, user: { id: '99999999-9999-4999-8999-999999999999', role: 'admin', isSuperAdmin: false } });
 
     await updateSalesRep(req, res, next);
@@ -147,30 +166,54 @@ describe('updateSalesRep', () => {
   });
 });
 
+describe('updateSalesRep email', () => {
+  it("refuses to change a rep's login email, which their other agencies also use", async () => {
+    mockFindFirst.mockResolvedValue({ id: ID, role: 'salesRep', email: 'rep@test.com' });
+    const { req, res, next } = buildReqRes({ params: { id: ID }, body: { email: 'new@test.com' } });
+
+    await updateSalesRep(req, res, next);
+
+    expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 400 }));
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it('accepts the form when the email is unchanged', async () => {
+    mockFindFirst.mockResolvedValue({ id: ID, role: 'salesRep', email: 'rep@test.com' });
+    mockUpdate.mockResolvedValue({ id: ID, name: 'Rep' });
+    const { req, res, next } = buildReqRes({ params: { id: ID }, body: { email: 'rep@test.com', name: 'Rep' } });
+
+    await updateSalesRep(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(mockUpdate).toHaveBeenCalledWith({ where: { id: ID }, data: { name: 'Rep' } });
+  });
+});
+
 describe('deleteSalesRep', () => {
-  it('deletes when the rep exists', async () => {
+  it('removes the rep from this agency only, keeping their account', async () => {
     mockFindFirst.mockResolvedValue({ id: ID, role: 'salesRep' });
     const { req, res, next } = buildReqRes({ params: { id: ID } });
 
     await deleteSalesRep(req, res, next);
 
-    expect(mockDelete).toHaveBeenCalledWith({ where: { id: ID } });
+    expect(mockM.delete).toHaveBeenCalledWith({ where: { id: 'm-1' } });
+    expect(mockDelete).not.toHaveBeenCalled();
   });
 
-  it('returns 404 when the rep does not exist', async () => {
-    mockFindFirst.mockResolvedValue(null);
+  it('returns 404 when the rep is not in this agency', async () => {
+    mockM.findFirst.mockResolvedValue(null);
     const { req, res, next } = buildReqRes({ params: { id: ID } });
 
     await deleteSalesRep(req, res, next);
 
-    expect(mockDelete).not.toHaveBeenCalled();
+    expect(mockM.delete).not.toHaveBeenCalled();
     expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 404 }));
   });
 });
 
 describe('getSalesRepStats', () => {
   it('returns total/active/inactive scoped to salesRep', async () => {
-    mockCount.mockResolvedValueOnce(6).mockResolvedValueOnce(4);
+    mockM.count.mockResolvedValueOnce(6).mockResolvedValueOnce(4);
     const { req, res, next } = buildReqRes();
 
     await getSalesRepStats(req, res, next);
@@ -180,14 +223,15 @@ describe('getSalesRepStats', () => {
 });
 
 describe('toggleSalesRepStatus', () => {
-  it('flips isActive', async () => {
+  it('suspends the rep in this agency without deactivating their account', async () => {
     mockFindFirst.mockResolvedValue({ id: ID, role: 'salesRep', isActive: true });
-    mockUpdate.mockResolvedValue({ id: ID, isActive: false });
+    mockM.findMany.mockResolvedValue([REP_MEMBERSHIP]);
     const { req, res, next } = buildReqRes({ params: { id: ID } });
 
     await toggleSalesRepStatus(req, res, next);
 
-    expect(mockUpdate).toHaveBeenCalledWith({ where: { id: ID }, data: { isActive: false } });
+    expect(mockM.update).toHaveBeenCalledWith({ where: { id: 'm-1' }, data: { status: 'suspended' } });
+    expect(mockUpdate).not.toHaveBeenCalled();
   });
 });
 
@@ -234,7 +278,11 @@ describe('getOnlineSalesReps', () => {
     await getOnlineSalesReps(req, res, next);
 
     expect(mockFindMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({ role: 'salesRep', isActive: true, lastActivity: { gte: expect.any(Date) } }),
+      where: expect.objectContaining({
+        isActive: true,
+        lastActivity: { gte: expect.any(Date) },
+        ...inAgency({ role: 'salesRep', status: { in: ['active', 'invited'] } }),
+      }),
     }));
   });
 });

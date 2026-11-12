@@ -1,14 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { userDb, email, limiter } = vi.hoisted(() => ({
+const { userDb, email, limiter, db } = vi.hoisted(() => ({
   userDb: { findUserById: vi.fn(), setResetPasswordToken: vi.fn(), findUserByResetToken: vi.fn() },
   email: { sendSetPasswordLink: vi.fn() },
   limiter: { hit: vi.fn(), clear: vi.fn() },
+  db: { $executeRaw: vi.fn() },
 }));
 
 vi.mock('../../db/userQueries.js', () => userDb);
 vi.mock('../../db/membershipQueries.js', async () => (await import('./membershipFixture.js')).membershipMock(userDb));
-vi.mock('../../db/client.js', () => ({ default: {} }));
+vi.mock('../../db/client.js', () => ({ default: db }));
 vi.mock('../../services/session.service.js', () => ({}));
 vi.mock('../../services/rateLimit.service.js', () => limiter);
 vi.mock('../../utils/email.js', () => email);
@@ -33,6 +34,54 @@ beforeEach(() => {
   userDb.setResetPasswordToken.mockResolvedValue();
   email.sendSetPasswordLink.mockResolvedValue();
   limiter.hit.mockResolvedValue({ allowed: true, retryAfterSeconds: 1 });
+  db.$executeRaw.mockResolvedValue(1);
+});
+
+// Bound values of each audit insert, in column order (tenant first, action fifth).
+const auditRows = () => db.$executeRaw.mock.calls.map(([, ...values]) => values);
+
+describe('sendSetPasswordLink audit trail', () => {
+  it("records an invitation in the admin's agency, naming who sent it and to whom", async () => {
+    await send();
+
+    const [row] = auditRows();
+    expect(row[0]).toBe(ADMIN['x-tenant-id']);
+    expect(row[1]).toBe(ADMIN['x-user-id']);
+    expect(row[4]).toBe('staff.invitation_sent');
+    expect(row[6]).toBe(TARGET_ID);
+  });
+
+  it('records a password reset separately from an invitation', async () => {
+    userDb.findUserById.mockResolvedValue(staff({ lastLogin: new Date() }));
+
+    await send();
+
+    expect(auditRows()[0][4]).toBe('staff.password_reset_sent');
+  });
+
+  it('never stores the link token in the audit log', async () => {
+    await send();
+
+    const sentToken = email.sendSetPasswordLink.mock.calls[0][1];
+    expect(JSON.stringify(auditRows())).not.toContain(sentToken);
+  });
+
+  it('records nothing when the email could not be sent', async () => {
+    email.sendSetPasswordLink.mockRejectedValue(new Error('smtp down'));
+
+    await send();
+
+    expect(db.$executeRaw).not.toHaveBeenCalled();
+  });
+
+  it('still reports success when the audit write fails', async () => {
+    db.$executeRaw.mockRejectedValue(new Error('database unavailable'));
+
+    const { body, error } = await send();
+
+    expect(error).toBeUndefined();
+    expect(body.message).toBe('Invitation sent');
+  });
 });
 
 describe('sendSetPasswordLink', () => {

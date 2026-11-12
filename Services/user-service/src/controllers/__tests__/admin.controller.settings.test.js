@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockFindFirst, mockCreate, mockUpdate } = vi.hoisted(() => ({
+const { mockFindFirst, mockCreate, mockUpdate, mockExecuteRaw } = vi.hoisted(() => ({
   mockFindFirst: vi.fn(),
   mockCreate: vi.fn(),
   mockUpdate: vi.fn(),
+  mockExecuteRaw: vi.fn(),
 }));
 
 vi.mock('../../db/client.js', () => {
@@ -13,10 +14,12 @@ vi.mock('../../db/client.js', () => {
       create: mockCreate,
       update: mockUpdate,
     },
+    $executeRaw: mockExecuteRaw,
   };
   return { default: client, identityPrisma: client };
 });
 
+import { runWithTenant } from '../../../../shared/tenancy/src/index.js';
 import {
   getSettings, updateSettings, getInternalOrganizationSettings, getOrganizationBranding,
 } from '../admin.controller.js';
@@ -32,6 +35,62 @@ beforeEach(() => {
   mockFindFirst.mockReset();
   mockCreate.mockReset();
   mockUpdate.mockReset();
+  mockExecuteRaw.mockReset().mockResolvedValue(1);
+});
+
+const AGENCY = '00000000-0000-4000-8000-000000000002';
+// The audit row's bound values, in column order: tenant, actor id/email/role, action, target type/id, summary, details, ip, request.
+const auditRows = () => mockExecuteRaw.mock.calls.map(([, ...values]) => values);
+
+describe('updateSettings audit trail', () => {
+  it('records a bank-details change as its own entry, naming fields but never their values', async () => {
+    mockFindFirst.mockResolvedValue({ id: 'org-1', companyName: 'Acme', bankAccountNumber: '111' });
+    mockUpdate.mockResolvedValue({ id: 'org-1', companyName: 'Acme', bankAccountNumber: '999' });
+    const { req, res, next } = buildReqRes({ body: { bankAccountNumber: '999' } });
+
+    await runWithTenant(AGENCY, () => updateSettings(req, res, next));
+
+    expect(next).not.toHaveBeenCalled();
+    const rows = auditRows();
+    expect(rows).toHaveLength(1);
+    expect(rows[0][4]).toBe('settings.bank_details_changed');
+    expect(JSON.parse(rows[0][8])).toEqual({ fields: ['bankAccountNumber'] });
+    expect(JSON.stringify(rows)).not.toContain('999');
+  });
+
+  it('records other setting changes separately, listing the fields', async () => {
+    mockFindFirst.mockResolvedValue({ id: 'org-1', companyName: 'Acme', tagline: null });
+    mockUpdate.mockResolvedValue({ id: 'org-1', companyName: 'Acme Tours', tagline: 'Go' });
+    const { req, res, next } = buildReqRes({ body: { companyName: 'Acme Tours', tagline: 'Go' } });
+
+    await runWithTenant(AGENCY, () => updateSettings(req, res, next));
+
+    const rows = auditRows();
+    expect(rows.map((r) => r[4])).toEqual(['settings.updated']);
+    expect(JSON.parse(rows[0][8])).toEqual({ fields: ['companyName', 'tagline'] });
+  });
+
+  it('records nothing when the save changed no values', async () => {
+    mockFindFirst.mockResolvedValue({ id: 'org-1', companyName: 'Acme' });
+    mockUpdate.mockResolvedValue({ id: 'org-1', companyName: 'Acme' });
+    const { req, res, next } = buildReqRes({ body: { companyName: 'Acme' } });
+
+    await runWithTenant(AGENCY, () => updateSettings(req, res, next));
+
+    expect(mockExecuteRaw).not.toHaveBeenCalled();
+  });
+
+  it('still saves the settings when writing the audit entry fails', async () => {
+    mockFindFirst.mockResolvedValue({ id: 'org-1', companyName: 'Acme' });
+    mockUpdate.mockResolvedValue({ id: 'org-1', companyName: 'Acme Tours' });
+    mockExecuteRaw.mockRejectedValue(new Error('database unavailable'));
+    const { req, res, next } = buildReqRes({ body: { companyName: 'Acme Tours' } });
+
+    await runWithTenant(AGENCY, () => updateSettings(req, res, next));
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ message: 'Settings updated' }));
+  });
 });
 
 describe('getSettings', () => {

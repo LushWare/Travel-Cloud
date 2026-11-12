@@ -1,9 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
-import { buildUserRow, authHeaders } from '../factories/user.factory.js';
+import { buildUserRow, authHeaders, stubMemberships, stubPlanChecks } from '../factories/user.factory.js';
 
 const { mockPrisma } = vi.hoisted(() => ({
   mockPrisma: {
+    membership: {
+      findFirst: vi.fn(), findMany: vi.fn(), count: vi.fn(), groupBy: vi.fn(), update: vi.fn(), delete: vi.fn(),
+    },
     user: {
       findUnique: vi.fn(),
       findFirst: vi.fn(),
@@ -29,6 +32,8 @@ const ID = 'a0000000-0000-4000-8000-000000000001';
 describe('Vendor API — /api/v1/vendors', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    stubPlanChecks(mockPrisma);
+    stubMemberships(mockPrisma.membership);
     mockPrisma.user.findFirst.mockResolvedValue(buildUserRow({ role: 'vendor' }));
   });
 
@@ -67,7 +72,10 @@ describe('Vendor API — /api/v1/vendors', () => {
 
     expect(res.status).toBe(200);
     expect(mockPrisma.user.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: { role: 'vendor', vendorProfile: { vendorStatus: 'suspended' } },
+      where: {
+        memberships: { some: { tenantId: '00000000-0000-4000-8000-000000000001', role: 'vendor' } },
+        vendorProfile: { vendorStatus: 'suspended' },
+      },
     }));
   });
 

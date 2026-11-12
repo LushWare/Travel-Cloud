@@ -17,6 +17,21 @@ export function refreshSession() {
   return pendingRefresh;
 }
 
+/**
+ * The view-only Lushware support session the console's help link opened, if any. Such a session has
+ * no refresh cookie, so it is read from /auth/me; anything that is not a help session is ignored.
+ */
+export async function helpSessionUser() {
+  try {
+    const res = await fetch(`${API_BASE_URL}/auth/me`, { credentials: 'include' });
+    if (!res.ok) return null;
+    const user = (await res.json())?.data?.user;
+    return user?.helpAccess?.viewOnly ? user : null;
+  } catch {
+    return null;
+  }
+}
+
 const sessionExpired = () => window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
 
 const isOurApi = (url) => url.startsWith(API_BASE_URL) || url.startsWith('/');

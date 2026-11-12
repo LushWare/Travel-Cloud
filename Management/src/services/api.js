@@ -487,6 +487,10 @@ export const leadAPI = {
 
 // Admin/Settings API Methods
 export const adminAPI = {
+  getAgencyPlan: async () => {
+    const api = new ApiService();
+    return api.get("/admin/plan");
+  },
   getSettings: async () => {
     const api = new ApiService();
     return api.get("/admin/settings");
@@ -498,6 +502,15 @@ export const adminAPI = {
   updateSettings: async (data) => {
     const api = new ApiService();
     return api.put("/admin/settings", data);
+  },
+  // The current agency's audit log, newest first; pass the previous page's nextCursor to continue.
+  getAuditLog: async ({ action, cursor, limit = 50 } = {}) => {
+    const api = new ApiService();
+    return api.get("/admin/audit-log", {
+      limit,
+      ...(action && { action }),
+      ...(cursor && { cursor }),
+    });
   },
   getSalesReps: async () => {
     const api = new ApiService();

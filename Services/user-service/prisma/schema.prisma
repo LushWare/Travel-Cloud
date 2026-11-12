@@ -254,10 +254,169 @@ model Tenant {
   status      TenantStatus @default(trial)
   region      String       @default("ap-southeast-1") @db.VarChar(32)
   memberships Membership[]
+    planAssignment TenantPlan?
+    planOverrides PlanEntitlementOverride[]
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
   deletedAt   DateTime?
 
+  @@schema("crm_platform")
+}
+
+// A plan is a stable catalog entry; each edit creates an immutable version so existing
+// agencies can stay on the version and price they were assigned.
+model Plan {
+  id         String        @id @default(uuid()) @db.Uuid
+  key        String        @unique @db.VarChar(64)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+  archivedAt DateTime?
+  versions   PlanVersion[]
+
+  @@schema("crm_platform")
+}
+
+model PlanVersion {
+  id              String       @id @default(uuid()) @db.Uuid
+  planId          String       @db.Uuid
+  version         Int
+  name            String       @db.VarChar(120)
+  description     String?      @db.VarChar(500)
+  priceMinorUnits Int?
+  currency        String       @default("USD") @db.Char(3)
+  billingInterval String?      @db.VarChar(16)
+  entitlements    Json
+  isCurrent       Boolean      @default(false)
+  createdById     String?
+  createdAt       DateTime     @default(now())
+  plan            Plan         @relation(fields: [planId], references: [id], onDelete: Restrict)
+  assignments     TenantPlan[]
+
+  @@unique([planId, version])
+  @@index([planId, isCurrent])
+  @@schema("crm_platform")
+}
+
+model TenantPlan {
+  id              String      @id @default(uuid()) @db.Uuid
+  tenantId        String      @unique @db.Uuid
+  planVersionId   String      @db.Uuid
+  priceMinorUnits Int?
+  currency        String      @default("USD") @db.Char(3)
+  assignedById    String?
+  assignedAt      DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  tenant          Tenant      @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  planVersion     PlanVersion @relation(fields: [planVersionId], references: [id], onDelete: Restrict)
+
+  @@index([planVersionId])
+  @@schema("crm_platform")
+}
+
+model PlanEntitlementOverride {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @db.Uuid
+  entitlementKey String   @db.VarChar(64)
+  value          Json
+  reason         String   @db.VarChar(500)
+  changedById    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, entitlementKey])
+  @@index([tenantId])
+  @@schema("crm_platform")
+}
+
+// Append-only record of privileged actions. The services' database user may only INSERT and SELECT,
+// and row-level security limits it to the current agency. tenantId is null only for platform events.
+model AuditLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String?  @db.Uuid
+  actorId     String?
+  actorEmail  String?  @db.VarChar(254)
+  actorRole   String?  @db.VarChar(32)
+  action      String   @db.VarChar(64)
+  targetType  String?  @db.VarChar(32)
+  targetId    String?  @db.VarChar(64)
+  summary     String   @db.VarChar(300)
+  details     Json?
+  ipAddress   String?  @db.VarChar(64)
+  requestId   String?  @db.VarChar(64)
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId, createdAt(sort: Desc)])
+  @@index([tenantId, action])
+  @@schema("crm_platform")
+}
+
+// Lushware staff who run the platform. Separate from agency users; only platform-service reads these.
+enum PlatformRole {
+  platform_admin
+  support
+
+  @@schema("crm_platform")
+}
+
+model PlatformUser {
+  id               String            @id @default(uuid()) @db.Uuid
+  email            String            @unique @db.VarChar(254)
+  name             String            @db.VarChar(120)
+  passwordHash       String
+  mustChangePassword Boolean          @default(false) // true while the password is a generated, temporary one
+  passwordChangedAt  DateTime?
+  role             PlatformRole      @default(support)
+  totpSecret       String // encrypted with PLATFORM_TOTP_KEY
+  authenticatorSetupRequired Boolean @default(false)
+  setupTokenHash   String?           @unique @db.Char(64)
+  setupTokenExpiresAt DateTime?
+  setupPurpose     String?            @db.VarChar(32)
+  lastTotpStep     BigInt            @default(0)
+  isActive         Boolean           @default(true)
+  failedLoginCount Int               @default(0)
+  lockedUntil      DateTime?
+  lastLoginAt      DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  sessions         PlatformSession[]
+  helpAccessGrants HelpAccessGrant[]
+
+  @@schema("crm_platform")
+}
+
+model PlatformSession {
+  id             String       @id @default(uuid()) @db.Uuid
+  platformUserId String       @db.Uuid
+  platformUser   PlatformUser @relation(fields: [platformUserId], references: [id], onDelete: Cascade)
+  tokenHash      String       @unique @db.Char(64)
+  ipAddress      String?      @db.VarChar(64)
+  userAgent      String?      @db.VarChar(300)
+  createdAt      DateTime     @default(now())
+  lastSeenAt     DateTime     @default(now())
+  expiresAt      DateTime
+  revokedAt      DateTime?
+
+  @@index([platformUserId])
+  @@schema("crm_platform")
+}
+
+// View-only help access to one agency for at most 30 minutes (see platform-service).
+model HelpAccessGrant {
+  id               String    @id @default(uuid()) @db.Uuid
+  platformUserId   String?   @db.Uuid
+  platformUser     PlatformUser? @relation(fields: [platformUserId], references: [id], onDelete: SetNull)
+  tenantId         String    @db.Uuid
+  reason           String    @db.VarChar(500)
+  handoffCodeHash  String    @unique @db.Char(64)
+  handoffExpiresAt DateTime
+  handoffUsedAt    DateTime?
+  createdAt        DateTime  @default(now())
+  expiresAt        DateTime
+  endedAt          DateTime?
+
+  @@index([tenantId])
+  @@index([platformUserId])
   @@schema("crm_platform")
 }
 

@@ -9,7 +9,7 @@ const JWT_SECRET = 'gateway-test-secret';
 const signingKeys = crypto.generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
 const PUBLIC_PEM = signingKeys.publicKey.export({ type: 'spki', format: 'pem' });
 const SERVICES = ['AUTH', 'USER', 'PACKAGE', 'LEAD', 'BOOKING', 'BILLING', 'FLIGHT', 'CAREER',
-  'NOTIFICATION', 'ANALYTICS', 'ASSISTANT', 'RECOMMENDATION', 'VOICE'];
+  'NOTIFICATION', 'ANALYTICS', 'ASSISTANT', 'RECOMMENDATION', 'VOICE', 'PLATFORM'];
 
 let echoServer;
 let app;
@@ -28,6 +28,7 @@ beforeAll(async () => {
     JWT_PUBLIC_KEYS: PUBLIC_PEM,
     CLIENT_URL: 'https://client.example.com',
     MANAGEMENT_URL: 'https://manage.example.com',
+    CONSOLE_URL: 'https://console.example.com',
     CORS_ALLOWED_ORIGINS: 'https://extra.example.com, https://second.example.com',
   });
 
@@ -361,5 +362,132 @@ describe('CORS', () => {
     const res = await request(app).get('/api/v1/packages');
 
     expect(res.status).toBe(200);
+  });
+});
+
+describe('platform console routes', () => {
+  const agencyToken = () => tokenFor({ id: 'user-1', tid: '00000000-0000-4000-8000-000000000002', role: 'superAdmin', isSuperAdmin: true, email: 'o@acme.test', name: 'Owner', permissions: [] });
+
+  it('reaches platform-service without an agency login', async () => {
+    const res = await request(app).get('/api/v1/platform/auth/me');
+
+    expect(res.status).toBe(200);
+  });
+
+  it('never forwards an agency identity to platform-service, even for an agency owner', async () => {
+    const res = await request(app).get('/api/v1/platform/agencies').set('Cookie', `token=${agencyToken()}`);
+
+    for (const header of ['x-user-id', 'x-user-role', 'x-user-is-super-admin', 'x-tenant-id']) {
+      expect(res.body.headers[header]).toBeUndefined();
+    }
+  });
+
+  it('drops an agency bearer token on the way to platform-service', async () => {
+    const res = await request(app).get('/api/v1/platform/agencies').set('Authorization', `Bearer ${agencyToken()}`);
+
+    expect(res.body.headers.authorization).toBeUndefined();
+  });
+
+  it('drops forged platform headers', async () => {
+    const res = await request(app).get('/api/v1/platform/agencies').set('x-platform-role', 'platform_admin').set('x-tenant-id', 'forged');
+
+    expect(res.body.headers['x-platform-role']).toBeUndefined();
+    expect(res.body.headers['x-tenant-id']).toBeUndefined();
+  });
+
+  it('blocks a console write from an unknown site', async () => {
+    const res = await request(app).post('/api/v1/platform/auth/logout')
+      .set('Origin', 'https://evil.example.com').set('Cookie', 'platform_session=abc');
+
+    expect(res.status).toBe(403);
+  });
+
+  it('allows the configured console origin', async () => {
+    const res = await request(app).post('/api/v1/platform/auth/logout')
+      .set('Origin', 'https://console.example.com').set('Cookie', 'platform_session=abc');
+
+    expect(res.status).toBe(200);
+    expect(res.headers['access-control-allow-origin']).toBe('https://console.example.com');
+  });
+
+  it('does not treat a lookalike path as a console route', async () => {
+    const res = await request(app).get('/api/v1/platformx');
+
+    expect(res.status).toBe(401);
+  });
+});
+
+describe('view-only help sessions', () => {
+  const ACME = '00000000-0000-4000-8000-000000000002';
+  const GRANT = '33333333-3333-4333-8333-333333333333';
+  const helpToken = () => tokenFor({ id: 'p-1', tid: ACME, role: 'admin', email: 'ops@lushware.test', name: 'Lushware support · Ops', permissions: ['manage_leads'], help: GRANT, ro: true });
+
+  it('lets a help session read agency data and tells the service it is help access', async () => {
+    const res = await request(app).get('/api/v1/leads').set('Authorization', `Bearer ${helpToken()}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.headers['x-tenant-id']).toBe(ACME);
+    expect(res.body.headers['x-platform-help-grant']).toBe(GRANT);
+  });
+
+  it.each([
+    ['POST', '/api/v1/leads'],
+    ['PUT', '/api/v1/leads/abc'],
+    ['PATCH', '/api/v1/admin/users/abc/status'],
+    ['DELETE', '/api/v1/billing/invoices/abc'],
+    ['PUT', '/api/v1/admin/settings'],
+  ])('refuses %s %s from a help session', async (method, path) => {
+    const res = await request(app)[method.toLowerCase()](path).set('Authorization', `Bearer ${helpToken()}`).send({});
+
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('HELP_ACCESS_READ_ONLY');
+    expect(res.body.headers).toBeUndefined();
+  });
+
+  it('refuses a public form submission from a help session', async () => {
+    const res = await request(app).post('/api/v1/leads/website-contact')
+      .set('Origin', 'https://manage.example.com').set('Cookie', `token=${helpToken()}`).send({});
+
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('HELP_ACCESS_READ_ONLY');
+  });
+
+  it('lets a help session sign out', async () => {
+    const res = await request(app).post('/api/v1/auth/logout')
+      .set('Origin', 'https://manage.example.com').set('Cookie', `token=${helpToken()}`);
+
+    expect(res.status).toBe(200);
+  });
+
+  it('still lets an ordinary agency login make changes', async () => {
+    const token = tokenFor({ id: 'user-1', tid: ACME, role: 'admin', email: 'a@acme.test', name: 'A', permissions: [] });
+
+    const res = await request(app).post('/api/v1/leads').set('Authorization', `Bearer ${token}`).send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.headers['x-platform-help-grant']).toBeUndefined();
+  });
+
+  it('ignores a forged help header from a normal login', async () => {
+    const token = tokenFor({ id: 'user-1', tid: ACME, role: 'admin', email: 'a@acme.test', name: 'A', permissions: [] });
+
+    const res = await request(app).get('/api/v1/leads').set('Authorization', `Bearer ${token}`).set('x-platform-help-grant', GRANT);
+
+    expect(res.body.headers['x-platform-help-grant']).toBeUndefined();
+  });
+
+  it('opens the console help link without any login', async () => {
+    const res = await request(app).get('/api/v1/auth/help-access/redeem?code=abc');
+
+    expect(res.status).toBe(200);
+  });
+});
+
+describe('console setup links', () => {
+  it('rate-limits the staff setup endpoint like sign-in', async () => {
+    const res = await request(app).post('/api/v1/platform/auth/setup/details').send({ token: 'x' });
+
+    expect(res.status).toBe(200);
+    expect(res.headers['ratelimit-limit'] ?? res.headers['x-ratelimit-limit']).toBe('10');
   });
 });

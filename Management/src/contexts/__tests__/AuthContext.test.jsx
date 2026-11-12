@@ -1,9 +1,10 @@
 import { act, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { mockPost, mockRefreshSession } = vi.hoisted(() => ({
+const { mockPost, mockRefreshSession, mockHelpSessionUser } = vi.hoisted(() => ({
   mockPost: vi.fn(),
   mockRefreshSession: vi.fn(),
+  mockHelpSessionUser: vi.fn(),
 }));
 
 vi.mock('axios', () => ({
@@ -19,6 +20,7 @@ vi.mock('@/lib/authFetch', () => ({
   API_BASE_URL: 'https://api.test/api/v1',
   SESSION_EXPIRED_EVENT: 'auth:session-expired',
   refreshSession: mockRefreshSession,
+  helpSessionUser: mockHelpSessionUser,
 }));
 
 import { AuthProvider, useAuth } from '../AuthContext';
@@ -44,6 +46,8 @@ beforeEach(() => {
   vi.useFakeTimers();
   mockPost.mockReset().mockReturnValue(new Promise(() => {}));
   mockRefreshSession.mockReset().mockResolvedValue(USER);
+  mockHelpSessionUser.mockReset().mockResolvedValue(null);
+  window.history.replaceState(null, '', '/');
   localStorage.clear();
   sessionStorage.clear();
   localStorage.setItem('user', JSON.stringify(USER));
@@ -234,5 +238,53 @@ describe('AuthContext inactivity logout', () => {
       vi.advanceTimersByTime(60 * 1000);
     });
     expect(screen.getByText('signed out')).toBeTruthy();
+  });
+});
+
+describe('AuthContext help sessions', () => {
+  const HELP_USER = { id: 'p-1', role: 'admin', helpAccess: { grantId: 'g-1', viewOnly: true, expiresAt: '2099-01-01T00:00:00Z' } };
+
+  it('signs in from the console help link, which has no refresh cookie', async () => {
+    localStorage.clear();
+    mockRefreshSession.mockResolvedValue(null);
+    mockHelpSessionUser.mockResolvedValue(HELP_USER);
+    window.history.replaceState(null, '', '/?help=1');
+
+    await renderAuth();
+
+    expect(screen.getByText('authenticated')).toBeInTheDocument();
+    expect(auth.user.helpAccess.grantId).toBe('g-1');
+    expect(window.location.search).toBe('');
+  });
+
+  it('does not look for a help session on an ordinary visit', async () => {
+    localStorage.clear();
+    mockRefreshSession.mockResolvedValue(null);
+
+    await renderAuth();
+
+    expect(mockHelpSessionUser).not.toHaveBeenCalled();
+    expect(screen.getByText('signed out')).toBeInTheDocument();
+  });
+
+  it('keeps a help session across a page reload', async () => {
+    localStorage.setItem('user', JSON.stringify(HELP_USER));
+    mockRefreshSession.mockResolvedValue(null);
+    mockHelpSessionUser.mockResolvedValue(HELP_USER);
+
+    await renderAuth();
+
+    expect(screen.getByText('authenticated')).toBeInTheDocument();
+  });
+
+  it('signs out when the help session has ended', async () => {
+    localStorage.clear();
+    mockRefreshSession.mockResolvedValue(null);
+    mockHelpSessionUser.mockResolvedValue(null);
+    window.history.replaceState(null, '', '/?help=1');
+
+    await renderAuth();
+
+    expect(screen.getByText('signed out')).toBeInTheDocument();
   });
 });

@@ -17,6 +17,10 @@ import {
   packageFactValues,
   _resetPackageDetailCache,
 } from '../packageContext.js';
+import { runWithTenant } from '../../../../shared/tenancy/src/index.js';
+
+const ACME = '00000000-0000-4000-8000-000000000002';
+const GLOBE = '00000000-0000-4000-8000-000000000003';
 
 const CATALOGUE = [
   { id: 'p-1', title: 'Thailand Family Adventure' },
@@ -89,6 +93,19 @@ describe('loadPackageDetail', () => {
 
     expect(mockExecuteTool).toHaveBeenCalledTimes(1);
     expect(second).toEqual(first);
+  });
+
+  it("never serves one agency's memoized detail to another agency", async () => {
+    mockExecuteTool
+      .mockResolvedValueOnce({ data: [{ id: 'p-1', title: 'Acme Edition' }] })
+      .mockResolvedValueOnce({ data: [{ id: 'p-1', title: 'Globe Edition' }] });
+
+    const acme = await runWithTenant(ACME, () => loadPackageDetail('p-1'));
+    const globe = await runWithTenant(GLOBE, () => loadPackageDetail('p-1'));
+
+    expect(acme.title).toBe('Acme Edition');
+    expect(globe.title).toBe('Globe Edition');
+    expect(mockExecuteTool).toHaveBeenCalledTimes(2);
   });
 
   it('reads again once the memo is dropped', async () => {

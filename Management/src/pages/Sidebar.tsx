@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
 import {
   Menu, X, Home, Users, MapPin, DollarSign, User, LogOut,
-  BarChart3, Briefcase, ChevronRight, PanelLeftClose, PanelLeftOpen, Sparkles, Plane, Hotel, Settings, Building2
+  BarChart3, Briefcase, ChevronRight, PanelLeftClose, PanelLeftOpen, Sparkles, Plane, Hotel, Settings, Building2, History
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { usePermission } from "../contexts/PermissionContext";
@@ -164,6 +164,13 @@ const Sidebar = () => {
       icon: Settings,
       label: "Settings",
       path: "/settings",
+      requiredPermission: null,
+      allowedRoles: ["admin", "superAdmin"],
+    },
+    {
+      icon: History,
+      label: "Audit Log",
+      path: "/audit-log",
       requiredPermission: null,
       allowedRoles: ["admin", "superAdmin"],
     },

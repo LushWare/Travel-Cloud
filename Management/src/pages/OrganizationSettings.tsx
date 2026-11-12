@@ -8,6 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 
 import PageHeader from '../components/PageHeader';
+import AgencyPlanSummary from '../components/AgencyPlanSummary';
 
 interface SettingsForm {
   companyName: string;
@@ -283,6 +284,8 @@ const OrganizationSettings = () => {
         }
       />
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 space-y-6">
+
+        <AgencyPlanSummary />
 
         <Section
           title="Company Identity"

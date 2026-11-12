@@ -9,6 +9,12 @@ import {
   updatePolicyDocument,
   deletePolicyDocument,
 } from '../services/policyDocuments.service.js';
+import { audit } from '../utils/audit.js';
+
+// Policies are what the AI assistant quotes to customers, so every change is recorded.
+const auditPolicy = (req, action, doc, verb) => audit(req, {
+  action, targetType: 'policy_document', targetId: doc.id, summary: `${verb} policy "${doc.title}"`.slice(0, 300),
+});
 
 function parseOrThrow(schema, value) {
   const parsed = schema.safeParse(value);
@@ -31,6 +37,7 @@ export const getPolicyDocument = asyncHandler(async (req, res) => {
 export const postPolicyDocument = asyncHandler(async (req, res) => {
   const data = parseOrThrow(createPolicyDocumentSchema, req.body);
   const document = await createPolicyDocument(data, req.user.id);
+  await auditPolicy(req, 'policy.created', document, 'Created');
   res.status(201).json({ status: 'success', message: 'Policy document created', data: { document } });
 });
 
@@ -40,6 +47,7 @@ export const putPolicyDocument = asyncHandler(async (req, res) => {
   const existing = await getPolicyDocumentById(id);
   if (!existing) throw new AppError('Policy document not found', 404);
   const document = await updatePolicyDocument(id, data, req.user.id);
+  await auditPolicy(req, 'policy.updated', document, 'Updated');
   res.json({ status: 'success', message: 'Policy document updated', data: { document } });
 });
 
@@ -48,6 +56,7 @@ export const deletePolicyDocumentHandler = asyncHandler(async (req, res) => {
   const existing = await getPolicyDocumentById(id);
   if (!existing) throw new AppError('Policy document not found', 404);
   await deletePolicyDocument(id);
+  await auditPolicy(req, 'policy.deleted', existing, 'Deleted');
   res.json({ status: 'success', data: {} });
 });
 

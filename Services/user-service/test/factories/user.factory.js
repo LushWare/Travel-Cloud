@@ -1,3 +1,5 @@
+import { vi } from 'vitest';
+
 let counter = 0;
 
 export function buildUserRow(overrides = {}) {
@@ -60,6 +62,48 @@ export function buildVendorProfile(overrides = {}) {
     updatedAt: new Date().toISOString(),
     ...overrides,
   };
+}
+
+export const TEST_AGENCY = '00000000-0000-4000-8000-000000000001';
+
+export function buildMembershipRow(overrides = {}) {
+  return {
+    id: 'm-0000000000000001',
+    tenantId: TEST_AGENCY,
+    userId: 'a0000000-0000-4000-8000-000000000001',
+    role: 'admin',
+    permissions: [],
+    isOwner: false,
+    status: 'active',
+    joinedAt: new Date().toISOString(),
+    ...overrides,
+  };
+}
+
+/**
+ * Default behaviour for a mocked `membership` delegate: everyone looked up is an ordinary active
+ * member of the test agency with the role asked for. Tests override per case.
+ */
+export function stubMemberships(delegate, overrides = {}) {
+  delegate.findFirst.mockImplementation(async ({ where } = {}) =>
+    buildMembershipRow({ userId: where?.userId, ...(where?.role && { role: where.role }), ...overrides }));
+  delegate.findMany.mockResolvedValue([]);
+  delegate.count.mockResolvedValue(0);
+  delegate.groupBy?.mockResolvedValue([]);
+  delegate.update.mockImplementation(async ({ data }) => buildMembershipRow({ ...overrides, ...data }));
+  delegate.delete.mockResolvedValue(buildMembershipRow(overrides));
+}
+
+/**
+ * Lets a mocked Prisma client run the staff-seat check (plan.service.js withStaffSeat): transactions
+ * run against the same mock, and the plan lookups find no plan, so there is no seat limit.
+ * Only fills in what the test file has not already stubbed itself.
+ */
+export function stubPlanChecks(mockPrisma) {
+  mockPrisma.$transaction ??= vi.fn(async (work) => work(mockPrisma));
+  mockPrisma.$queryRaw ??= vi.fn(async () => []);
+  mockPrisma.$queryRawUnsafe ??= vi.fn(async () => []);
+  mockPrisma.$executeRaw ??= vi.fn(async () => 1);
 }
 
 export function authHeaders(overrides = {}) {

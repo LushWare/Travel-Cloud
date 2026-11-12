@@ -9,6 +9,8 @@
 // constant. It's kept as a resilience layer: quotation/invoice generation
 // must not hard-fail just because user-service is briefly unreachable.
 
+import { createTenantCache } from '../../../shared/tenancy/src/index.js';
+
 const USER_SERVICE_URL = process.env.USER_SERVICE_URL || 'http://localhost:3002';
 const INTERNAL_SERVICE_KEY = process.env.INTERNAL_SERVICE_KEY || '';
 const CACHE_TTL_MS = 60_000;
@@ -74,7 +76,9 @@ const STATIC_REVIEWS = [
   { name: 'C. Wanderer', rating: 5, text: 'Well-planned itinerary and comfortable stays throughout. Highly recommended.' },
 ];
 
-let cache = null; // { value, expiresAt }
+// Keyed by the requesting agency — a single shared slot would put the first
+// agency's branding and bank details on every other agency's documents.
+const cache = createTenantCache({ ttlMs: CACHE_TTL_MS });
 
 async function fetchFromUserService(fetchImpl) {
   const res = await fetchImpl(`${USER_SERVICE_URL}/api/v1/admin/internal/organization-settings`, {
@@ -92,21 +96,20 @@ async function fetchFromUserService(fetchImpl) {
  * literals) when user-service can't be reached and there's no usable cache.
  */
 export async function getOrgSettings({ fetchImpl = fetch } = {}) {
-  const now = Date.now();
-  if (cache && cache.expiresAt > now) return cache.value;
+  const cached = cache.get();
+  if (cached) return cached;
   try {
     const settings = await fetchFromUserService(fetchImpl);
-    cache = { value: settings, expiresAt: now + CACHE_TTL_MS };
+    cache.set(settings);
     return settings;
   } catch {
-    if (cache) return cache.value;
-    return FALLBACK;
+    return cache.getStale() ?? FALLBACK;
   }
 }
 
-/** Test-only: clear the module-level cache between test cases. */
+/** Test-only: clear the cache between test cases. */
 export function _resetCache() {
-  cache = null;
+  cache.clear();
 }
 
 /** Reshapes the flat OrganizationSettings row into the nested structure the

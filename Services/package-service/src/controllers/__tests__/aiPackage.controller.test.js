@@ -17,6 +17,10 @@ vi.mock('../../ai/geminiClient.js', () => ({
 // app.js pulls in package.routes.js → db/client.js, which constructs a real
 // PrismaClient at import time; mock it so this suite doesn't need DATABASE_URL.
 vi.mock('../../db/client.js', () => ({ default: mockPrisma }));
+vi.mock('../../services/plan.service.js', () => ({
+  createPackageWithinPlanLimit: (data, options) => mockPrisma.package.create({ data, ...options }),
+  requirePlanFeature: () => (_req, _res, next) => next(),
+}));
 
 const { default: serviceApp } = await import('../../app.js');
 const { default: express } = await import('express');

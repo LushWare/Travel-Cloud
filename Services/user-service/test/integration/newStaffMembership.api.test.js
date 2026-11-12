@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
-import { buildUserRow, authHeaders } from '../factories/user.factory.js';
+import { buildUserRow, authHeaders, stubPlanChecks } from '../factories/user.factory.js';
 
 const { mockPrisma } = vi.hoisted(() => ({
   mockPrisma: { user: { findUnique: vi.fn(), findFirst: vi.fn(), create: vi.fn(), update: vi.fn() } },
@@ -17,6 +17,7 @@ const membershipCreated = () => mockPrisma.user.create.mock.calls[0][0].data.mem
 
 beforeEach(() => {
   vi.clearAllMocks();
+  stubPlanChecks(mockPrisma);
   mockPrisma.user.findUnique.mockResolvedValue(null);
   mockPrisma.user.create.mockResolvedValue(buildUserRow());
 });
