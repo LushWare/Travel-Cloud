@@ -1,7 +1,7 @@
 import prisma from '../db/client.js';
 import AppError from '../utils/appError.js';
 import asyncHandler from '../utils/asyncHandler.js';
-import { createLeadSchema, updateLeadSchema, logCommunicationSchema, whatsappReplySchema, googleAdsLeadSchema } from '../validators/lead.validator.js';
+import { createLeadSchema, updateLeadSchema, logCommunicationSchema, whatsappReplySchema, googleAdsLeadSchema, facebookLeadSchema } from '../validators/lead.validator.js';
 import { sendWhatsappText } from '../services/notification.client.js';
 import {
   validateTransition,
@@ -648,11 +648,13 @@ export const handleInternalEvent = asyncHandler(async (req, res) => {
 // replaces a previous raw-SQL implementation that wrote directly into this
 // service's tables from another service.
 export const handleFacebookLeadEvent = asyncHandler(async (req, res) => {
-  const { leadgenId, name, email, phone, message } = req.body || {};
-  const source = req.body?.source === 'instagram' ? 'instagram' : 'facebook';
-  const sanitizedEmail = email ? String(email).trim().toLowerCase() : null;
-  const sanitizedPhone = phone ? String(phone).replace(/\D/g, '') : null;
-
+  const parsed = facebookLeadSchema.safeParse(req.body || {});
+  if (!parsed.success) throw new AppError('Invalid Facebook lead data', 400);
+  requireTenantId();
+  const { leadgenId, name, email, phone, message } = parsed.data;
+  const source = parsed.data.source || 'facebook';
+  const sanitizedEmail = email ? email.toLowerCase() : null;
+  const sanitizedPhone = phone ? phone.replace(/\D/g, '') : null;
   if (!sanitizedEmail && !sanitizedPhone) {
     throw new AppError('Lead must have email or phone', 400);
   }

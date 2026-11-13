@@ -35,6 +35,7 @@ module "deployment" {
   whatsapp_app_secret        = var.whatsapp_app_secret
   whatsapp_verify_token      = var.whatsapp_verify_token
   facebook_verify_token      = var.facebook_verify_token
+  facebook_app_id            = var.facebook_app_id
   facebook_app_secret        = var.facebook_app_secret
   facebook_page_access_token = var.facebook_page_access_token
   google_ads_webhook_key     = var.google_ads_webhook_key

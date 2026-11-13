@@ -20,6 +20,7 @@ on:
       - 'Services/flight-service/**'
       - 'Services/lead-service/**'
       - 'Services/notification-service/**'
+      - 'Services/integration-service/**'
       - 'Services/package-service/**'
       - 'Services/recommendation-service/**'
       - 'Services/user-service/**'
@@ -106,6 +107,7 @@ jobs:
           - { service: booking-service,      contracts: false, lint: false }
           - { service: career-service,       contracts: false, lint: false }
           - { service: notification-service, contracts: false, lint: false }
+          - { service: integration-service, contracts: false, lint: false }
           - { service: recommendation-service, contracts: false, lint: true }
           - { service: gateway,              contracts: false, lint: false }
     steps:

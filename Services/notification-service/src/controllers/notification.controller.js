@@ -31,10 +31,10 @@ export const sendEmail = asyncHandler(async (req, res) => {
     throw new AppError(INVALID_EMAIL_PAYLOAD, 400, { code: 'VALIDATION_FAILED', errors });
   }
 
-  const { to, subject, html, text, from, attachments, meta } = parsed.data;
+  const { to, subject, html, text, replyTo, attachments, meta } = parsed.data;
 
   try {
-    const result = await deliverEmail({ to, subject, html, text, from, attachments });
+    const result = await deliverEmail({ to, subject, html, text, replyTo, attachments });
     req.log.info({ to: maskRecipients(to), subject, meta }, 'Email sent');
     return res.status(200).json({ success: true, data: result });
   } catch (err) {

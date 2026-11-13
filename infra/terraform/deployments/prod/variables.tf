@@ -148,8 +148,14 @@ variable "facebook_verify_token" {
   sensitive   = true
 }
 
+variable "facebook_app_id" {
+  description = "Meta app ID used by integration-service for Facebook Lead Ads OAuth."
+  type        = string
+  default     = ""
+}
+
 variable "facebook_app_secret" {
-  description = "Facebook app secret (notification)."
+  description = "Meta app secret used by integration-service for Facebook OAuth and webhook signatures."
   type        = string
   sensitive   = true
 }

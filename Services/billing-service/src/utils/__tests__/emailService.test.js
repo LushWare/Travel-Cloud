@@ -63,6 +63,22 @@ describe('sendQuotationEmail', () => {
     expect(call.attachments).toEqual([]);
   });
 
+  it('uses the agency contact as Reply-To without overriding the platform sender', async () => {
+    await sendQuotationEmail({ quotation: QUOTATION, recipientEmail: 'jane@test.com', pdfBuffer: null });
+
+    const call = mockSendViaNotificationService.mock.calls[0][0];
+    expect(call.replyTo).toBe('hi@lush.test');
+    expect(call).not.toHaveProperty('from');
+  });
+
+  it('prefers the agency sales email as Reply-To when configured', async () => {
+    mockGetOrgSettings.mockResolvedValue({ ...SETTINGS, salesEmail: 'sales@lush.test' });
+
+    await sendInvoiceEmail({ invoice: { id: 'i-1' }, recipientEmail: 'jane@test.com', pdfBuffer: null });
+
+    expect(mockSendViaNotificationService.mock.calls[0][0].replyTo).toBe('sales@lush.test');
+  });
+
   it('propagates a rejection from notification-service to the caller', async () => {
     mockSendViaNotificationService.mockRejectedValue(new Error('Failed to send email via notification-service (status 503)'));
     await expect(sendQuotationEmail({ quotation: QUOTATION, recipientEmail: 'jane@test.com', pdfBuffer: null }))

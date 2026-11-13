@@ -352,8 +352,8 @@ Both tables are under tenant RLS (except `InboundRoute` lookups, done through a 
 
 | Integration | Flow | Tenant-visible setup |
 |---|---|---|
-| Email (platform-sent) | Default: sent from the platform domain with `Reply-To` = agency | none |
-| Email (own domain) | Tenant enters domain → we show SPF/DKIM/DMARC records → verify → mail from `@agency.com` | DNS records + verify button |
+| Email (platform-sent) | Default until connected: sent from the platform domain with `Reply-To` = agency | none |
+| Email (agency SMTP) | Agency admin enters their SMTP server, sender address and credentials; the Integration Hub tests and encrypts the credentials with Cloud KMS | SMTP settings + test/connect button |
 | WhatsApp | Meta **Embedded Signup** with the platform's Meta app; we store WABA id + phone_number_id + system-user token; templates submitted via API, approval status shown | "Connect WhatsApp" button |
 | Payments to agency | **Stripe Connect** (Standard) — funds go to the agency's own account; we never touch card data (PCI scope stays SAQ-A) | "Connect Stripe" button |
 | Facebook / Instagram lead ads | OAuth (Meta) → choose page → we subscribe the page webhook; `InboundRoute(facebook, page_id)` | Connect + pick page |
@@ -363,6 +363,14 @@ Both tables are under tenant RLS (except `InboundRoute` lookups, done through a 
 | AI assistant / voice / recommendations | **Deferred** (platform-provided and metered when enabled) | — |
 
 Every integration provides: `validateConfig` (zod), `testConnection`, `registerWebhooks`, `revoke`, `healthCheck` (scheduled; failures alert the tenant owner by email and in-app).
+
+**Email rollout note:** the platform SMTP account remains the fallback until an agency connects its own SMTP account. Connected accounts are stored in `crm_integrations`, encrypted with a per-secret data key wrapped by the environment's Cloud KMS key, and decrypted only by integration-service. SMTP hosts are DNS-checked and pinned to public IP addresses before connect/test/send. Callers cannot override the agency's verified SMTP sender. OAuth-based email authorization and guided SPF/DKIM domain setup remain future improvements.
+
+The first implementation supports agency SMTP and platform fallback. The integration-service SQL migrations must be applied with `MIGRATION_DATABASE_URL` set to the administrative/direct database connection, then run `cd Services/integration-service && npm run db:migrate:deploy`. Production also requires Terraform to provision the environment KMS key and grant its decrypt/encrypt role only to integration-service.
+
+Facebook Lead Ads uses the platform's Meta app for OAuth and webhook signatures, with each agency's selected Page access tokens encrypted in `TenantIntegration`. The Meta app must have advanced access for `ads_management`, `leads_retrieval`, `pages_manage_ads`, `pages_show_list`, `pages_read_engagement`, and `pages_manage_metadata`; configure its Facebook Login redirect URI as `<public API origin>/api/v1/integrations/facebook/callback` and subscribe the Page webhook product to the `leadgen` field at `<public API origin>/api/v1/webhooks/facebook`. Set `FACEBOOK_APP_ID`, `FACEBOOK_APP_SECRET`, and `FACEBOOK_VERIFY_TOKEN` once per environment. Agencies connect from Management and select their own Pages; the platform webhook resolves each Page to exactly one agency before fetching and importing its lead. Reauthorization keeps existing selected Pages connected until the agency saves a changed Page selection.
+
+Voice AI remains platform-provided and is not included in the agency's Facebook connection; per-agency voice/ElevenLabs setup is deferred.
 
 ### 8.4 Inbound webhooks
 

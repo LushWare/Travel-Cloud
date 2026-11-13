@@ -496,7 +496,7 @@ describe('handleFacebookLeadEvent', () => {
     mockLeadFindFirst.mockResolvedValue(null);
     mockLeadCreate.mockResolvedValue({ id: 'lead-new', assignedToId: null });
 
-    const req = { body: { leadgenId: 'fb-1', name: 'Jane', email: 'jane@test.com', phone: '123' } };
+    const req = { body: { leadgenId: '1234567890', name: 'Jane', email: 'jane@test.com', phone: '123' } };
     const res = { json: vi.fn(), status: vi.fn().mockReturnThis() };
     await handleFacebookLeadEvent(req, res, vi.fn());
 
@@ -512,7 +512,7 @@ describe('handleFacebookLeadEvent', () => {
   it('appends a remark to the existing lead instead of creating a duplicate', async () => {
     mockLeadFindFirst.mockResolvedValue({ id: 'lead-existing' });
 
-    const req = { body: { leadgenId: 'fb-2', name: 'Jane', email: 'jane@test.com' } };
+    const req = { body: { leadgenId: '1234567891', name: 'Jane', email: 'jane@test.com' } };
     const res = { json: vi.fn(), status: vi.fn().mockReturnThis() };
     await handleFacebookLeadEvent(req, res, vi.fn());
 
@@ -526,7 +526,7 @@ describe('handleFacebookLeadEvent', () => {
   });
 
   it('rejects a payload with neither email nor phone', async () => {
-    const req = { body: { leadgenId: 'fb-3', name: 'Jane' } };
+    const req = { body: { leadgenId: '1234567892', name: 'Jane' } };
     const res = { json: vi.fn(), status: vi.fn().mockReturnThis() };
     const next = vi.fn();
     await handleFacebookLeadEvent(req, res, next);

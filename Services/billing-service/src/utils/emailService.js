@@ -1,4 +1,4 @@
-import { getOrgSettings, toBrandingShape, getEmailFrom } from '../config/orgSettings.js';
+import { getOrgSettings, toBrandingShape } from '../config/orgSettings.js';
 import { sendEmail as sendViaNotificationService } from '../services/email.client.js';
 import { wrapBillingEmail } from './emailWrap.js';
 
@@ -13,6 +13,8 @@ const formatDate = (date) => (date ? new Date(date).toLocaleDateString('en-US', 
 
 const toAttachment = (filename, pdfBuffer) =>
   pdfBuffer ? [{ filename, contentType: 'application/pdf', contentBase64: pdfBuffer.toString('base64') }] : [];
+
+const getReplyTo = (branding) => branding.contact.salesEmail || branding.contact.email;
 
 function quotationEmailHtml(quotation, branding) {
   const customerName = quotation.customerName || 'Customer';
@@ -56,7 +58,7 @@ export async function sendQuotationEmail({ quotation, recipientEmail, pdfBuffer 
     : `${branding.company.name} Quotation`;
 
   return sendViaNotificationService({
-    from: getEmailFrom(branding),
+    replyTo: getReplyTo(branding),
     to: recipientEmail,
     subject,
     html: wrapBillingEmail({
@@ -113,7 +115,7 @@ export async function sendInvoiceEmail({ invoice, recipientEmail, pdfBuffer }) {
     : `${branding.company.name} Invoice`;
 
   return sendViaNotificationService({
-    from: getEmailFrom(branding),
+    replyTo: getReplyTo(branding),
     to: recipientEmail,
     subject,
     html: wrapBillingEmail({
@@ -173,7 +175,7 @@ export async function sendReceiptEmail({ receipt, recipientEmail, pdfBuffer }) {
     : `${branding.company.name} Payment Receipt`;
 
   return sendViaNotificationService({
-    from: getEmailFrom(branding),
+    replyTo: getReplyTo(branding),
     to: recipientEmail,
     subject,
     html: wrapBillingEmail({
@@ -233,7 +235,7 @@ export async function sendVoucherEmail({ voucher, recipientEmail, pdfBuffer }) {
     : `${branding.company.name} Travel Voucher`;
 
   return sendViaNotificationService({
-    from: getEmailFrom(branding),
+    replyTo: getReplyTo(branding),
     to: recipientEmail,
     subject,
     html: wrapBillingEmail({

@@ -556,6 +556,53 @@ export const adminAPI = {
   },
 };
 
+export const integrationAPI = {
+  getEmail: async () => {
+    const api = new ApiService();
+    return api.get("/integrations/email");
+  },
+  saveEmail: async (data) => {
+    const api = new ApiService();
+    return api.put("/integrations/email", data);
+  },
+  testEmail: async () => {
+    const api = new ApiService();
+    return api.post("/integrations/email/test", {});
+  },
+  disconnectEmail: async () => {
+    const api = new ApiService();
+    return api.delete("/integrations/email");
+  },
+  getGoogleAds: async () => {
+    const api = new ApiService();
+    return api.get("/integrations/google-ads");
+  },
+  saveGoogleAds: async () => {
+    const api = new ApiService();
+    return api.put("/integrations/google-ads", {});
+  },
+  disconnectGoogleAds: async () => {
+    const api = new ApiService();
+    return api.delete("/integrations/google-ads");
+  },
+  getFacebook: async () => {
+    const api = new ApiService();
+    return api.get("/integrations/facebook");
+  },
+  startFacebookConnect: async () => {
+    const api = new ApiService();
+    return api.post("/integrations/facebook/connect", {});
+  },
+  saveFacebookPages: async (pageIds) => {
+    const api = new ApiService();
+    return api.put("/integrations/facebook/pages", { pageIds });
+  },
+  disconnectFacebook: async () => {
+    const api = new ApiService();
+    return api.delete("/integrations/facebook");
+  },
+};
+
 // Manual Itinerary API Methods
 // Manual Itinerary API — MOVED to lead-service (stub for migration)
 export const manualItineraryAPI = {

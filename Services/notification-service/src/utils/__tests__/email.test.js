@@ -83,13 +83,22 @@ describe('sendEmail', () => {
     }));
   });
 
-  it('uses the from override when provided instead of EMAIL_FROM', async () => {
+  it('always uses the platform sender and supports an agency reply-to', async () => {
     setSmtpEnv();
     mockSendMail.mockResolvedValue({ messageId: 'msg-2' });
 
-    await sendEmail({ to: 'a@test.com', subject: 'Hi', html: '<p>Hi</p>', from: 'Branded <billing@test.com>' });
+    await sendEmail({
+      to: 'a@test.com',
+      subject: 'Hi',
+      html: '<p>Hi</p>',
+      from: 'Unverified <spoofed@outside.test>',
+      replyTo: 'sales@agency.test',
+    });
 
-    expect(mockSendMail).toHaveBeenCalledWith(expect.objectContaining({ from: 'Branded <billing@test.com>' }));
+    expect(mockSendMail).toHaveBeenCalledWith(expect.objectContaining({
+      from: 'noreply@test.com',
+      replyTo: 'sales@agency.test',
+    }));
   });
 
   it('decodes a base64 attachment into a Buffer before sending', async () => {

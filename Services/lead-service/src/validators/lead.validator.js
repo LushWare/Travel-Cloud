@@ -108,6 +108,17 @@ export const googleAdsLeadSchema = z.object({
   message: 'Lead must have email or phone',
 });
 
+export const facebookLeadSchema = z.object({
+  leadgenId: z.string().regex(/^\d{1,30}$/),
+  name: z.string().trim().max(200).nullable().optional(),
+  email: z.string().trim().email().max(320).nullable().optional(),
+  phone: z.string().trim().min(1).max(50).nullable().optional(),
+  message: z.string().trim().max(2000).nullable().optional(),
+  source: z.enum(['facebook', 'instagram']).optional(),
+}).strict().refine((value) => Boolean(value.email || value.phone), {
+  message: 'Lead must have email or phone',
+});
+
 export const whatsappReplySchema = z.object({
   text: z.string().trim().min(1).max(4096),
 }).strict();

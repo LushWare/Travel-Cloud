@@ -1,6 +1,7 @@
 import nodemailer from 'nodemailer';
 import AppError from './appError.js';
 import { EMAIL_NOT_CONFIGURED } from '../constants/errorMessages.js';
+import { sendWithAgencyEmail } from '../services/integration.client.js';
 
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 
@@ -37,15 +38,19 @@ function decodeAttachments(attachments = []) {
   });
 }
 
-export async function sendEmail({ to, subject, html, text, from, attachments }) {
+export async function sendEmail({ to, subject, html, text, replyTo, attachments }) {
+  const agencyResult = await sendWithAgencyEmail({ to, subject, html, text, replyTo, attachments });
+  if (agencyResult) return agencyResult;
+
   const transporter = buildTransport();
   if (!transporter) {
     throw new AppError(EMAIL_NOT_CONFIGURED, 503, { code: 'DEPENDENCY_UNAVAILABLE' });
   }
 
   const info = await transporter.sendMail({
-    from: from || process.env.EMAIL_FROM || process.env.EMAIL_USER,
+    from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
     to,
+    ...(replyTo && { replyTo }),
     subject,
     html,
     text,

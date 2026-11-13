@@ -216,6 +216,3 @@ export const hasRequiredOrgFieldsForVoucher = (branding) => {
   if (!branding.contact.phone && !branding.contact.email) missing.push('contactPhone or contactEmail');
   return { ok: missing.length === 0, missing };
 };
-
-export const getEmailFrom = (branding) =>
-  process.env.EMAIL_FROM || `${branding.company.name} <${branding.contact.email}>`;

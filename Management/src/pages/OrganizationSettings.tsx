@@ -1,5 +1,5 @@
 import { useEffect, useState, type ChangeEvent, type ReactNode } from 'react';
-import { Save, Upload, Loader2 } from 'lucide-react';
+import { CheckCircle2, CircleHelp, PlugZap, Save, Upload, Loader2 } from 'lucide-react';
 import toast from '@/lib/toast';
 import { adminAPI, uploadAPI } from '../services/api';
 import { Button } from '@/components/ui/button';
@@ -10,6 +10,9 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import PageHeader from '../components/PageHeader';
 import AgencyPlanSummary from '../components/AgencyPlanSummary';
 import SupportAccessNote from '../components/SupportAccessNote';
+import EmailIntegrationSettings from '../components/EmailIntegrationSettings';
+import GoogleAdsIntegrationSettings from '../components/GoogleAdsIntegrationSettings';
+import FacebookLeadAdsIntegrationSettings from '../components/FacebookLeadAdsIntegrationSettings';
 
 interface SettingsForm {
   companyName: string;
@@ -204,6 +207,9 @@ const OrganizationSettings = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [activeTab, setActiveTab] = useState<'organization' | 'integrations'>(() =>
+    new URLSearchParams(window.location.search).get('tab') === 'integrations' ? 'integrations' : 'organization'
+  );
 
   useEffect(() => {
     (async () => {
@@ -276,19 +282,64 @@ const OrganizationSettings = () => {
       <div className="h-full overflow-auto bg-background">
       <PageHeader
         title="Organization Settings"
-        subtitle="Company identity, branding, and quotation defaults used across the CRM"
-        actions={
+        subtitle={activeTab === 'organization'
+          ? 'Company identity, branding, and quotation defaults used across the CRM'
+          : 'Connect and manage the services your agency uses'}
+        actions={activeTab === 'organization' ? (
           <Button onClick={handleSave} disabled={saving} className="gap-2 h-9">
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
             {saving ? 'Saving...' : 'Save Changes'}
           </Button>
-        }
+        ) : undefined}
       />
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 space-y-6">
+        <div className="flex gap-1 border-b border-border" role="tablist" aria-label="Settings sections">
+          <button
+            type="button"
+            role="tab"
+            id="organization-settings-tab"
+            aria-selected={activeTab === 'organization'}
+            aria-controls="organization-settings-panel"
+            onClick={() => setActiveTab('organization')}
+            className={`border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${activeTab === 'organization' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+          >
+            Organization
+          </button>
+          <button
+            type="button"
+            role="tab"
+            id="integrations-settings-tab"
+            aria-selected={activeTab === 'integrations'}
+            aria-controls="integrations-settings-panel"
+            onClick={() => setActiveTab('integrations')}
+            className={`border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${activeTab === 'integrations' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+          >
+            Integrations
+          </button>
+        </div>
 
-        <AgencyPlanSummary />
+        {activeTab === 'integrations' ? (
+          <div id="integrations-settings-panel" role="tabpanel" aria-labelledby="integrations-settings-tab" className="space-y-6">
+            <EmailIntegrationSettings />
+            <GoogleAdsIntegrationSettings />
+            <FacebookLeadAdsIntegrationSettings />
 
-        <SupportAccessNote />
+            <Section
+              title="Other integrations"
+              description="These services are currently configured by Lushware. Agency-specific setup is not available yet."
+            >
+              <IntegrationAvailability name="WhatsApp" detail="Meta WhatsApp Business" />
+              <IntegrationAvailability name="Flights" detail="Duffel / Travelport" />
+              <IntegrationAvailability name="Hotels" detail="LiteAPI" />
+              <IntegrationAvailability name="Voice assistant" detail="ElevenLabs" />
+              <IntegrationAvailability name="Payments" detail="Stripe / Razorpay" />
+            </Section>
+          </div>
+        ) : (
+          <div id="organization-settings-panel" role="tabpanel" aria-labelledby="organization-settings-tab" className="space-y-6">
+            <AgencyPlanSummary />
+
+            <SupportAccessNote />
 
         <Section
           title="Company Identity"
@@ -468,9 +519,27 @@ const OrganizationSettings = () => {
             />
           </div>
         </Section>
+          </div>
+        )}
       </div>
       </div>
   );
 };
+
+function IntegrationAvailability({ name, detail }: { name: string; detail: string }) {
+  return (
+    <div className="flex items-start gap-3 rounded-md border border-border p-3">
+      <CircleHelp className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium text-foreground">{name}</p>
+        <p className="mt-0.5 text-xs text-muted-foreground">{detail}</p>
+      </div>
+      <span className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
+        <PlugZap className="h-3.5 w-3.5" aria-hidden="true" />
+        Lushware-managed
+      </span>
+    </div>
+  );
+}
 
 export default OrganizationSettings;

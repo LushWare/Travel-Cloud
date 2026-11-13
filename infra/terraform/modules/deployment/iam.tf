@@ -129,6 +129,34 @@ resource "google_cloud_run_v2_service_iam_member" "gateway_invoker_notification"
   role     = "roles/run.invoker"
   member   = "serviceAccount:${google_service_account.services["gateway"].email}"
 }
+resource "google_cloud_run_v2_service_iam_member" "gateway_invoker_integration" {
+  project  = var.project_id
+  location = var.region
+  name     = module.integration_service.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.services["gateway"].email}"
+}
+resource "google_cloud_run_v2_service_iam_member" "notification_invoker_integration" {
+  project  = var.project_id
+  location = var.region
+  name     = module.integration_service.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.services["notification-service"].email}"
+}
+resource "google_cloud_run_v2_service_iam_member" "notification_invoker_lead" {
+  project  = var.project_id
+  location = var.region
+  name     = module.lead_service.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.services["notification-service"].email}"
+}
+resource "google_cloud_run_v2_service_iam_member" "integration_invoker_lead" {
+  project  = var.project_id
+  location = var.region
+  name     = module.lead_service.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.services["integration-service"].email}"
+}
 # The voice webhooks and the CustomTool endpoints both arrive through the
 # gateway (`/api/v1/webhooks/voice/*`), which is the only path that authenticates
 # them — ElevenLabs calls the public gateway host, never this service directly.

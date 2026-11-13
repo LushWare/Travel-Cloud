@@ -57,6 +57,10 @@ output "notification_service_url" {
   description = "URL of this environment's notification-service Cloud Run service."
   value       = module.notification_service.uri
 }
+output "integration_service_url" {
+  description = "URL of this environment's integration-service Cloud Run service."
+  value       = module.integration_service.uri
+}
 output "voice_service_url" {
   description = "URL of this environment's voice-service Cloud Run service. ElevenLabs posts lifecycle webhooks and tool calls to the gateway, so this URL is only used for direct diagnosis."
   value       = module.voice_service.uri

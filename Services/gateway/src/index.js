@@ -119,6 +119,7 @@ const SERVICES = {
   flight:       process.env.FLIGHT_SERVICE_URL        || 'http://localhost:3010',
   career:       process.env.CAREER_SERVICE_URL        || 'http://localhost:3007',
   notification: process.env.NOTIFICATION_SERVICE_URL  || 'http://localhost:3008',
+  integration:  process.env.INTEGRATION_SERVICE_URL   || 'http://localhost:3015',
   analytics:    process.env.ANALYTICS_SERVICE_URL     || 'http://localhost:3009',
   assistant:    process.env.ASSISTANT_SERVICE_URL     || 'http://localhost:3011',
   recommendations: process.env.RECOMMENDATION_SERVICE_URL || 'http://localhost:3013',
@@ -167,6 +168,7 @@ const PUBLIC_PATTERNS = [
   // Upload public
   [/^\/api\/v1\/upload\/optimize$/, 'GET'],
   // Webhooks
+  [/^\/api\/v1\/integrations\/facebook\/callback$/, 'GET'],
   [/^\/api\/v1\/webhooks\//, 'ALL'],
   // View tracking (public token-based)
   [/\/viewed$/, 'POST'],
@@ -421,8 +423,10 @@ app.use(`${V1}/webhooks/voice`, proxy(SERVICES.voice));
 app.use(`${V1}/webhooks/duffel-flights`, proxy(SERVICES.flight));
 
 // Webhooks & notifications → notification-service
+app.use(`${V1}/webhooks/facebook`, proxy(SERVICES.integration));
 app.use(`${V1}/webhooks`,      proxy(SERVICES.notification));
 app.use(`${V1}/notifications`, proxy(SERVICES.notification));
+app.use(`${V1}/integrations`,  proxy(SERVICES.integration));
 
 // Analytics & dashboard → analytics-service
 app.use(`${V1}/analytics`, proxy(SERVICES.analytics));

@@ -106,7 +106,7 @@ Names are plain constants in `whatsappService.js` (not secrets — templates are
      - `statuses[]` → delivery/read/failed callback → logged as `WhatsApp status: <status>`.
      Both are matched to a lead by phone number via `POST /leads/internal/communication-logs` (`src/services/lead.client.js`, `logWhatsappCommunication`). An unrecognized number is **not** an error — it's logged as `{ matched: false }` and dropped, not turned into a new lead.
 
-Same webhook contract as the pre-existing Facebook Lead Ads webhook (`/webhooks/facebook`) — same `hub.*` handshake, same signature scheme — so `handleWhatsappWebhook` mirrors `handleLeadWebhook` almost exactly.
+Meta webhooks use the same `hub.*` handshake and signature scheme. Facebook Lead Ads callbacks are handled by integration-service so each agency's page token stays tenant-scoped; WhatsApp callbacks remain in notification-service.
 
 ---
 

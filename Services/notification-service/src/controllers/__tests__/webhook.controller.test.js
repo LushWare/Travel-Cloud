@@ -1,34 +1,23 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const {
-  mockGetLeadData, mockMapFacebookLeadToLead, mockSubmitFacebookLead, mockSubmitGoogleAdsLead,
-  mockLogWhatsappCommunication, mockLoggerInfo,
+  mockSubmitGoogleAdsLead, mockLogWhatsappCommunication, mockVerifyGoogleAdsWebhookKey,
 } = vi.hoisted(() => ({
-  mockGetLeadData: vi.fn(),
-  mockMapFacebookLeadToLead: vi.fn(),
-  mockSubmitFacebookLead: vi.fn(),
   mockSubmitGoogleAdsLead: vi.fn(),
   mockLogWhatsappCommunication: vi.fn(),
-  mockLoggerInfo: vi.fn(),
-}));
-
-vi.mock('../../utils/facebook.js', () => ({
-  verifyWebhookSignature: vi.fn(() => true),
-  getLeadData: mockGetLeadData,
-  mapFacebookLeadToLead: mockMapFacebookLeadToLead,
+  mockVerifyGoogleAdsWebhookKey: vi.fn(),
 }));
 
 vi.mock('../../services/lead.client.js', () => ({
-  submitFacebookLead: mockSubmitFacebookLead,
   submitGoogleAdsLead: mockSubmitGoogleAdsLead,
   logWhatsappCommunication: mockLogWhatsappCommunication,
 }));
 
-vi.mock('../../config/logger.js', () => ({
-  default: { info: mockLoggerInfo, warn: vi.fn(), error: vi.fn() },
+vi.mock('../../services/integration.client.js', () => ({
+  verifyGoogleAdsWebhookKey: mockVerifyGoogleAdsWebhookKey,
 }));
 
-const { handleLeadWebhook, handleGoogleAdsLeadWebhook, verifyWhatsappWebhook, handleWhatsappWebhook } = await import('../webhook.controller.js');
+const { handleGoogleAdsLeadWebhook, verifyWhatsappWebhook, handleWhatsappWebhook } = await import('../webhook.controller.js');
 
 function buildReqRes(body) {
   const req = { body, get: () => null, log: { error: vi.fn() } };
@@ -37,55 +26,12 @@ function buildReqRes(body) {
 }
 
 beforeEach(() => {
-  mockGetLeadData.mockReset();
-  mockMapFacebookLeadToLead.mockReset();
-  mockSubmitFacebookLead.mockReset();
   mockSubmitGoogleAdsLead.mockReset();
   mockLogWhatsappCommunication.mockReset();
-  mockLoggerInfo.mockReset();
-  process.env.FACEBOOK_PAGE_ACCESS_TOKEN = 'test-token';
-  process.env.GOOGLE_ADS_WEBHOOK_KEY = 'google-key';
+  mockVerifyGoogleAdsWebhookKey.mockReset();
+  mockVerifyGoogleAdsWebhookKey.mockResolvedValue(true);
   process.env.WHATSAPP_VERIFY_TOKEN = 'test-verify-token';
   process.env.NODE_ENV = 'test';
-});
-
-describe('handleLeadWebhook — Facebook Lead Ads processing', () => {
-  it('hands the mapped lead to lead-service instead of writing to crm_leads tables directly', async () => {
-    mockGetLeadData.mockResolvedValue({ field_data: [] });
-    mockMapFacebookLeadToLead.mockReturnValue({
-      name: 'Jane Doe', email: 'jane@test.com', phone: '123', message: 'Hi',
-    });
-    mockSubmitFacebookLead.mockResolvedValue({ data: { leadId: 'lead-1', duplicate: false } });
-
-    const { req, res } = buildReqRes({
-      entry: [{ changes: [{ value: { leadgen_id: 'fb-lead-1' } }] }],
-    });
-    await handleLeadWebhook(req, res, vi.fn());
-    await new Promise((resolve) => setImmediate(resolve));
-
-    expect(mockSubmitFacebookLead).toHaveBeenCalledWith(expect.objectContaining({
-      leadgenId: 'fb-lead-1', email: 'jane@test.com', phone: '123',
-    }));
-    expect(res.status).toHaveBeenCalledWith(200);
-  });
-
-  it('logs a duplicate instead of throwing when lead-service reports the lead already exists', async () => {
-    mockGetLeadData.mockResolvedValue({ field_data: [] });
-    mockMapFacebookLeadToLead.mockReturnValue({ name: 'Jane Doe', email: 'jane@test.com', phone: '123' });
-    mockSubmitFacebookLead.mockResolvedValue({ data: { leadId: 'lead-existing', duplicate: true } });
-
-    const { req, res } = buildReqRes({
-      entry: [{ changes: [{ value: { leadgen_id: 'fb-lead-2' } }] }],
-    });
-    await handleLeadWebhook(req, res, vi.fn());
-    await new Promise((resolve) => setImmediate(resolve));
-
-    expect(mockSubmitFacebookLead).toHaveBeenCalledTimes(1);
-    expect(mockLoggerInfo).toHaveBeenCalledWith(
-      expect.objectContaining({ leadgenId: 'fb-lead-2' }),
-      expect.stringMatching(/duplicate/i)
-    );
-  });
 });
 
 describe('handleGoogleAdsLeadWebhook', () => {
@@ -103,10 +49,12 @@ describe('handleGoogleAdsLeadWebhook', () => {
         { column_name: 'Number of travelers', string_value: '2 travelers' },
       ],
     });
+    req.params = { tenantId: '11111111-1111-4111-8111-111111111111' };
 
     await handleGoogleAdsLeadWebhook(req, res, vi.fn());
 
     expect(mockSubmitGoogleAdsLead).toHaveBeenCalledWith(expect.objectContaining({
+      tenantId: '11111111-1111-4111-8111-111111111111',
       leadId: 'google-lead-1',
       name: 'Jane Doe',
       email: 'jane@example.com',
@@ -114,11 +62,17 @@ describe('handleGoogleAdsLeadWebhook', () => {
       destination: 'Sri Lanka',
       numberOfTravelers: 2,
     }));
+    expect(mockVerifyGoogleAdsWebhookKey).toHaveBeenCalledWith({
+      tenantId: '11111111-1111-4111-8111-111111111111',
+      googleKey: 'google-key',
+    });
     expect(res.status).toHaveBeenCalledWith(200);
   });
 
   it('rejects submissions with a wrong webhook key', async () => {
+    mockVerifyGoogleAdsWebhookKey.mockResolvedValue(false);
     const { req, res } = buildReqRes({ google_key: 'wrong-key', lead_id: 'google-lead-1' });
+    req.params = { tenantId: '11111111-1111-4111-8111-111111111111' };
     const next = vi.fn();
 
     await handleGoogleAdsLeadWebhook(req, res, next);
@@ -135,10 +89,12 @@ describe('handleGoogleAdsLeadWebhook', () => {
       is_test: true,
       user_column_data: [{ column_id: 'EMAIL', string_value: 'test@example.com' }],
     });
+    req.params = { tenantId: '11111111-1111-4111-8111-111111111111' };
 
     await handleGoogleAdsLeadWebhook(req, res, vi.fn());
 
     expect(mockSubmitGoogleAdsLead).toHaveBeenCalledWith(expect.objectContaining({
+      tenantId: '11111111-1111-4111-8111-111111111111',
       leadId: 'google-test-1',
       email: 'test@example.com',
       isTest: true,

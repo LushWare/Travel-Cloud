@@ -50,6 +50,7 @@ jobs:
           - analytics-service
           - recommendation-service
           - notification-service
+          - integration-service
           - assistant-service
           - voice-service
           - gateway
@@ -102,7 +103,7 @@ jobs:
       - name: Install Prisma-backed services
         working-directory: Services
         run: |
-          for service in auth-service user-service package-service lead-service booking-service billing-service career-service flight-service assistant-service recommendation-service voice-service; do
+          for service in auth-service user-service package-service lead-service booking-service billing-service career-service flight-service assistant-service recommendation-service voice-service integration-service; do
             (cd "$service" && npm ci)
           done
 
@@ -113,6 +114,12 @@ jobs:
           DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
           DIRECT_URL: ${{ secrets.SUPABASE_DIRECT_URL }}
         run: node Services/migrate-all.mjs
+
+      - name: Apply integration-service migrations
+        working-directory: Services/integration-service
+        env:
+          MIGRATION_DATABASE_URL: ${{ secrets.SUPABASE_DIRECT_URL }}
+        run: npm run db:migrate:deploy
 
   # Infra-as-code applies on every release so a merge that adds a service or a
   # secret needs no manual step. Order matters: migrations first (a new service
@@ -210,6 +217,7 @@ jobs:
           - analytics-service
           - recommendation-service
           - notification-service
+          - integration-service
           - assistant-service
           - voice-service
           - gateway

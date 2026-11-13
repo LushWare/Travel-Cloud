@@ -1,4 +1,4 @@
-# All 14 Cloud Run services, one per Services/* directory. `name` and the
+# All 15 Cloud Run services, one per Services/* directory. `name` and the
 # matching service-account id are env-prefixed ("<env>-<service>") because
 # Cloud Run service names and service-account ids are unique per project and
 # all three environments share one GCP project (longest resulting id,
@@ -8,7 +8,7 @@
 # (consumers per the plan's Secret Manager table); `plain_env` holds the
 # plain (non-secret) vars set directly on the service. `allow_unauthenticated`
 # is true only for the gateway — the two SPAs call it directly — and false
-# for all 12 backends, which are reachable only via the gateway's
+# for all backends, which are reachable only via the gateway's
 # run.invoker grant (iam.tf) plus its Google-signed ID token.
 locals {
   # Frontend origins. Default to the per-env Firebase Hosting sites; a deployment
@@ -221,7 +221,7 @@ locals {
       name    = "${var.env}-notification-service"
       memory  = "512Mi"
       cpu     = "1"
-      secrets = ["${var.env}-internal-events-token", "${var.env}-email-user", "${var.env}-email-password", "${var.env}-whatsapp-access-token", "${var.env}-whatsapp-app-secret", "${var.env}-whatsapp-verify-token", "${var.env}-facebook-verify-token", "${var.env}-facebook-app-secret", "${var.env}-facebook-page-access-token", "${var.env}-google-ads-webhook-key"]
+      secrets = ["${var.env}-internal-events-token", "${var.env}-email-user", "${var.env}-email-password", "${var.env}-whatsapp-access-token", "${var.env}-whatsapp-app-secret", "${var.env}-whatsapp-verify-token"]
       plain_env = {
         NODE_ENV                     = "production"
         LEAD_SERVICE_URL             = var.notification_lead_service_url
@@ -232,6 +232,19 @@ locals {
         WHATSAPP_PHONE_NUMBER_ID     = var.whatsapp_phone_number_id
         WHATSAPP_BUSINESS_ACCOUNT_ID = var.whatsapp_business_account_id
         WHATSAPP_API_VERSION         = "v23.0"
+      }
+      allow_unauthenticated = false
+    }
+    integration-service = {
+      name    = "${var.env}-integration-service"
+      memory  = "512Mi"
+      cpu     = "1"
+      secrets = ["${var.env}-database-url", "${var.env}-internal-events-token", "${var.env}-facebook-app-secret", "${var.env}-facebook-verify-token"]
+      plain_env = {
+        NODE_ENV                 = "production"
+        KMS_INTEGRATION_KEY_NAME = google_kms_crypto_key.integrations.id
+        FACEBOOK_APP_ID          = var.facebook_app_id
+        FACEBOOK_GRAPH_API_VERSION = "v27.0"
       }
       allow_unauthenticated = false
     }

@@ -11,7 +11,7 @@ export const sendEmailSchema = z.object({
   subject: z.string().trim().min(1).max(300),
   html: z.string().min(1),
   text: z.string().optional(),
-  from: z.string().trim().min(1).optional(),
+  replyTo: z.string().trim().email().optional(),
   attachments: z.array(attachmentSchema).max(5).optional(),
   meta: z
     .object({

@@ -52,6 +52,7 @@ module "gateway" {
     FLIGHT_SERVICE_URL       = module.flight_service.uri
     CAREER_SERVICE_URL       = module.career_service.uri
     NOTIFICATION_SERVICE_URL = module.notification_service.uri
+    INTEGRATION_SERVICE_URL  = module.integration_service.uri
     ANALYTICS_SERVICE_URL    = module.analytics_service.uri
     RECOMMENDATION_SERVICE_URL = module.recommendation_service.uri
     ASSISTANT_SERVICE_URL    = module.assistant_service.uri
@@ -450,7 +451,9 @@ module "notification_service" {
   ]
   # LEAD_SERVICE_URL already in local.services.notification-service.plain_env
   # (= var.notification_lead_service_url, the cycle-breaker).
-  plain_env             = local.services.notification-service.plain_env
+  plain_env = merge(local.services.notification-service.plain_env, {
+    INTEGRATION_SERVICE_URL = module.integration_service.uri
+  })
   memory                = local.services.notification-service.memory
   cpu                   = local.services.notification-service.cpu
   allow_unauthenticated = local.services.notification-service.allow_unauthenticated
@@ -465,6 +468,40 @@ module "notification_service" {
     google_secret_manager_secret_iam_member.service_secrets,
   ]
 }
+
+module "integration_service" {
+  source = "./modules/cloud-run-service"
+
+  name                  = local.services.integration-service.name
+  project_id            = var.project_id
+  region                = var.region
+  image                 = "${var.region}-docker.pkg.dev/${var.project_id}/travel-crm/integration-service:${var.env}-${var.image_tag}"
+  service_account_email = google_service_account.services["integration-service"].email
+  secrets = [
+    for id in local.services.integration-service.secrets : {
+      secret_id = id
+      env_var   = local.secret_env_names[id]
+    }
+  ]
+  plain_env = merge(local.services.integration-service.plain_env, {
+    PUBLIC_API_URL  = var.elevenlabs_public_base_url
+    MANAGEMENT_URL  = local.management_url
+    LEAD_SERVICE_URL = module.lead_service.uri
+  })
+  memory                = local.services.integration-service.memory
+  cpu                   = local.services.integration-service.cpu
+  allow_unauthenticated = local.services.integration-service.allow_unauthenticated
+  min_instances         = 0
+  max_instances         = 10
+  env                   = var.env
+  company_slug          = var.company_slug
+  depends_on = [
+    google_secret_manager_secret_version.secrets,
+    google_secret_manager_secret_iam_member.service_secrets,
+    google_kms_crypto_key_iam_member.integration_service,
+  ]
+}
+
 module "voice_service" {
   source = "./modules/cloud-run-service"
 

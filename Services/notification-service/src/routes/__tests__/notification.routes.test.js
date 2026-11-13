@@ -78,13 +78,24 @@ describe('POST /api/v1/notifications/internal/email', () => {
     const res = await request(buildApp())
       .post('/api/v1/notifications/internal/email')
       .set('x-internal-token', VALID_TOKEN)
-      .send(PAYLOAD);
+      .send({ ...PAYLOAD, replyTo: 'sales@agency.test', from: 'spoofed@outside.test' });
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ success: true, data: { messageId: 'msg-123' } });
     expect(mockSendEmail).toHaveBeenCalledWith(expect.objectContaining({
-      to: 'customer@test.com', subject: 'Hello', html: '<p>Hi</p>',
+      to: 'customer@test.com', subject: 'Hello', html: '<p>Hi</p>', replyTo: 'sales@agency.test',
     }));
+    expect(mockSendEmail.mock.calls[0][0]).not.toHaveProperty('from');
+  });
+
+  it('rejects an invalid reply-to address', async () => {
+    const res = await request(buildApp())
+      .post('/api/v1/notifications/internal/email')
+      .set('x-internal-token', VALID_TOKEN)
+      .send({ ...PAYLOAD, replyTo: 'not-an-email' });
+
+    expect(res.status).toBe(400);
+    expect(mockSendEmail).not.toHaveBeenCalled();
   });
 
   it('returns 503 when SMTP is not configured', async () => {
