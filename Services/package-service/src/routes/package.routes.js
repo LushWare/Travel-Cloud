@@ -31,11 +31,22 @@ import {
 } from '../controllers/aiPackage.controller.js';
 import { downloadAIPdf } from '../controllers/aiPdf.controller.js';
 import { wizardTurn } from '../controllers/wizard.controller.js';
+import {
+  initializeOnboardingCatalog,
+  initializeOnboardingSchema,
+} from '../controllers/onboarding.controller.js';
 
 const router = Router();
 const requireAIBuilder = requirePlanFeature('ai_itinerary_builder');
 
 // ── Public: static sub-paths must come before /:id ───────────────────────────
+router.post(
+  '/onboarding/initialize',
+  requireAuth,
+  authorize('admin', 'superAdmin'),
+  validateBody(initializeOnboardingSchema),
+  initializeOnboardingCatalog,
+);
 router.get('/featured/all',       packageController.getFeaturedPackages);
 router.get('/stats/all',          packageController.getPackageStats);
 router.get('/search/query',       packageController.searchPackages);

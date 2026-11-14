@@ -3,7 +3,7 @@ import AppError from '../utils/appError.js';
 import { verifyWebhookSignature } from '../utils/webhookSignature.js';
 import { mapGoogleAdsLead } from '../utils/googleAds.js';
 import { submitGoogleAdsLead, logWhatsappCommunication } from '../services/lead.client.js';
-import { verifyGoogleAdsWebhookKey } from '../services/integration.client.js';
+import { resolveWhatsappTenant, verifyGoogleAdsWebhookKey } from '../services/integration.client.js';
 import { z } from 'zod';
 
 const tenantIdSchema = z.string().uuid();
@@ -72,15 +72,21 @@ export const handleWhatsappWebhook = asyncHandler(async (req, res) => {
 // and appended to that lead's timeline. Fire-and-forget, same as Facebook's
 // lead processing: Meta needs a fast 200, not a completed pipeline.
 async function processWhatsappChange(value) {
+  const phoneNumberId = value.metadata?.phone_number_id;
+  if (typeof phoneNumberId !== 'string' || !/^\d{1,30}$/.test(phoneNumberId)) return;
+  const tenantId = await resolveWhatsappTenant(phoneNumberId);
+  if (!tenantId) return;
+
   for (const message of value.messages || []) {
     const occurredAt = message.timestamp ? new Date(Number(message.timestamp) * 1000).toISOString() : undefined;
     const body = message.text?.body || `[${message.type} message]`;
-    await logWhatsappCommunication({ phone: message.from, notes: `WhatsApp (customer): ${body}`, occurredAt });
+    await logWhatsappCommunication({ tenantId, phone: message.from, notes: `WhatsApp (customer): ${body}`, occurredAt });
   }
 
   for (const status of value.statuses || []) {
     const occurredAt = status.timestamp ? new Date(Number(status.timestamp) * 1000).toISOString() : undefined;
     await logWhatsappCommunication({
+      tenantId,
       phone: status.recipient_id,
       notes: `WhatsApp status: ${status.status}`,
       occurredAt,

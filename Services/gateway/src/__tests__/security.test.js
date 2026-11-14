@@ -9,7 +9,7 @@ const JWT_SECRET = 'gateway-test-secret';
 const signingKeys = crypto.generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
 const PUBLIC_PEM = signingKeys.publicKey.export({ type: 'spki', format: 'pem' });
 const SERVICES = ['AUTH', 'USER', 'PACKAGE', 'LEAD', 'BOOKING', 'BILLING', 'FLIGHT', 'CAREER',
-  'NOTIFICATION', 'ANALYTICS', 'ASSISTANT', 'RECOMMENDATION', 'VOICE', 'PLATFORM'];
+  'NOTIFICATION', 'INTEGRATION', 'ANALYTICS', 'ASSISTANT', 'RECOMMENDATION', 'VOICE', 'PLATFORM'];
 
 let echoServer;
 let app;
@@ -150,6 +150,22 @@ describe('access tokens', () => {
     expect(res.status).toBe(200);
   });
 
+  it('lets the public signup plan catalogue through without an agency session', async () => {
+    const res = await request(app).get('/api/v1/auth/signup-plans');
+
+    expect(res.status).toBe(200);
+  });
+
+  it('lets a new agency start signup without an existing agency session', async () => {
+    const res = await request(app)
+      .post('/api/v1/auth/agency-signup')
+      .set('x-forwarded-for', '198.51.100.40')
+      .send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.headers['x-user-id']).toBeUndefined();
+  });
+
   it('forwards the refresh cookie to the auth service', async () => {
     const res = await request(app).post('/api/v1/auth/refresh').set('Cookie', 'refresh_token=abc');
 
@@ -207,6 +223,32 @@ describe('agency forwarding', () => {
     const res = await request(app).post('/api/v1/auth/select-tenant');
 
     expect(res.status).toBe(200);
+  });
+});
+
+describe('public Stripe invoice payments', () => {
+  const TOKEN = 'a'.repeat(43);
+
+  it('lets customers retrieve a token-protected invoice payment link without logging in', async () => {
+    const res = await request(app).get(`/api/v1/integrations/stripe/payment-links/${TOKEN}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.headers['x-tenant-id']).toBe('00000000-0000-4000-8000-000000000001');
+  });
+
+  it('lets customers create Checkout Sessions only through the explicit public route', async () => {
+    const res = await request(app)
+      .post(`/api/v1/integrations/stripe/payment-links/${TOKEN}/checkout`)
+      .send({ amountMinor: 5000 });
+
+    expect(res.status).toBe(200);
+    expect(res.body.headers['x-tenant-id']).toBe('00000000-0000-4000-8000-000000000001');
+  });
+
+  it('keeps malformed payment tokens behind authentication', async () => {
+    const res = await request(app).get('/api/v1/integrations/stripe/payment-links/not-a-token');
+
+    expect(res.status).toBe(401);
   });
 });
 

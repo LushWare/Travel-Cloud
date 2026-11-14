@@ -23,6 +23,7 @@ import type {
   BookingStep,
   ContactForm,
   DuffelCheckoutData,
+  FlightCheckoutData,
   FlightBookingRecord,
   FlightCancellationQuote,
   FlightOffer,
@@ -145,7 +146,7 @@ export default function FlightSearch() {
 
   const [step, setStep] = useState<BookingStep>('results');
   const [selectedOffer, setSelectedOffer] = useState<FlightOffer | null>(null);
-  const [checkoutData, setCheckoutData] = useState<DuffelCheckoutData | null>(null);
+  const [checkoutData, setCheckoutData] = useState<FlightCheckoutData | null>(null);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [selectedServices, setSelectedServices] = useState<SelectedDuffelService[]>([]);
   const [priceChange, setPriceChange] = useState<{ previousTotal: number; currentTotal: number; currency: string } | null>(null);
@@ -376,8 +377,8 @@ export default function FlightSearch() {
       try {
         const leadPrefill = await loadLeadTravelerPrefill();
         const response = await flightAPI.getCheckoutData(offer.offerId);
-        const data = response.data as DuffelCheckoutData;
-        const refreshedOffer = normalizeCheckoutOffer(data, offer);
+        const data = response.data as FlightCheckoutData;
+        const refreshedOffer = data.provider === 'mock' ? offer : normalizeCheckoutOffer(data, offer);
         setCheckoutData(data);
         setSelectedOffer(refreshedOffer);
         const fareChanged = refreshedOffer.fareTotal !== offer.fareTotal || refreshedOffer.currency !== offer.currency;
@@ -423,8 +424,8 @@ export default function FlightSearch() {
     setCheckoutLoading(true);
     try {
       const response = await flightAPI.getCheckoutData(offerId);
-      const data = response.data as DuffelCheckoutData;
-      const refreshedOffer = normalizeCheckoutOffer(data, selectedOffer);
+      const data = response.data as FlightCheckoutData;
+      const refreshedOffer = data.provider === 'mock' ? selectedOffer : normalizeCheckoutOffer(data, selectedOffer);
       setCheckoutData(data);
       setSelectedOffer(refreshedOffer);
       const fareChanged = refreshedOffer.fareTotal !== selectedOffer.fareTotal || refreshedOffer.currency !== selectedOffer.currency;
@@ -494,7 +495,7 @@ export default function FlightSearch() {
       toast.error('Contact email is required');
       return;
     }
-    setStep('ancillaries');
+    setStep(checkoutData?.provider === 'mock' ? 'review' : 'ancillaries');
   };
 
   const confirmBooking = async (
@@ -864,7 +865,7 @@ export default function FlightSearch() {
               />
             )}
 
-            {step === 'ancillaries' && selectedOffer && checkoutData && (
+            {step === 'ancillaries' && selectedOffer && checkoutData && checkoutData.provider !== 'mock' && (
               <DuffelAncillariesStep
                 checkoutData={checkoutData}
                 passengers={ancillaryPassengers}

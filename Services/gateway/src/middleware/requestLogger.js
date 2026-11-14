@@ -1,6 +1,14 @@
 import pinoHttp from 'pino-http';
 import { v4 as uuidv4 } from 'uuid';
 import logger from '../config/logger.js';
+import { sanitizeRequestUrl } from '../../../shared/tenancy/src/logging.js';
+
+export { sanitizeRequestUrl };
+
+const serializeRequest = (req) => {
+  const serialized = pinoHttp.stdSerializers.req(req);
+  return { ...serialized, url: sanitizeRequestUrl(serialized.url) };
+};
 
 /**
  * pino-http middleware — replaces morgan.
@@ -29,6 +37,7 @@ export function requestLogProps(req) {
 
 export const requestLogger = pinoHttp({
   logger,
+  serializers: { req: serializeRequest },
   useLevel: 'info',
   customProps: requestLogProps,
   genReqId: (req) => req.headers['x-request-id'] || uuidv4(),
@@ -40,10 +49,10 @@ export const requestLogger = pinoHttp({
   },
 
   customSuccessMessage(req, res) {
-    return `${req.method} ${req.url} ${res.statusCode} — ${res.getHeader('x-response-time')}`;
+    return `${req.method} ${sanitizeRequestUrl(req.url)} ${res.statusCode} — ${res.getHeader('x-response-time')}`;
   },
   customErrorMessage(req, res, err) {
-    return `${req.method} ${req.url} ${res.statusCode} — ${err.message}`;
+    return `${req.method} ${sanitizeRequestUrl(req.url)} ${res.statusCode} — ${err.message}`;
   },
 });
 

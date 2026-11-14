@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import toast from '@/lib/toast';
 import { Eye, EyeOff, Mail, Lock, ArrowRight, Loader2 } from 'lucide-react';
@@ -180,6 +180,12 @@ export default function Login() {
           <div className="mt-6 pt-6 border-t border-border">
             <p className="text-center text-xs text-muted-foreground">
               Authorized personnel only. All access is monitored.
+            </p>
+            <p className="text-center text-sm text-muted-foreground mt-3">
+              New agency?{' '}
+              <Link to="/signup" className="text-primary hover:underline font-medium">
+                Create an account
+              </Link>
             </p>
             <p className="text-center text-sm text-muted-foreground mt-3">
               Sales Rep?{' '}

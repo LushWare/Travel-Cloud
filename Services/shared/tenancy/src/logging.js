@@ -1,5 +1,19 @@
 import { getRequestId, getTenantId, isTenantId } from './context.js';
 
+export function sanitizeRequestUrl(value) {
+  if (typeof value !== 'string') return value;
+  const [pathname, ...queryParts] = value.split('?');
+  const safePath = pathname
+    .replace(/(\/stripe\/payment-links\/)[A-Za-z0-9_-]{40,64}(?=\/|$)/g, '$1[redacted]')
+    .replace(/(\/stripe\/checkout-sessions\/)cs_(?:test|live)_[A-Za-z0-9]+(?=\/|$)/g, '$1[redacted]');
+  const query = new URLSearchParams(queryParts.join('?'));
+  for (const key of ['code', 'state']) {
+    if (query.has(key)) query.set(key, '[redacted]');
+  }
+  const safeQuery = query.toString();
+  return safeQuery ? `${safePath}?${safeQuery}` : safePath;
+}
+
 /**
  * Fields every log line carries while code runs for an agency, for a pino `mixin()`.
  * Empty outside a request (startup, scheduled jobs) and for platform-only work, so those lines

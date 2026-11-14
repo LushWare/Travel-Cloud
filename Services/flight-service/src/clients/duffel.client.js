@@ -139,6 +139,7 @@ export class DuffelClient {
       }
 
       return {
+        provider: 'duffel',
         offer: offerResponse.data.data,
         seatMaps: seatMapsResult.status === 'fulfilled' ? seatMapsResult.value.data.data || [] : [],
         upsellOffers: upsellsResult.status === 'fulfilled' ? upsellsResult.value.data.data || [] : [],

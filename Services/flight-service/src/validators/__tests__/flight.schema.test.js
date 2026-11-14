@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   searchSchema, priceSchema, bookSchema,
   cancelBookingSchema, listBookingsQuerySchema, bookingIdParamSchema,
-  leadIdParamSchema, leadBookSchema,
+  leadIdParamSchema, leadBookSchema, offerIdParamSchema,
 } from '../flight.schema.js';
 
 describe('searchSchema', () => {
@@ -57,6 +57,20 @@ describe('priceSchema', () => {
 
   it('should reject empty offerId', () => {
     expect(priceSchema.safeParse({ offerId: '' }).success).toBe(false);
+  });
+});
+
+describe('offerIdParamSchema', () => {
+  it('accepts a Duffel offer ID', () => {
+    expect(offerIdParamSchema.safeParse({ offerId: 'off_abc123' }).success).toBe(true);
+  });
+
+  it('accepts an ID produced by the mock flight provider', () => {
+    expect(offerIdParamSchema.safeParse({ offerId: 'MOCK-OFFER-DXBLHR-2026-11-14-0' }).success).toBe(true);
+  });
+
+  it('rejects unknown offer ID formats', () => {
+    expect(offerIdParamSchema.safeParse({ offerId: 'MOCK-OFFER-invalid' }).success).toBe(false);
   });
 });
 

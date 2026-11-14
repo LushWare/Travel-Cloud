@@ -1,9 +1,10 @@
+import { z } from 'zod';
 import prisma from '../db/client.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import AppError from '../utils/appError.js';
 import { assertPlanFeature } from '../services/plan.service.js';
 import logger from '../config/logger.js';
-import { nextInvoiceNumber } from '../utils/docNumber.js';
+import { nextInvoiceNumber, nextPaymentHistoryNumber, nextReceiptNumber } from '../utils/docNumber.js';
 import { generateInvoicePDF } from '../utils/invoicePDFGenerator.js';
 import { sendInvoiceEmail } from '../utils/emailService.js';
 import { sendInvoiceWhatsapp } from '../utils/whatsappService.js';
@@ -11,6 +12,7 @@ import { uploadPdfBuffer } from '../utils/cloudinary.js';
 import { sendInvoiceSchema } from '../validators/invoice.validator.js';
 import { logLeadCommunication } from '../services/events.client.js';
 import { requireTenantId } from '../../../shared/tenancy/src/index.js';
+import { createStripeInvoicePaymentLink } from '../services/stripePayment.client.js';
 
 // Hand-written SQL is not filtered automatically: every statement names the agency itself.
 const agency = () => requireTenantId();
@@ -156,6 +158,8 @@ export const sendInvoice = asyncHandler(async (req, res) => {
 
   const pdf = await generateInvoicePDF(invoice);
   const now = new Date();
+  let paymentUrl = null;
+  let paymentLinkWarning = null;
 
   try {
     if (channel === 'whatsapp') {
@@ -180,12 +184,30 @@ export const sendInvoice = asyncHandler(async (req, res) => {
 
     const recipient = email || invoice.customerEmail;
     if (!recipient) throw new AppError('No email address available for this invoice', 400);
-    await sendInvoiceEmail({ invoice, recipientEmail: recipient, pdfBuffer: pdf });
+    if (invoice.status !== 'cancelled' && invoice.outstandingAmount > 0) {
+      try {
+        const paymentLink = await createStripeInvoicePaymentLink({
+          invoiceId: invoice.id,
+          tenantId: agency(),
+        });
+        if (paymentLink?.available) paymentUrl = paymentLink.url;
+        else paymentLinkWarning = 'Stripe online payment is not available for this invoice or agency.';
+      } catch (error) {
+        req.log.warn({ err: error, tenantId: agency(), invoiceId: invoice.id }, 'Stripe invoice payment link could not be added');
+        paymentLinkWarning = 'Invoice email was sent without a Stripe payment link. Generate one from the invoice screen or check the Stripe setup.';
+      }
+    }
+    await sendInvoiceEmail({ invoice, recipientEmail: recipient, pdfBuffer: pdf, paymentUrl });
     const updated = await prisma.invoice.update({
       where: { id: invoice.id },
       data: { status: 'sent', sentAt: now, emailSent: true },
     });
-    return res.json({ success: true, message: 'Invoice sent via email', data: updated });
+    return res.json({
+      success: true,
+      message: 'Invoice sent via email',
+      data: updated,
+      ...(paymentLinkWarning && { warning: paymentLinkWarning }),
+    });
   } catch (err) {
     if (err instanceof AppError) throw err;
     // Configuration / delivery failures surface as a clean 400, not a 500. The
@@ -193,6 +215,163 @@ export const sendInvoice = asyncHandler(async (req, res) => {
     logger.error({ err }, 'Failed to send invoice');
     throw new AppError("We couldn't send that invoice. Please try again.", 400);
   }
+});
+
+const stripePaymentSummarySchema = z.object({
+  id: z.string().uuid(),
+  invoiceNumber: z.string(),
+  currency: z.string().length(3),
+  status: z.string(),
+  outstandingMinor: z.number().int().nonnegative(),
+  customerEmail: z.string().email().nullable(),
+});
+
+function getInvoiceIdParam(value) {
+  const parsed = z.string().uuid().safeParse(value);
+  if (!parsed.success) throw new AppError('Invoice not found', 404);
+  return parsed.data;
+}
+
+export const getInternalInvoicePaymentSummary = asyncHandler(async (req, res) => {
+  const invoiceId = getInvoiceIdParam(req.params.id);
+  const invoice = await prisma.invoice.findUnique({
+    where: { id: invoiceId },
+    select: { id: true, invoiceNumber: true, currency: true, status: true, outstandingAmount: true, customerEmail: true },
+  });
+  if (!invoice) throw new AppError('Invoice not found', 404);
+  const summary = stripePaymentSummarySchema.parse({
+    id: invoice.id,
+    invoiceNumber: invoice.invoiceNumber,
+    currency: invoice.currency,
+    status: invoice.status,
+    outstandingMinor: Math.max(0, Math.round(invoice.outstandingAmount * 100)),
+    customerEmail: invoice.customerEmail || null,
+  });
+  res.json({ success: true, data: summary });
+});
+
+const stripePaymentSchema = z.object({
+  checkoutSessionId: z.string().regex(/^cs_(test|live)_[A-Za-z0-9]+$/),
+  paymentIntentId: z.string().regex(/^pi_[A-Za-z0-9]+$/).nullable(),
+  amountMinor: z.number().int().positive(),
+  currency: z.enum(['USD', 'EUR', 'GBP', 'AUD', 'INR', 'LKR']),
+}).strict();
+
+export const recordInternalStripePayment = asyncHandler(async (req, res) => {
+  const parsed = stripePaymentSchema.safeParse(req.body ?? {});
+  if (!parsed.success) throw new AppError('Stripe payment details are invalid', 400);
+  const invoiceId = getInvoiceIdParam(req.params.id);
+  const tenantId = agency();
+  const { checkoutSessionId, paymentIntentId, amountMinor, currency } = parsed.data;
+
+  const result = await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`
+      SELECT id FROM "crm_billing"."Invoice"
+       WHERE id = ${invoiceId} AND "tenantId" = ${tenantId}::uuid
+       FOR UPDATE
+    `;
+    const invoice = await tx.invoice.findUnique({ where: { id: invoiceId } });
+    if (!invoice) throw new AppError('Invoice not found', 404);
+    if (invoice.currency !== currency) throw new AppError('Stripe payment currency does not match the invoice', 409);
+
+    const existing = await tx.paymentReceipt.findFirst({
+      where: { paymentGateway: 'stripe', gatewayTransactionId: checkoutSessionId },
+      include: { paymentHistories: true },
+    });
+    if (existing) return existing;
+
+    const amount = amountMinor / 100;
+    const previousBalance = Math.max(0, invoice.outstandingAmount);
+    const paidAmount = invoice.paidAmount + amount;
+    const outstandingBalance = Math.max(0, invoice.totalAmount - paidAmount);
+    const paymentStatus = paidAmount > invoice.totalAmount + 0.000001
+      ? 'overpaid'
+      : outstandingBalance <= 0 ? 'paid' : 'partial';
+    const paymentDate = new Date();
+    const receiptNumber = await nextReceiptNumber();
+    const paymentHistoryNumber = await nextPaymentHistoryNumber();
+    const receiptStatus = outstandingBalance <= 0 ? 'paid_in_full' : 'partial_payment';
+    const paymentType = amount >= previousBalance ? 'full_payment' : 'installment';
+
+    const receipt = await tx.paymentReceipt.create({
+      data: {
+        receiptNumber,
+        leadId: invoice.leadId,
+        invoiceId: invoice.id,
+        customerName: invoice.customerName,
+        customerEmail: invoice.customerEmail,
+        customerPhone: invoice.customerPhone,
+        customerAddress: invoice.customerAddress,
+        amount,
+        currency,
+        paymentMethod: 'online',
+        paymentDate,
+        transactionId: paymentIntentId,
+        paymentType,
+        receiptStatus,
+        previousBalance,
+        outstandingBalance,
+        createdById: invoice.createdById,
+        paymentGateway: 'stripe',
+        gatewayTransactionId: checkoutSessionId,
+        gatewayPaymentId: paymentIntentId,
+        verified: true,
+        verifiedAt: paymentDate,
+        reconciled: true,
+        reconciledAt: paymentDate,
+        notes: 'Paid through Stripe Checkout',
+        paymentHistories: {
+          create: {
+            paymentHistoryNumber,
+            leadId: invoice.leadId,
+            invoiceId: invoice.id,
+            customerName: invoice.customerName,
+            customerEmail: invoice.customerEmail,
+            customerPhone: invoice.customerPhone,
+            amount,
+            currency,
+            paymentMethod: 'online',
+            paymentDate,
+            transactionId: paymentIntentId,
+            paymentType,
+            status: 'reconciled',
+            createdById: invoice.createdById,
+            verifiedAt: paymentDate,
+            reconciledAt: paymentDate,
+            notes: 'Paid through Stripe Checkout',
+          },
+        },
+      },
+      include: { paymentHistories: true },
+    });
+    await tx.invoice.update({
+      where: { id: invoice.id },
+      data: {
+        paidAmount,
+        outstandingAmount: outstandingBalance,
+        paymentStatus,
+        status: outstandingBalance <= 0 ? 'paid' : 'partial',
+        ...(outstandingBalance <= 0 && { paidDate: paymentDate }),
+      },
+    });
+    return receipt;
+  });
+  res.json({ success: true, data: result });
+});
+
+export const createInvoicePaymentLink = asyncHandler(async (req, res) => {
+  await assertPlanFeature('finance_docs');
+  const invoiceId = getInvoiceIdParam(req.params.id);
+  const invoice = await prisma.invoice.findUnique({ where: { id: invoiceId } });
+  if (!invoice) throw new AppError('Invoice not found', 404);
+  if (invoice.status === 'draft' || invoice.status === 'cancelled' || invoice.outstandingAmount <= 0) {
+    throw new AppError('This invoice is not available for online payment.', 409);
+  }
+  const paymentLink = await createStripeInvoicePaymentLink({ invoiceId: invoice.id, tenantId: agency() });
+  if (!paymentLink?.available || typeof paymentLink.url !== 'string') {
+    throw new AppError('Stripe online payments are not ready for this agency.', 503);
+  }
+  res.json({ success: true, data: { url: paymentLink.url } });
 });
 
 // ─── POST /:id/resend-voice ─────────────────────────────────────

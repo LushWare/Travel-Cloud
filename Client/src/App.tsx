@@ -15,6 +15,7 @@ import Footer from './components/Footer';
 import AuthPage from './pages/AuthPage';
 import MyAccountPage from './pages/MyAccountPage';
 import CareerPage from './pages/CareerPage';
+import StripeInvoicePaymentPage, { StripePaymentSuccessPage } from './pages/StripeInvoicePaymentPage';
 import { AuthProvider } from './contexts/AuthContext';
 import { AssistantCapabilityProvider } from './features/assistant/capabilities/AssistantCapabilityProvider';
 import AssistantWidget from './features/assistant/components/AssistantWidget';
@@ -42,6 +43,8 @@ function App() {
             <Route path="/register" element={<AuthPage />} />
             <Route path="/my-account" element={<MyAccountPage />} />
             <Route path="/reset-password/:token" element={<AuthPage />} />
+            <Route path="/pay/invoice/:token" element={<StripeInvoicePaymentPage />} />
+            <Route path="/payment/success" element={<StripePaymentSuccessPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
           <CtaFooter />

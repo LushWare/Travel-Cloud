@@ -495,6 +495,10 @@ export const adminAPI = {
     const api = new ApiService();
     return api.get("/admin/settings");
   },
+  getUsers: async (params = {}) => {
+    const api = new ApiService();
+    return api.get("/admin/users", params);
+  },
   getOrganizationBranding: async () => {
     const api = new ApiService();
     return api.get("/admin/organization-branding");
@@ -600,6 +604,34 @@ export const integrationAPI = {
   disconnectFacebook: async () => {
     const api = new ApiService();
     return api.delete("/integrations/facebook");
+  },
+  getWhatsapp: async () => {
+    const api = new ApiService();
+    return api.get("/integrations/whatsapp");
+  },
+  connectWhatsapp: async (data) => {
+    const api = new ApiService();
+    return api.post("/integrations/whatsapp/connect", data);
+  },
+  disconnectWhatsapp: async () => {
+    const api = new ApiService();
+    return api.delete("/integrations/whatsapp");
+  },
+  getStripe: async () => {
+    const api = new ApiService();
+    return api.get("/integrations/stripe");
+  },
+  startStripeConnect: async () => {
+    const api = new ApiService();
+    return api.post("/integrations/stripe/connect", {});
+  },
+  testStripe: async () => {
+    const api = new ApiService();
+    return api.post("/integrations/stripe/test", {});
+  },
+  disconnectStripe: async () => {
+    const api = new ApiService();
+    return api.delete("/integrations/stripe");
   },
 };
 
@@ -714,6 +746,10 @@ export const invoiceAPI = {
   send: async (invoiceId, payload = {}) => {
     const api = new ApiService();
     return api.post(`/billing/invoices/${invoiceId}/send`, payload);
+  },
+  createPaymentLink: async (invoiceId) => {
+    const api = new ApiService();
+    return api.post(`/billing/invoices/${invoiceId}/payment-link`, {});
   },
   //Ashan
   //downloadpdf
@@ -924,6 +960,10 @@ export const hotelAPI = {
 
 // Package API Methods
 export const packageAPI = {
+  initializeOnboardingCatalog: async () => {
+    const api = new ApiService();
+    return api.post("/packages/onboarding/initialize", {});
+  },
   // Get all packages
   getAll: async (params = {}) => {
     const api = new ApiService();

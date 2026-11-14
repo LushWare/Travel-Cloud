@@ -1,6 +1,22 @@
 import api from './api';
 
 const authService = {
+  getSignupPlans: async () => {
+    return api.get('/auth/signup-plans');
+  },
+
+  createAgency: async (data) => {
+    return api.post('/auth/agency-signup', data);
+  },
+
+  verifyAgencySignup: async (email, code) => {
+    return api.post('/auth/agency-signup/verify', { email, code });
+  },
+
+  resendAgencySignupCode: async (email) => {
+    return api.post('/auth/agency-signup/resend-code', { email });
+  },
+
   // Login user
   login: async (email, password) => {
     return api.post('/auth/login', { email, password });

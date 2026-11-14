@@ -212,6 +212,34 @@ describe('FlightSearch results', () => {
 });
 
 describe('FlightSearch booking', () => {
+  it('opens traveler details when a mock flight is selected', async () => {
+    const user = userEvent.setup();
+    const offerId = `MOCK-OFFER-LHRDXB-${dateInFuture(30)}-0`;
+    mockSearch.mockResolvedValue({ data: [{ ...oneWayOffer(1), offerId }] });
+    mockGetCheckoutData.mockResolvedValue({
+      data: {
+        provider: 'mock',
+        offer: {
+          id: offerId,
+          passengers: [{ id: 'mock-passenger-1' }],
+          available_services: [],
+          passenger_identity_documents_required: false,
+        },
+        seatMaps: [],
+        upsellOffers: [],
+        clientKey: '',
+        cardCheckoutEnabled: false,
+      },
+    });
+    renderFlightSearch();
+
+    await searchLhrToDxb(user);
+    await user.click(screen.getByRole('button', { name: 'Select' }));
+
+    expect(await screen.findByPlaceholderText('First name *')).toBeInTheDocument();
+    expect(mockGetCheckoutData).toHaveBeenCalledWith(offerId);
+  });
+
   it('books with the searched context and the offer’s passenger ids', async () => {
     const user = userEvent.setup();
     mockSearch.mockResolvedValue({ data: [NONSTOP_ROUND_TRIP] });

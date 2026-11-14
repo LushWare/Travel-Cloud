@@ -33,6 +33,7 @@ vi.mock('../../../services/analytics.service.js', () => ({
 vi.mock('../../../contexts/AuthContext.jsx', () => ({ useAuth: mockUseAuth }));
 vi.mock('../../../contexts/PermissionContext.jsx', () => ({ usePermission: mockUsePermission }));
 vi.mock('@/lib/toast', () => ({ default: { loading: vi.fn(), dismiss: vi.fn(), success: vi.fn(), error: vi.fn() } }));
+vi.mock('../OnboardingChecklist', () => ({ default: () => null }));
 
 import DashboardContainer from '../DashboardContainer.tsx';
 

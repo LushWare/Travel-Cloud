@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { fmtDate, fmtMoney } from './helpers';
 import { routeChain } from '@/features/shared/utils/flightSegments';
-import type { ContactForm, DuffelCheckoutData, DuffelPassenger, FlightOffer, SelectedDuffelService, TravelerForm, TravelerType } from './types';
+import type { ContactForm, DuffelCheckoutData, FlightCheckoutData, DuffelPassenger, FlightOffer, SelectedDuffelService, TravelerForm, TravelerType } from './types';
 
 const TRAVELER_TYPE_LABEL: Record<TravelerType, string> = { adult: 'Adults', child: 'Children', infant: 'Infants' };
 const GENDER_LABEL: Record<string, string> = { M: 'Male', F: 'Female' };
@@ -39,7 +39,7 @@ function FlightSummary({ offer }: { offer: FlightOffer }) {
 
 interface TravelerDetailsStepProps {
   selectedOffer: FlightOffer;
-  checkoutData: DuffelCheckoutData;
+  checkoutData: FlightCheckoutData;
   priceChange: { previousTotal: number; currentTotal: number; currency: string } | null;
   priceChangeAccepted: boolean;
   onPriceChangeAccepted: (accepted: boolean) => void;
@@ -60,7 +60,7 @@ export function TravelerDetailsStep({ selectedOffer, checkoutData, priceChange, 
       </button>
 
       <FlightSummary offer={selectedOffer} />
-      <DuffelOfferDetails offer={checkoutData.offer} />
+      {checkoutData.provider !== 'mock' && <DuffelOfferDetails offer={checkoutData.offer} />}
 
       {priceChange && (
         <label className="mb-6 flex cursor-pointer items-start gap-3 border border-warning/40 bg-warning/5 p-4 text-sm">
@@ -454,7 +454,7 @@ export function DuffelAncillariesStep({ checkoutData, passengers, onServicesChan
 
 interface ReviewStepProps {
   selectedOffer: FlightOffer;
-  checkoutData: DuffelCheckoutData;
+  checkoutData: FlightCheckoutData;
   selectedServices: SelectedDuffelService[];
   cardCheckoutEnabled: boolean;
   travelers: TravelerForm[];
@@ -674,16 +674,22 @@ export function ReviewStep({ selectedOffer, checkoutData, selectedServices, card
         </section>
       ) : (
         <p className="mb-5 border-t border-border pt-4 text-sm text-muted-foreground">
-          Duffel must enable customer-card checkout for this account before you can take card payments. Contact help@duffel.com. This booking will use the Duffel account balance.
+          {checkoutData.provider === 'mock'
+            ? 'Mock flights are for testing only; this will simulate a booking and will not issue a real ticket.'
+            : 'Duffel must enable customer-card checkout for this account before you can take card payments. Contact help@duffel.com. This booking will use the Duffel account balance.'}
         </p>
       )}
       <label className="mb-5 flex cursor-pointer items-start gap-3 text-sm text-muted-foreground">
         <input type="checkbox" checked={termsAccepted} onChange={(event) => setTermsAccepted(event.target.checked)} className="mt-1" />
         <span>
-          I reviewed the fare conditions and have given the traveler the applicable{' '}
-          <a href="https://help.duffel.com/hc/en-gb/articles/360021056640" target="_blank" rel="noreferrer" className="underline underline-offset-2">
-            booking notices
-          </a>.
+          {checkoutData.provider === 'mock'
+            ? 'I understand this is a simulated booking and no ticket will be issued.'
+            : <>
+              I reviewed the fare conditions and have given the traveler the applicable{' '}
+              <a href="https://help.duffel.com/hc/en-gb/articles/360021056640" target="_blank" rel="noreferrer" className="underline underline-offset-2">
+                booking notices
+              </a>.
+            </>}
         </span>
       </label>
       <Button
@@ -696,7 +702,7 @@ export function ReviewStep({ selectedOffer, checkoutData, selectedServices, card
         {booking || cardBusy
           ? 'Authenticating and booking...'
           : !cardCheckoutEnabled
-            ? 'Book using Duffel balance'
+            ? checkoutData.provider === 'mock' ? 'Simulate booking' : 'Book using Duffel balance'
             : pricedCard
               ? cardPriceAccepted ? 'Authenticate and book' : 'Accept final card price'
               : 'Price card and continue'}

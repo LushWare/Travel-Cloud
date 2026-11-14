@@ -13,6 +13,8 @@ import CareerManagement from "./pages/CareerManagement";
 import OrganizationSettings from "./pages/OrganizationSettings";
 import AIInsights from "./pages/AIInsights";
 import Login from "./pages/Login";
+import AgencySignup from "./pages/AgencySignup";
+import VerifyAgencySignup from "./pages/VerifyAgencySignup";
 import SalesRepLogin from "./pages/SalesRepLogin";
 import SalesRepLoginOTP from "./pages/SalesRepLoginOTP";
 import ResetPassword from "./pages/ResetPassword";
@@ -62,6 +64,8 @@ function AppContent() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/signup" element={<AgencySignup />} />
+      <Route path="/verify-signup" element={<VerifyAgencySignup />} />
       <Route path="/sales-rep-login" element={<SalesRepLogin />} />
       <Route path="/sales-rep-login-otp" element={<SalesRepLoginOTP />} />
       <Route path="/reset-password" element={<ResetPassword />} />

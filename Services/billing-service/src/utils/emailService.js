@@ -10,6 +10,9 @@ const formatMoney = (amount, currency = 'USD') => {
 };
 
 const formatDate = (date) => (date ? new Date(date).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' }) : '');
+const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (char) => ({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+})[char]);
 
 const toAttachment = (filename, pdfBuffer) =>
   pdfBuffer ? [{ filename, contentType: 'application/pdf', contentBase64: pdfBuffer.toString('base64') }] : [];
@@ -73,8 +76,17 @@ export async function sendQuotationEmail({ quotation, recipientEmail, pdfBuffer 
   });
 }
 
-function invoiceEmailHtml(invoice, branding) {
+function invoiceEmailHtml(invoice, branding, paymentUrl) {
   const customerName = invoice.customerName || 'Customer';
+  const safePaymentUrl = paymentUrl ? escapeHtml(paymentUrl) : null;
+  const paymentSection = safePaymentUrl
+    ? `<div style="text-align:center;margin:24px 0;">
+        <a href="${safePaymentUrl}" style="display:inline-block;background:#0F766E;color:#fff;text-decoration:none;padding:14px 24px;border-radius:8px;font-weight:700;">
+          Pay online
+        </a>
+        <p style="color:#64748B;font-size:13px;margin-top:10px;">Choose to pay the full balance or a partial amount securely through Stripe.</p>
+      </div>`
+    : '';
   return `
   <div style="font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;color:#0F172A;">
     <div style="background:linear-gradient(135deg,#0F766E,#14B8A6);padding:28px 32px;border-radius:12px 12px 0 0;">
@@ -91,6 +103,7 @@ function invoiceEmailHtml(invoice, branding) {
         <div style="font-size:28px;font-weight:700;">${formatMoney(invoice.totalAmount, invoice.currency)}</div>
         <div style="color:#64748B;font-size:13px;margin-top:10px;">Due date: ${formatDate(invoice.dueDate)}</div>
       </div>
+      ${paymentSection}
       <p style="color:#64748B;line-height:1.6;">If you have any questions about this invoice, simply reply to this email.</p>
       <p style="color:#94A3B8;font-size:12px;margin-top:24px;">${branding.company.name} · ${branding.contact.email} · ${branding.contact.phone}</p>
     </div>
@@ -105,7 +118,7 @@ function invoiceEmailHtml(invoice, branding) {
  * @param {Buffer} params.pdfBuffer
  * @throws {Error} when recipientEmail is missing, or notification-service rejects the send
  */
-export async function sendInvoiceEmail({ invoice, recipientEmail, pdfBuffer }) {
+export async function sendInvoiceEmail({ invoice, recipientEmail, pdfBuffer, paymentUrl = null }) {
   if (!recipientEmail) throw new Error('No recipient email provided');
 
   const branding = toBrandingShape(await getOrgSettings());
@@ -122,9 +135,9 @@ export async function sendInvoiceEmail({ invoice, recipientEmail, pdfBuffer }) {
       branding,
       title: subject,
       preheader: `Your ${branding.company.name} invoice${invoice.invoiceNumber ? ` ${invoice.invoiceNumber}` : ''} is ready.`,
-      innerHtml: invoiceEmailHtml(invoice, branding),
+      innerHtml: invoiceEmailHtml(invoice, branding, paymentUrl),
     }),
-    text: `Dear ${invoice.customerName || 'Customer'},\n\nPlease find your invoice attached.\nTotal: ${formatMoney(invoice.totalAmount, invoice.currency)}\nDue date: ${formatDate(invoice.dueDate)}\n`,
+    text: `Dear ${invoice.customerName || 'Customer'},\n\nPlease find your invoice attached.\nTotal: ${formatMoney(invoice.totalAmount, invoice.currency)}\nDue date: ${formatDate(invoice.dueDate)}\n${paymentUrl ? `Pay the full balance or choose a partial amount securely: ${paymentUrl}\n` : ''}`,
     attachments: toAttachment(`invoice-${invoice.invoiceNumber || invoice.id}.pdf`, pdfBuffer),
     meta: { sourceService: 'billing-service', kind: 'invoice' },
   });

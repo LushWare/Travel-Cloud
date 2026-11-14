@@ -29,12 +29,14 @@ export async function submitGoogleAdsLead({ tenantId, ...payload }, fetchImpl = 
  * lead itself and no-ops (not an error) when nothing matches, so an
  * unrecognized number never fails the webhook.
  */
-export async function logWhatsappCommunication({ phone, notes, occurredAt, fetchImpl = fetch }) {
+export async function logWhatsappCommunication({ tenantId, phone, notes, occurredAt, fetchImpl = fetch }) {
+  if (!isTenantId(tenantId)) throw new Error('Valid agency context is required for WhatsApp communications');
   const res = await fetchImpl(`${LEAD_SERVICE_URL}/api/v1/leads/internal/communication-logs`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
       'x-internal-token': INTERNAL_EVENTS_TOKEN,
+      'x-tenant-id': tenantId,
     },
     body: JSON.stringify({ phone, type: 'whatsapp', notes, occurredAt }),
   });

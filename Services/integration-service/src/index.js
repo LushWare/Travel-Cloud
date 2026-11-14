@@ -9,6 +9,7 @@ import logger from './config/logger.js';
 import errorHandler from './middleware/errorHandler.js';
 import routes from './routes.js';
 import facebookWebhookRoutes from './facebook.webhook.routes.js';
+import stripeWebhookRoutes from './stripe.webhook.routes.js';
 
 const app = express();
 const PORT = process.env.PORT || 3015;
@@ -28,6 +29,7 @@ app.use(
   express.json({ verify: (req, _res, buf) => { req.rawBody = buf; } }),
   facebookWebhookRoutes,
 );
+app.use(`${V1}/webhooks/stripe`, express.raw({ type: 'application/json' }), stripeWebhookRoutes);
 app.use(`${V1}/integrations`, express.json({ limit: '15mb' }), routes);
 app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'integration-service' }));
 app.use(errorHandler);

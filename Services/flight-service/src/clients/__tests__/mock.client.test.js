@@ -69,6 +69,30 @@ describe('MockFlightClient', () => {
     });
   });
 
+  describe('getCheckoutData', () => {
+    it('returns mock checkout data for a mock offer', async () => {
+      const offers = await client.searchFlights({
+        origin: 'CMB',
+        destination: 'DXB',
+        departureDate: '2026-08-01',
+        adults: 2,
+      });
+
+      const checkout = await client.getCheckoutData(offers[0].offerId);
+
+      expect(checkout.provider).toBe('mock');
+      expect(checkout.offer.id).toBe(offers[0].offerId);
+      expect(checkout.offer.passengers).toHaveLength(22);
+      expect(checkout.seatMaps).toEqual([]);
+      expect(checkout.upsellOffers).toEqual([]);
+      expect(checkout.cardCheckoutEnabled).toBe(false);
+    });
+
+    it('rejects IDs that are not mock offers', async () => {
+      await expect(client.getCheckoutData('off_123')).rejects.toThrow('Invalid mock offer ID');
+    });
+  });
+
   describe('createOrder', () => {
     it('should return a mock PNR and order ID', async () => {
       const result = await client.createOrder({

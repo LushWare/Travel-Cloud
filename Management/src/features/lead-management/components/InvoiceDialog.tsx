@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   FileText, Download, Loader2, Eye,
-  Receipt, ScrollText, StickyNote, CheckCircle2, MapPin, Calendar, Plus,
+  Receipt, ScrollText, StickyNote, CheckCircle2, MapPin, Calendar, Plus, Link2, Copy,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import toast from '@/lib/toast';
@@ -93,6 +93,8 @@ const InvoiceDialog = ({ isOpen, onClose, lead, onSuccess }: InvoiceDialogProps)
   const [sendEmail, setSendEmail] = useState('');
   const [sendPhone, setSendPhone] = useState('');
   const [sending, setSending] = useState(false);
+  const [creatingPaymentLink, setCreatingPaymentLink] = useState(false);
+  const [paymentLinkUrl, setPaymentLinkUrl] = useState('');
   const [showPDFPreview, setShowPDFPreview] = useState(false);
 
   const invoiceId = selectedInvoice?.id || selectedInvoice?._id || null;
@@ -130,6 +132,7 @@ const InvoiceDialog = ({ isOpen, onClose, lead, onSuccess }: InvoiceDialogProps)
     setLoading(true);
     setViewMode('create');
     setSelectedInvoice(null);
+    setPaymentLinkUrl('');
     setQuotationSnapshot(null);
     setFormData(emptyFormData());
     setCustomerOverrideEnabled(false);
@@ -198,6 +201,7 @@ const InvoiceDialog = ({ isOpen, onClose, lead, onSuccess }: InvoiceDialogProps)
   const viewInvoice = (inv: any) => {
     setViewMode('view');
     setSelectedInvoice(inv);
+    setPaymentLinkUrl('');
     setChannel('email');
     setSendEmail(inv.customerEmail || lead?.email || '');
     setSendPhone(inv.customerPhone || lead?.whatsapp || lead?.phone || '');
@@ -307,12 +311,44 @@ const InvoiceDialog = ({ isOpen, onClose, lead, onSuccess }: InvoiceDialogProps)
         setSelectedInvoice(updated);
         setExistingInvoices((prev) => prev.map((inv) => ((inv.id || inv._id) === invoiceId ? updated : inv)));
       }
-      toast.success(channel === 'email' ? 'Invoice emailed' : 'Invoice sent via WhatsApp');
+      if (response.warning) toast.error(response.warning);
+      else toast.success(channel === 'email' ? 'Invoice emailed' : 'Invoice sent via WhatsApp');
       onSuccess?.();
     } catch (err: any) {
       toast.error(apiErrorMessage(err));
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleCreatePaymentLink = async () => {
+    if (!invoiceId) return;
+    setCreatingPaymentLink(true);
+    try {
+      const response = await invoiceAPI.createPaymentLink(invoiceId);
+      const url = response.data?.url;
+      if (typeof url !== 'string') throw new Error('Stripe did not return a payment link.');
+      setPaymentLinkUrl(url);
+      try {
+        await navigator.clipboard.writeText(url);
+        toast.success('Stripe payment link copied');
+      } catch {
+        toast.error('Payment link is ready below; copy it to share with the customer.');
+      }
+    } catch (err: any) {
+      toast.error(apiErrorMessage(err));
+    } finally {
+      setCreatingPaymentLink(false);
+    }
+  };
+
+  const handleCopyPaymentLink = async () => {
+    if (!paymentLinkUrl) return;
+    try {
+      await navigator.clipboard.writeText(paymentLinkUrl);
+      toast.success('Stripe payment link copied');
+    } catch {
+      toast.error('Could not access the clipboard. Select and copy the link below.');
     }
   };
 
@@ -567,6 +603,31 @@ const InvoiceDialog = ({ isOpen, onClose, lead, onSuccess }: InvoiceDialogProps)
                           onSend={handleSend}
                           sending={sending}
                         />
+
+                        {selectedInvoice.status !== 'draft' &&
+                          selectedInvoice.status !== 'cancelled' &&
+                          Number(selectedInvoice.outstandingAmount) > 0 && (
+                            <div className="space-y-2 rounded-xl border border-border p-4">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                onClick={handleCreatePaymentLink}
+                                disabled={creatingPaymentLink}
+                                className="w-full"
+                              >
+                                {creatingPaymentLink ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
+                                {creatingPaymentLink ? 'Creating link…' : 'Create Stripe payment link'}
+                              </Button>
+                              {paymentLinkUrl && (
+                                <div className="flex gap-2">
+                                  <Input aria-label="Stripe payment link" readOnly value={paymentLinkUrl} />
+                                  <Button type="button" variant="outline" onClick={handleCopyPaymentLink} aria-label="Copy Stripe payment link">
+                                    <Copy className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+                          )}
 
                         <Button variant="outline" onClick={() => setShowPDFPreview(true)} className="w-full">
                           <Eye className="h-4 w-4" /> Preview PDF

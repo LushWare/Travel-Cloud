@@ -11,6 +11,8 @@ import { sendEmailSchema } from '../validators/email.validator.js';
 import { sendWhatsappSchema } from '../validators/whatsapp.validator.js';
 import { sendEmail as deliverEmail } from '../utils/email.js';
 import { sendWhatsappTemplateMessage, sendWhatsappTextMessage } from '../utils/whatsapp.js';
+import { getTenantId } from '../../../shared/tenancy/src/context.js';
+import { sendWithAgencyWhatsapp } from '../services/integration.client.js';
 
 const maskEmail = (addr) => addr.replace(/^[^@]+/, '***');
 const maskRecipients = (to) => (Array.isArray(to) ? to.map(maskEmail) : maskEmail(to));
@@ -62,10 +64,17 @@ export const sendWhatsapp = asyncHandler(async (req, res) => {
   const { to, meta, ...rest } = parsed.data;
 
   try {
-    const result =
-      rest.type === 'template'
+    const tenantId = getTenantId();
+    let result = await sendWithAgencyWhatsapp({ to, ...rest });
+    if (result === null) {
+      const legacyTenantId = process.env.WHATSAPP_LEGACY_TENANT_ID;
+      if (!tenantId || !legacyTenantId || tenantId !== legacyTenantId) {
+        throw new AppError(WHATSAPP_UNAVAILABLE, 503, { code: 'DEPENDENCY_UNAVAILABLE' });
+      }
+      result = rest.type === 'template'
         ? await sendWhatsappTemplateMessage({ to, ...rest })
         : await sendWhatsappTextMessage({ to, ...rest });
+    }
     req.log.info({ to: maskPhone(to), type: rest.type, meta }, 'WhatsApp message sent');
     return res.status(200).json({ success: true, data: result });
   } catch (err) {

@@ -51,46 +51,46 @@ enum ServiceType {
 // view_reports | manage_billing | view_billing | manage_leads | manage_packages
 
 model User {
-  id                       String         @id @default(uuid())
-  name                     String         @db.VarChar(50)
-  email                    String         @unique @db.VarChar(255)
-  phone                    String?
-  phoneCountry             String?        @default("US") @db.VarChar(2)
-  phoneE164                String?        @unique
-  password                 String         // bcrypt hash — never exposed in API responses
+  id           String  @id @default(uuid())
+  name         String  @db.VarChar(50)
+  email        String  @unique @db.VarChar(255)
+  phone        String?
+  phoneCountry String? @default("US") @db.VarChar(2)
+  phoneE164    String? @unique
+  password     String // bcrypt hash — never exposed in API responses
 
-  role                     UserRole       @default(customer)
-  isSuperAdmin             Boolean        @default(false)
-  permissions              String[]       // validated against allowed list in service layer
-  commissionRate           Decimal?       @db.Decimal(5, 2) // sales reps only, percent 0–100
+  role           UserRole @default(customer)
+  isSuperAdmin   Boolean  @default(false)
+  permissions    String[] // validated against allowed list in service layer
+  commissionRate Decimal? @db.Decimal(5, 2) // sales reps only, percent 0–100
 
-  avatarPublicId           String?
-  avatarUrl                String?
+  avatarPublicId String?
+  avatarUrl      String?
 
-  isActive                 Boolean        @default(true)
-  isEmailVerified          Boolean        @default(false)
-  isTempPassword           Boolean        @default(false)
-  mustChangePassword       Boolean        @default(false)
-  canBeDeleted             Boolean        @default(true)
+  isActive           Boolean @default(true)
+  isEmailVerified    Boolean @default(false)
+  isTempPassword     Boolean @default(false)
+  mustChangePassword Boolean @default(false)
+  canBeDeleted       Boolean @default(true)
 
-  passwordChangedAt        DateTime?
-  emailVerificationToken   String?
-  emailVerificationExpire  DateTime?
-  resetPasswordToken       String?
-  resetPasswordExpire      DateTime?
-  lastLogin                DateTime?
-  lastActivity             DateTime       @default(now())
+  passwordChangedAt       DateTime?
+  emailVerificationToken  String?
+  emailVerificationExpire DateTime?
+  resetPasswordToken      String?
+  resetPasswordExpire     DateTime?
+  lastLogin               DateTime?
+  lastActivity            DateTime  @default(now())
 
   // Self-referential within this schema
-  createdById              String?
-  createdBy                User?          @relation("UserCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  createdUsers             User[]         @relation("UserCreatedBy")
+  createdById  String?
+  createdBy    User?   @relation("UserCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdUsers User[]  @relation("UserCreatedBy")
 
-  vendorProfile            VendorProfile?
-  memberships              Membership[]
+  vendorProfile VendorProfile?
+  memberships   Membership[]
 
-  createdAt                DateTime       @default(now())
-  updatedAt                DateTime       @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([role, isActive])
   @@index([lastActivity])
@@ -99,47 +99,45 @@ model User {
 
 model VendorProfile {
   tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
-  id                          String       @id @default(uuid())
-  userId                      String       @unique
-  user                        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id       String @id @default(uuid())
+  userId   String @unique
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  businessName                String?
-  serviceType                 ServiceType?
-  businessRegistrationNumber  String?     
-  taxIdentificationNumber     String?
+  businessName               String?
+  serviceType                ServiceType?
+  businessRegistrationNumber String?
+  taxIdentificationNumber    String?
 
   // Address (flattened from Mongoose embedded object)
-  addressStreet               String?
-  addressCity                 String?
-  addressState                String?
-  addressZipCode              String?
-  addressCountry              String?
+  addressStreet  String?
+  addressCity    String?
+  addressState   String?
+  addressZipCode String?
+  addressCountry String?
 
   // Contact person (flattened)
-  contactPersonName           String?
-  contactPersonPhone          String?
-  contactPersonEmail          String?
-  contactPersonDesignation    String?
+  contactPersonName        String?
+  contactPersonPhone       String?
+  contactPersonEmail       String?
+  contactPersonDesignation String?
 
   // Bank details (flattened)
-  bankAccountName             String?
-  bankAccountNumber           String?
-  bankName                    String?
-  bankBranchName              String?
-  bankIfscCode                String?
-  bankSwiftCode               String?
+  bankAccountName   String?
+  bankAccountNumber String?
+  bankName          String?
+  bankBranchName    String?
+  bankIfscCode      String?
+  bankSwiftCode     String?
 
-  rating                      Float        @default(0)
-  totalBookings               Int          @default(0)
-  vendorStatus                VendorStatus @default(pending_verification)
+  rating        Float        @default(0)
+  totalBookings Int          @default(0)
+  vendorStatus  VendorStatus @default(pending_verification)
 
-  createdAt                   DateTime     @default(now())
-  updatedAt                   DateTime     @updatedAt
-
-  @@index([tenantId])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([tenantId, businessRegistrationNumber])
-
+  @@index([tenantId])
   @@schema("crm_users")
 }
 
@@ -149,7 +147,7 @@ model VendorProfile {
 // branding.js config previously duplicated in billing-service and Management.
 model OrganizationSettings {
   tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
-  id String @id @default(uuid())
+  id       String @id @default(uuid())
 
   // Company identity
   companyName      String  @default("Lush Travel Cloud")
@@ -175,17 +173,17 @@ model OrganizationSettings {
   themeAccentDark String? @default("#D98A0B")
 
   // Quotation/document defaults
-  defaultCurrency          String   @default("USD")
-  defaultTaxRate           Decimal? @db.Decimal(5, 2)
-  defaultServiceChargeRate Decimal? @db.Decimal(5, 2)
-  quotationValidityDays    Int      @default(30)
-  quotationTerms           String?  @db.Text
-  cancellationPolicy       String?  @db.Text
-  invoicePaymentTerms        String? @db.Text
-  invoicePaymentInstructions String? @db.Text
-  ratingTagline            String?
-  paymentMethods           String[]
-  docNumberPrefixes        Json? // { quotation, invoice, receipt, payment, creditNote, voucher }
+  defaultCurrency            String   @default("USD")
+  defaultTaxRate             Decimal? @db.Decimal(5, 2)
+  defaultServiceChargeRate   Decimal? @db.Decimal(5, 2)
+  quotationValidityDays      Int      @default(30)
+  quotationTerms             String?  @db.Text
+  cancellationPolicy         String?  @db.Text
+  invoicePaymentTerms        String?  @db.Text
+  invoicePaymentInstructions String?  @db.Text
+  ratingTagline              String?
+  paymentMethods             String[]
+  docNumberPrefixes          Json? // { quotation, invoice, receipt, payment, creditNote, voucher }
 
   // Bank / payment details — sensitive, admin-only in every response path
   bankName          String?
@@ -203,10 +201,8 @@ model OrganizationSettings {
   updatedAt DateTime @updatedAt
   // Only one row allowed — enforced by getOrCreateSingleton() in service layer
 
-  @@index([tenantId])
-
   @@unique([tenantId])
-
+  @@index([tenantId])
   @@schema("crm_users")
 }
 
@@ -219,9 +215,9 @@ model OrganizationSettings {
 // edits cancellationPolicy via PUT /admin/settings — no new role.
 model PolicyDocument {
   tenantId String @default(dbgenerated("(nullif(current_setting('app.tenant_id', true), ''))::uuid")) @db.Uuid
-  id    String @id @default(uuid())
-  title String @db.VarChar(255)
-  body  String @db.Text
+  id       String @id @default(uuid())
+  title    String @db.VarChar(255)
+  body     String @db.Text
 
   updatedById String? // → users.User.id
 
@@ -248,18 +244,21 @@ enum TenantStatus {
 }
 
 model Tenant {
-  id          String       @id @default(uuid()) @db.Uuid
-  slug        String       @unique @db.VarChar(63)
-  name        String       @db.VarChar(120)
-  status      TenantStatus @default(trial)
-  region      String       @default("ap-southeast-1") @db.VarChar(32)
-  memberships Membership[]
-    planAssignment TenantPlan?
-    planOverrides PlanEntitlementOverride[]
-    usageCounters UsageCounter[]
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  deletedAt   DateTime?
+  id                     String                    @id @default(uuid()) @db.Uuid
+  slug                   String                    @unique @db.VarChar(63)
+  name                   String                    @db.VarChar(120)
+  status                 TenantStatus              @default(trial)
+  region                 String                    @default("ap-southeast-1") @db.VarChar(32)
+  trialEndsAt            DateTime?
+  postTrialPlanVersionId String?                   @db.Uuid
+  postTrialPlanVersion   PlanVersion?              @relation("TenantPostTrialPlan", fields: [postTrialPlanVersionId], references: [id], onDelete: Restrict)
+  memberships            Membership[]
+  planAssignment         TenantPlan?
+  planOverrides          PlanEntitlementOverride[]
+  usageCounters          UsageCounter[]
+  createdAt              DateTime                  @default(now())
+  updatedAt              DateTime                  @updatedAt
+  deletedAt              DateTime?
 
   @@schema("crm_platform")
 }
@@ -278,20 +277,21 @@ model Plan {
 }
 
 model PlanVersion {
-  id              String       @id @default(uuid()) @db.Uuid
-  planId          String       @db.Uuid
-  version         Int
-  name            String       @db.VarChar(120)
-  description     String?      @db.VarChar(500)
-  priceMinorUnits Int?
-  currency        String       @default("USD") @db.Char(3)
-  billingInterval String?      @db.VarChar(16)
-  entitlements    Json
-  isCurrent       Boolean      @default(false)
-  createdById     String?
-  createdAt       DateTime     @default(now())
-  plan            Plan         @relation(fields: [planId], references: [id], onDelete: Restrict)
-  assignments     TenantPlan[]
+  id               String       @id @default(uuid()) @db.Uuid
+  planId           String       @db.Uuid
+  version          Int
+  name             String       @db.VarChar(120)
+  description      String?      @db.VarChar(500)
+  priceMinorUnits  Int?
+  currency         String       @default("USD") @db.Char(3)
+  billingInterval  String?      @db.VarChar(16)
+  entitlements     Json
+  isCurrent        Boolean      @default(false)
+  createdById      String?
+  createdAt        DateTime     @default(now())
+  plan             Plan         @relation(fields: [planId], references: [id], onDelete: Restrict)
+  assignments      TenantPlan[]
+  postTrialTenants Tenant[]     @relation("TenantPostTrialPlan")
 
   @@unique([planId, version])
   @@index([planId, isCurrent])
@@ -348,19 +348,19 @@ model UsageCounter {
 // Append-only record of privileged actions. The services' database user may only INSERT and SELECT,
 // and row-level security limits it to the current agency. tenantId is null only for platform events.
 model AuditLog {
-  id          String   @id @default(uuid()) @db.Uuid
-  tenantId    String?  @db.Uuid
-  actorId     String?
-  actorEmail  String?  @db.VarChar(254)
-  actorRole   String?  @db.VarChar(32)
-  action      String   @db.VarChar(64)
-  targetType  String?  @db.VarChar(32)
-  targetId    String?  @db.VarChar(64)
-  summary     String   @db.VarChar(300)
-  details     Json?
-  ipAddress   String?  @db.VarChar(64)
-  requestId   String?  @db.VarChar(64)
-  createdAt   DateTime @default(now())
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String?  @db.Uuid
+  actorId    String?
+  actorEmail String?  @db.VarChar(254)
+  actorRole  String?  @db.VarChar(32)
+  action     String   @db.VarChar(64)
+  targetType String?  @db.VarChar(32)
+  targetId   String?  @db.VarChar(64)
+  summary    String   @db.VarChar(300)
+  details    Json?
+  ipAddress  String?  @db.VarChar(64)
+  requestId  String?  @db.VarChar(64)
+  createdAt  DateTime @default(now())
 
   @@index([tenantId, createdAt(sort: Desc)])
   @@index([tenantId, action])
@@ -376,27 +376,27 @@ enum PlatformRole {
 }
 
 model PlatformUser {
-  id               String            @id @default(uuid()) @db.Uuid
-  email            String            @unique @db.VarChar(254)
-  name             String            @db.VarChar(120)
-  passwordHash       String
-  mustChangePassword Boolean          @default(false) // true while the password is a generated, temporary one
-  passwordChangedAt  DateTime?
-  role             PlatformRole      @default(support)
-  totpSecret       String // encrypted with PLATFORM_TOTP_KEY
-  authenticatorSetupRequired Boolean @default(false)
-  setupTokenHash   String?           @unique @db.Char(64)
-  setupTokenExpiresAt DateTime?
-  setupPurpose     String?            @db.VarChar(32)
-  lastTotpStep     BigInt            @default(0)
-  isActive         Boolean           @default(true)
-  failedLoginCount Int               @default(0)
-  lockedUntil      DateTime?
-  lastLoginAt      DateTime?
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  sessions         PlatformSession[]
-  helpAccessGrants HelpAccessGrant[]
+  id                         String            @id @default(uuid()) @db.Uuid
+  email                      String            @unique @db.VarChar(254)
+  name                       String            @db.VarChar(120)
+  passwordHash               String
+  mustChangePassword         Boolean           @default(false) // true while the password is a generated, temporary one
+  passwordChangedAt          DateTime?
+  role                       PlatformRole      @default(support)
+  totpSecret                 String // encrypted with PLATFORM_TOTP_KEY
+  authenticatorSetupRequired Boolean           @default(false)
+  setupTokenHash             String?           @unique @db.Char(64)
+  setupTokenExpiresAt        DateTime?
+  setupPurpose               String?           @db.VarChar(32)
+  lastTotpStep               BigInt            @default(0)
+  isActive                   Boolean           @default(true)
+  failedLoginCount           Int               @default(0)
+  lockedUntil                DateTime?
+  lastLoginAt                DateTime?
+  createdAt                  DateTime          @default(now())
+  updatedAt                  DateTime          @updatedAt
+  sessions                   PlatformSession[]
+  helpAccessGrants           HelpAccessGrant[]
 
   @@schema("crm_platform")
 }
@@ -419,15 +419,15 @@ model PlatformSession {
 
 // View-only help access to one agency for at most 30 minutes (see platform-service).
 model HelpAccessGrant {
-  id               String    @id @default(uuid()) @db.Uuid
-  platformUserId   String?   @db.Uuid
+  id               String        @id @default(uuid()) @db.Uuid
+  platformUserId   String?       @db.Uuid
   platformUser     PlatformUser? @relation(fields: [platformUserId], references: [id], onDelete: SetNull)
-  tenantId         String    @db.Uuid
-  reason           String    @db.VarChar(500)
-  handoffCodeHash  String    @unique @db.Char(64)
+  tenantId         String        @db.Uuid
+  reason           String        @db.VarChar(500)
+  handoffCodeHash  String        @unique @db.Char(64)
   handoffExpiresAt DateTime
   handoffUsedAt    DateTime?
-  createdAt        DateTime  @default(now())
+  createdAt        DateTime      @default(now())
   expiresAt        DateTime
   endedAt          DateTime?
 

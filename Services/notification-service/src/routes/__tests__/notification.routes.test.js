@@ -2,10 +2,18 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 
-const { mockSendEmail, mockSendWhatsappTemplateMessage, mockSendWhatsappTextMessage } = vi.hoisted(() => ({
+const {
+  mockSendEmail,
+  mockSendWhatsappTemplateMessage,
+  mockSendWhatsappTextMessage,
+  mockSendWithAgencyWhatsapp,
+  mockGetTenantId,
+} = vi.hoisted(() => ({
   mockSendEmail: vi.fn(),
   mockSendWhatsappTemplateMessage: vi.fn(),
   mockSendWhatsappTextMessage: vi.fn(),
+  mockSendWithAgencyWhatsapp: vi.fn(),
+  mockGetTenantId: vi.fn(),
 }));
 
 vi.mock('../../utils/email.js', () => ({
@@ -18,6 +26,12 @@ vi.mock('../../utils/whatsapp.js', () => ({
   sendWhatsappTextMessage: mockSendWhatsappTextMessage,
   isWhatsappConfigured: vi.fn(),
 }));
+
+vi.mock('../../services/integration.client.js', () => ({
+  sendWithAgencyWhatsapp: mockSendWithAgencyWhatsapp,
+}));
+
+vi.mock('../../../../shared/tenancy/src/context.js', () => ({ getTenantId: mockGetTenantId }));
 
 const { default: notificationRoutes } = await import('../notification.routes.js');
 const { default: errorHandler } = await import('../../middleware/errorHandler.js');
@@ -149,7 +163,10 @@ describe('POST /api/v1/notifications/internal/whatsapp', () => {
   beforeEach(() => {
     mockSendWhatsappTemplateMessage.mockReset();
     mockSendWhatsappTextMessage.mockReset();
+    mockSendWithAgencyWhatsapp.mockReset().mockResolvedValue(null);
+    mockGetTenantId.mockReset().mockReturnValue('11111111-1111-4111-8111-111111111111');
     process.env.INTERNAL_EVENTS_TOKEN = VALID_TOKEN;
+    process.env.WHATSAPP_LEGACY_TENANT_ID = '11111111-1111-4111-8111-111111111111';
   });
 
   const TEMPLATE_PAYLOAD = {
@@ -237,5 +254,18 @@ describe('POST /api/v1/notifications/internal/whatsapp', () => {
       message: 'WhatsApp messaging is temporarily unavailable. Please try again in a moment.',
     });
     expect(JSON.stringify(res.body)).not.toContain('socket hang up');
+  });
+
+  it('does not use legacy global credentials for another agency', async () => {
+    mockGetTenantId.mockReturnValue('22222222-2222-4222-8222-222222222222');
+
+    const res = await request(buildApp())
+      .post('/api/v1/notifications/internal/whatsapp')
+      .set('x-internal-token', VALID_TOKEN)
+      .send(TEMPLATE_PAYLOAD);
+
+    expect(res.status).toBe(503);
+    expect(mockSendWhatsappTemplateMessage).not.toHaveBeenCalled();
+    expect(mockSendWhatsappTextMessage).not.toHaveBeenCalled();
   });
 });

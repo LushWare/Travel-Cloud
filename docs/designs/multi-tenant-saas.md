@@ -425,14 +425,15 @@ An existing user can create additional workspaces from the workspace switcher (l
 | **4 — Self-serve SaaS** | Signup, provisioning, invites, onboarding checklist, CSV import, subscriptions, suspension/deletion/export | **External penetration test** before the first external agency; deletion verification report |
 | **5 — Later** | Flights per tenant, AI products per tenant (assistant, voice, recommendations), per-agency public websites and custom domains, data residency, dedicated-DB tier | Per-product design docs |
 
-**Status (2026-11-12):**
+**Status (2026-11-13):**
 
 | Phase | Status | Gate evidence |
 |---|---|---|
 | 0 | Built | Header-forgery tests per public route (gateway `security.test.js`); httpOnly cookies + refresh sessions; asymmetric JWT |
 | 1 | Built | `verify-tenancy.mjs` green; isolation suite (`e2e-tests/flows/tenant-isolation.spec.js`) 37/37 with RLS enforced under `crm_app` |
 | 2 | Built, not deployed | Audit entries for every privileged action (see "Phase 2 as built"); help access recorded in the agency's own audit log and shown as a banner in its session |
-| 3–5 | Not started | — |
+| 3 | Partially built | Integration Hub supports agency email, Facebook/Google lead setup, and WhatsApp Embedded Signup/send/webhook routing; see "Phase 3 as built" |
+| 4–5 | Not started | — |
 
 **Phase 2 as built** (differs from the row above in these ways):
 - **Help access instead of impersonation.** Lushware staff get view-only access to an agency for 15 or 30 minutes, with a required reason, a one-time code, a banner in the session, and `platform.help_access_started`/`_ended` entries in the agency's own audit log. Every write is refused at the gateway (`HELP_ACCESS_READ_ONLY`). Write-mode impersonation was not built and is not planned.
@@ -441,6 +442,13 @@ An existing user can create additional workspaces from the workspace switcher (l
 - **What agencies see of the audit log:** only Lushware support visits, as a "Lushware support access" note in Management's Settings (`GET /admin/support-access`: date, length, reason; never the staff member). The full log, including the agency's own staff actions and Lushware's plan changes and internal notes, is recorded but not shown to agencies; there is no Audit Log page.
 - **Per-agency logs:** every service log line carries `tenantId`. Per-agency request/error dashboards and an alert on `TENANT_CONTEXT_MISSING` are Cloud Logging log-based metrics, set up with the deployment.
 - **Not yet built:** Redis-backed rate limits (Phase 0 scope, still in-memory per instance); emailing the owner at 80% of a sending allowance (today: audit entry + warning on the plan card).
+
+**Phase 3 as built** (not yet deployed or live-verified):
+- The Integration Hub now supports agency WhatsApp Embedded Signup v4: the server exchanges Meta's short-lived code, subscribes the app to the agency's Messaging account, registers its phone using the agency's six-digit PIN, encrypts the business token with tenant-bound AAD, and reserves the phone number to one agency. Outbound messages use that agency's token; inbound webhooks resolve the signed phone-number ID and unknown IDs are ignored.
+- Management exposes WhatsApp connection status, connect, and disconnect controls. Unit tests cover the service boundaries and setup flow; no live Meta onboarding has been run.
+- Before enabling it, apply integration-service migration `003_whatsapp_agency_routes.sql`, configure `WHATSAPP_EMBEDDED_SIGNUP_CONFIG_ID` and the platform Meta app credentials, request advanced access for `whatsapp_business_management` and `whatsapp_business_messaging`, and configure the Meta webhook callback with the `messages` and `account_update` fields. Each agency must also add its own payment method in WhatsApp Manager before messaging is available.
+- During migration, set notification-service `WHATSAPP_LEGACY_TENANT_ID` to Lushware's tenant ID to retain the old global sender only for Lushware. Leave it blank after moving Lushware's number into the Integration Hub; other tenants never fall back to the global token.
+- Still outstanding in Phase 3: live Meta verification, Stripe Connect, automated integration health checks, and the remaining production rollout gates. Flights, LiteAPI, and agency-specific ElevenLabs remain later work.
 
 Pilot plan: after Phase 1's gate, onboard 1–2 friendly agencies with hands-on help through Phases 2–3, and use what they actually need to order the Phase 3 integration list.
 

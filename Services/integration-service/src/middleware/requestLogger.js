@@ -1,7 +1,12 @@
 import pinoHttp from 'pino-http';
 import { randomUUID } from 'node:crypto';
 import logger from '../config/logger.js';
-import { tenantRequestLogFields } from '../../../shared/tenancy/src/logging.js';
+import { sanitizeRequestUrl, tenantRequestLogFields } from '../../../shared/tenancy/src/logging.js';
+
+const serializeRequest = (req) => {
+  const serialized = pinoHttp.stdSerializers.req(req);
+  return { ...serialized, url: sanitizeRequestUrl(serialized.url) };
+};
 
 export const correlationId = (req, res, next) => {
   const id = req.headers['x-request-id'] || randomUUID();
@@ -12,6 +17,7 @@ export const correlationId = (req, res, next) => {
 
 export const requestLogger = pinoHttp({
   logger,
+  serializers: { req: serializeRequest },
   customProps: tenantRequestLogFields,
   useLevel: 'info',
   genReqId: (req) => req.headers['x-request-id'] || randomUUID(),

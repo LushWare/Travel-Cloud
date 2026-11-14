@@ -21,6 +21,7 @@ import { Button } from '../../components/ui/button';
 import { StatCard, type StatCardColor } from '../../components/shared/StatCard';
 import PageHeader from '../../components/PageHeader';
 import RecommendationStrip from '@/features/recommendations/RecommendationStrip';
+import OnboardingChecklist from './OnboardingChecklist';
 
 // Shared theming for recharts, which takes literal CSS color strings rather
 // than Tailwind classes — referencing the same CSS custom properties that
@@ -353,6 +354,7 @@ const DashboardContainer = () => {
   const canViewBilling = hasPermission('manage_billing') || user?.role === 'superAdmin';
   const canViewUsers = (hasPermission('view_reports') || user?.role === 'superAdmin') && user?.role !== 'salesRep';
   const isSalesRep = user?.role === 'salesRep';
+  const canManageAgency = user?.role === 'admin' || user?.role === 'superAdmin';
 
   const fetchData = async () => {
     setLoading(!refreshing);
@@ -453,6 +455,8 @@ const DashboardContainer = () => {
             <Button variant="link" size="sm" onClick={() => setError(null)} className="text-destructive">Dismiss</Button>
           </div>
         )}
+
+        {canManageAgency && <OnboardingChecklist />}
 
         {/* Sales Rep Dashboard */}
         {isSalesRep && <SalesRepDashboard data={salesRepData} />}

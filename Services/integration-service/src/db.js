@@ -13,6 +13,29 @@ export const tenantDb = {
     );
     return result.rows[0] || null;
   },
+  async resolveWhatsappPhone(phoneNumberId) {
+    const result = await pool.query(
+      'SELECT "tenantId", "integrationId" FROM crm_integrations.resolve_whatsapp_phone($1)',
+      [phoneNumberId],
+    );
+    return result.rows[0] || null;
+  },
+  async resolveStripePaymentLink(tokenHash) {
+    const result = await pool.query(
+      'SELECT "tenantId", "paymentLinkId", "invoiceId", "integrationId", "accountId" FROM crm_integrations.resolve_stripe_payment_link($1)',
+      [tokenHash],
+    );
+    return result.rows[0] || null;
+  },
+  async resolveStripeCheckoutSession(sessionId) {
+    const result = await pool.query(
+      `SELECT "tenantId", "paymentLinkId", "invoiceId", "accountId", "amountMinor",
+              currency, status, "linkStatus"
+         FROM crm_integrations.resolve_stripe_checkout_session($1)`,
+      [sessionId],
+    );
+    return result.rows[0] || null;
+  },
   async query(text, params = []) {
     return tenantDb.transaction((db) => db.query(text, params));
   },

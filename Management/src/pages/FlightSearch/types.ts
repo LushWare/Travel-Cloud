@@ -50,12 +50,29 @@ export interface FlightOffer {
 }
 
 export interface DuffelCheckoutData {
+  provider: 'duffel';
   offer: Offer;
   seatMaps: SeatMap[];
   upsellOffers: Offer[];
   clientKey: string;
   cardCheckoutEnabled: boolean;
 }
+
+export interface MockCheckoutData {
+  provider: 'mock';
+  offer: {
+    id: string;
+    passengers: Array<{ id: string }>;
+    available_services: [];
+    passenger_identity_documents_required: false;
+  };
+  seatMaps: [];
+  upsellOffers: [];
+  clientKey: '';
+  cardCheckoutEnabled: false;
+}
+
+export type FlightCheckoutData = DuffelCheckoutData | MockCheckoutData;
 
 export type DuffelPassenger = CreateOrder['passengers'][number];
 

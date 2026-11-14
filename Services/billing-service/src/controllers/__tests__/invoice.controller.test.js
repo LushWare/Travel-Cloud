@@ -6,6 +6,8 @@ vi.mock('../../services/plan.service.js', () => ({ assertPlanFeature: vi.fn().mo
 const {
   mockFindUnique, mockFindMany, mockCount, mockAggregate, mockQueryRaw, mockUpdate,
   mockGeneratePDF, mockSendEmail, mockSendWhatsapp, mockUpload, mockLogLeadCommunication,
+  mockCreateStripePaymentLink,
+  mockPaymentReceiptFindFirst, mockPaymentReceiptCreate, mockTransaction, mockTxQueryRaw,
 } = vi.hoisted(() => ({
   mockFindUnique: vi.fn(),
   mockFindMany: vi.fn(),
@@ -18,12 +20,19 @@ const {
   mockSendWhatsapp: vi.fn(),
   mockUpload: vi.fn(),
   mockLogLeadCommunication: vi.fn(),
+  mockCreateStripePaymentLink: vi.fn(),
+  mockPaymentReceiptFindFirst: vi.fn(),
+  mockPaymentReceiptCreate: vi.fn(),
+  mockTransaction: vi.fn(),
+  mockTxQueryRaw: vi.fn(),
 }));
 
 vi.mock('../../db/client.js', () => ({
   default: {
     invoice: { findUnique: mockFindUnique, findMany: mockFindMany, count: mockCount, aggregate: mockAggregate, update: mockUpdate },
     $queryRaw: mockQueryRaw,
+    paymentReceipt: { findFirst: mockPaymentReceiptFindFirst },
+    $transaction: mockTransaction,
   },
 }));
 vi.mock('../../utils/invoicePDFGenerator.js', () => ({ generateInvoicePDF: mockGeneratePDF }));
@@ -31,8 +40,21 @@ vi.mock('../../utils/emailService.js', () => ({ sendInvoiceEmail: mockSendEmail 
 vi.mock('../../utils/whatsappService.js', () => ({ sendInvoiceWhatsapp: mockSendWhatsapp }));
 vi.mock('../../utils/cloudinary.js', () => ({ uploadPdfBuffer: mockUpload }));
 vi.mock('../../services/events.client.js', () => ({ logLeadCommunication: mockLogLeadCommunication }));
+vi.mock('../../services/stripePayment.client.js', () => ({ createStripeInvoicePaymentLink: mockCreateStripePaymentLink }));
+vi.mock('../../utils/docNumber.js', () => ({
+  nextInvoiceNumber: vi.fn(),
+  nextReceiptNumber: vi.fn().mockResolvedValue('REC-202608-00001'),
+  nextPaymentHistoryNumber: vi.fn().mockResolvedValue('PAY-202608-00001'),
+}));
 
-import { downloadInvoicePDF, getAllInvoices, getInvoiceStats, sendInvoice } from '../invoice.controller.js';
+import {
+  downloadInvoicePDF,
+  getAllInvoices,
+  getInternalInvoicePaymentSummary,
+  getInvoiceStats,
+  recordInternalStripePayment,
+  sendInvoice,
+} from '../invoice.controller.js';
 import AppError from '../../utils/appError.js';
 import { runWithTenant } from '../../../../shared/tenancy/src/index.js';
 
@@ -45,6 +67,7 @@ const invoice = {
   customerPhone: '+15551234567',
   currency: 'USD',
   totalAmount: 1200,
+  outstandingAmount: 1200,
   items: [],
 };
 
@@ -69,6 +92,15 @@ beforeEach(() => {
   mockSendWhatsapp.mockResolvedValue({ sid: 'SM1' });
   mockUpload.mockResolvedValue('https://cdn.example.com/invoices/inv.pdf');
   mockLogLeadCommunication.mockResolvedValue({ matched: true });
+  mockCreateStripePaymentLink.mockResolvedValue({ available: true, url: 'https://client.test/pay/invoice/token' });
+  mockPaymentReceiptFindFirst.mockResolvedValue(null);
+  mockPaymentReceiptCreate.mockImplementation(async ({ data }) => ({ id: 'receipt-1', ...data }));
+  mockTxQueryRaw.mockResolvedValue([]);
+  mockTransaction.mockImplementation(async (callback) => callback({
+    $queryRaw: mockTxQueryRaw,
+    invoice: { findUnique: mockFindUnique, update: mockUpdate },
+    paymentReceipt: { findFirst: mockPaymentReceiptFindFirst, create: mockPaymentReceiptCreate },
+  }));
 });
 
 describe('getAllInvoices', () => {
@@ -152,12 +184,14 @@ describe('downloadInvoicePDF', () => {
 
 describe('sendInvoice', () => {
   it('emails the invoice with the generated PDF and marks it sent', async () => {
-    const { res, nextErr } = await run(sendInvoice, { params: { id: 'inv-1' }, body: { channel: 'email' } });
+    const { res, nextErr } = await runWithTenant(AGENCY, () =>
+      run(sendInvoice, { params: { id: 'inv-1' }, body: { channel: 'email' } }));
 
     expect(nextErr).toBeUndefined();
     expect(mockSendEmail).toHaveBeenCalledWith(expect.objectContaining({
       recipientEmail: 'alice@test.com',
       pdfBuffer: expect.any(Buffer),
+      paymentUrl: 'https://client.test/pay/invoice/token',
     }));
     expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ status: 'sent', emailSent: true }),
@@ -165,9 +199,122 @@ describe('sendInvoice', () => {
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: true }));
   });
 
+  describe('recordInternalStripePayment', () => {
+    const stripeInvoice = {
+      ...invoice,
+      id: '33333333-3333-4333-8333-333333333333',
+      invoiceNumber: 'INV-001',
+      leadId: 'lead-1',
+      customerName: 'Alice',
+      customerEmail: 'alice@test.com',
+      customerAddress: null,
+      createdById: 'user-1',
+      totalAmount: 120,
+      paidAmount: 20,
+      outstandingAmount: 100,
+    };
+    const request = {
+      params: { id: stripeInvoice.id },
+      body: {
+        checkoutSessionId: 'cs_test_session123',
+        paymentIntentId: 'pi_test123',
+        amountMinor: 2500,
+        currency: 'USD',
+      },
+    };
+
+    it('records a partial Stripe payment idempotently and updates the invoice balance', async () => {
+      mockFindUnique.mockResolvedValue(stripeInvoice);
+      mockPaymentReceiptFindFirst.mockResolvedValue(null);
+      const { res, nextErr } = await runWithTenant(AGENCY, () => run(recordInternalStripePayment, request));
+
+      expect(nextErr).toBeUndefined();
+      expect(mockPaymentReceiptCreate).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({
+          amount: 25,
+          gatewayTransactionId: 'cs_test_session123',
+          gatewayPaymentId: 'pi_test123',
+          paymentMethod: 'online',
+          verified: true,
+          reconciled: true,
+        }),
+      }));
+      expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ paidAmount: 45, outstandingAmount: 75, paymentStatus: 'partial' }),
+      }));
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: true }));
+    });
+
+    describe('getInternalInvoicePaymentSummary', () => {
+      const invoiceId = '33333333-3333-4333-8333-333333333333';
+
+      it('returns an integer minor-unit balance for a tenant-scoped invoice', async () => {
+        mockFindUnique.mockResolvedValue({
+          id: invoiceId,
+          invoiceNumber: 'INV-001',
+          currency: 'USD',
+          status: 'partial',
+          outstandingAmount: 12.34,
+          customerEmail: 'alice@test.com',
+        });
+
+        const { res, nextErr } = await runWithTenant(AGENCY, () =>
+          run(getInternalInvoicePaymentSummary, { params: { id: invoiceId } }));
+
+        expect(nextErr).toBeUndefined();
+        expect(res.json).toHaveBeenCalledWith({
+          success: true,
+          data: {
+            id: invoiceId,
+            invoiceNumber: 'INV-001',
+            currency: 'USD',
+            status: 'partial',
+            outstandingMinor: 1234,
+            customerEmail: 'alice@test.com',
+          },
+        });
+      });
+
+      it('rejects a malformed invoice id before querying the database', async () => {
+        const { nextErr } = await runWithTenant(AGENCY, () =>
+          run(getInternalInvoicePaymentSummary, { params: { id: 'not-an-uuid' } }));
+
+        expect(nextErr.statusCode).toBe(404);
+        expect(mockFindUnique).not.toHaveBeenCalled();
+      });
+    });
+
+    it('returns the existing receipt when Stripe retries a completed Checkout event', async () => {
+      const existing = { id: 'receipt-existing', gatewayTransactionId: 'cs_test_session123' };
+      mockFindUnique.mockResolvedValue(stripeInvoice);
+      mockPaymentReceiptFindFirst.mockResolvedValue(existing);
+      const { res, nextErr } = await runWithTenant(AGENCY, () => run(recordInternalStripePayment, request));
+
+      expect(nextErr).toBeUndefined();
+      expect(res.json).toHaveBeenCalledWith({ success: true, data: existing });
+      expect(mockPaymentReceiptCreate).not.toHaveBeenCalled();
+      expect(mockUpdate).not.toHaveBeenCalled();
+    });
+  });
+
   it('uses the body email override instead of the customer snapshot', async () => {
-    await run(sendInvoice, { params: { id: 'inv-1' }, body: { channel: 'email', email: 'override@test.com' } });
+    await runWithTenant(AGENCY, () =>
+      run(sendInvoice, { params: { id: 'inv-1' }, body: { channel: 'email', email: 'override@test.com' } }));
     expect(mockSendEmail).toHaveBeenCalledWith(expect.objectContaining({ recipientEmail: 'override@test.com' }));
+  });
+
+  it('sends the invoice when Stripe is unavailable and returns a visible warning', async () => {
+    mockCreateStripePaymentLink.mockResolvedValueOnce({ available: false, reason: 'stripe_setup_incomplete' });
+
+    const { res, nextErr } = await runWithTenant(AGENCY, () =>
+      run(sendInvoice, { params: { id: 'inv-1' }, body: { channel: 'email' } }));
+
+    expect(nextErr).toBeUndefined();
+    expect(mockSendEmail).toHaveBeenCalledWith(expect.objectContaining({ paymentUrl: null }));
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      success: true,
+      warning: expect.stringContaining('not available'),
+    }));
   });
 
   it('uploads the PDF and sends over WhatsApp with the media URL', async () => {

@@ -87,6 +87,20 @@ describe('sendQuotationEmail', () => {
 });
 
 describe('sendInvoiceEmail / sendReceiptEmail / sendVoucherEmail', () => {
+  it('includes the Stripe payment link in the invoice email and escapes its HTML attribute', async () => {
+    await sendInvoiceEmail({
+      invoice: { id: 'i-1', invoiceNumber: 'INV-001', customerName: 'Jane', totalAmount: 100, currency: 'USD' },
+      recipientEmail: 'jane@test.com',
+      pdfBuffer: null,
+      paymentUrl: 'https://client.test/pay/invoice/token?a=1&b=2',
+    });
+
+    const email = mockSendViaNotificationService.mock.calls[0][0];
+    expect(email.html).toContain('href="https://client.test/pay/invoice/token?a=1&amp;b=2"');
+    expect(email.html).toMatch(/choose to pay the full balance or a partial amount securely through Stripe/i);
+    expect(email.text).toContain('https://client.test/pay/invoice/token?a=1&b=2');
+  });
+
   it('sendInvoiceEmail throws when recipientEmail is missing', async () => {
     await expect(sendInvoiceEmail({ invoice: { id: 'i-1' }, recipientEmail: '', pdfBuffer: null }))
       .rejects.toThrow('No recipient email provided');

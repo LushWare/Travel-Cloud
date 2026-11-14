@@ -134,6 +134,8 @@ const PLATFORM_PATH = /^\/api\/v1\/platform(\/|$)/;
 // ─── Public routes (no JWT required) ──────────────────────────────────────────
 const PUBLIC_PATTERNS = [
   // Auth
+  [/^\/api\/v1\/auth\/signup-plans$/, 'GET'],
+  [/^\/api\/v1\/auth\/agency-signup(?:\/verify|\/resend-code)?$/, 'POST'],
   [/^\/api\/v1\/auth\/(register|login|login-step[12]|resend-otp|forgot-password|reset-temp-password|verify-email)/, 'ALL'],
   [/^\/api\/v1\/auth\/(refresh|logout|select-tenant)$/, 'POST'],
   [/^\/api\/v1\/auth\/reset-password\//, 'ALL'],
@@ -169,6 +171,10 @@ const PUBLIC_PATTERNS = [
   [/^\/api\/v1\/upload\/optimize$/, 'GET'],
   // Webhooks
   [/^\/api\/v1\/integrations\/facebook\/callback$/, 'GET'],
+  [/^\/api\/v1\/integrations\/stripe\/callback$/, 'GET'],
+  [/^\/api\/v1\/integrations\/stripe\/payment-links\/[A-Za-z0-9_-]{40,64}$/, 'GET'],
+  [/^\/api\/v1\/integrations\/stripe\/payment-links\/[A-Za-z0-9_-]{40,64}\/checkout$/, 'POST'],
+  [/^\/api\/v1\/integrations\/stripe\/checkout-sessions\/cs_(test|live)_[A-Za-z0-9]+$/, 'GET'],
   [/^\/api\/v1\/webhooks\//, 'ALL'],
   // View tracking (public token-based)
   [/\/viewed$/, 'POST'],
@@ -363,6 +369,8 @@ const proxy = (target) => {
 const V1 = '/api/v1';
 
 // Auth — apply authLimiter to sensitive auth routes
+app.use(`${V1}/auth/signup-plans`, proxy(SERVICES.auth));
+app.use(`${V1}/auth/agency-signup`, authLimiter, proxy(SERVICES.auth));
 app.use(`${V1}/auth/login`,          authLimiter, proxy(SERVICES.auth));
 app.use(`${V1}/auth/login-step1`,    authLimiter, proxy(SERVICES.auth));
 app.use(`${V1}/auth/login-step2`,    authLimiter, proxy(SERVICES.auth));
@@ -424,6 +432,7 @@ app.use(`${V1}/webhooks/duffel-flights`, proxy(SERVICES.flight));
 
 // Webhooks & notifications → notification-service
 app.use(`${V1}/webhooks/facebook`, proxy(SERVICES.integration));
+app.use(`${V1}/webhooks/stripe`, proxy(SERVICES.integration));
 app.use(`${V1}/webhooks`,      proxy(SERVICES.notification));
 app.use(`${V1}/notifications`, proxy(SERVICES.notification));
 app.use(`${V1}/integrations`,  proxy(SERVICES.integration));

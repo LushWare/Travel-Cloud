@@ -16,6 +16,7 @@ const crossServiceId = (message = 'Invalid ID') => z.string().regex(UUID_SHAPE_R
 
 const dateString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be YYYY-MM-DD');
 const duffelOfferId = z.string().regex(/^off_[A-Za-z0-9_-]+$/, 'Invalid Duffel offer ID');
+const mockOfferId = z.string().regex(/^MOCK-OFFER-[A-Z]{6}-\d{4}-\d{2}-\d{2}-\d+$/, 'Invalid mock offer ID');
 
 const cabinClass = z.enum(['Economy', 'Premium Economy', 'Business', 'First']);
 
@@ -82,7 +83,7 @@ export const priceSchema = z.object({
   expectedTotal: z.number().finite().positive().optional(),
 });
 
-export const offerIdParamSchema = z.object({ offerId: duffelOfferId });
+export const offerIdParamSchema = z.object({ offerId: z.union([duffelOfferId, mockOfferId]) });
 
 /** POST /flights/book */
 export const bookSchema = z.object({

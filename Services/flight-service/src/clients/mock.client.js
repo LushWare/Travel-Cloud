@@ -44,6 +44,28 @@ export class MockFlightClient {
     return { offerId, revalidated: true, priceChanged: false };
   }
 
+  /** @param {string} offerId */
+  async getCheckoutData(offerId) {
+    if (!offerId) throw new AppError(OFFER_ID_REQUIRED, BAD_REQUEST);
+    if (!offerId.startsWith('MOCK-OFFER-')) {
+      throw new AppError('Invalid mock offer ID', BAD_REQUEST);
+    }
+
+    return {
+      provider: 'mock',
+      offer: {
+        id: offerId,
+        passengers: Array.from({ length: 22 }, (_, index) => ({ id: `mock-passenger-${index + 1}` })),
+        available_services: [],
+        passenger_identity_documents_required: false,
+      },
+      seatMaps: [],
+      upsellOffers: [],
+      clientKey: '',
+      cardCheckoutEnabled: false,
+    };
+  }
+
   /** @param {import('./interface.js').CreateOrderParams} params */
   async createOrder({ offerId, travelers, contact }) {
     if (!offerId) throw new AppError(OFFER_ID_REQUIRED, BAD_REQUEST);

@@ -119,7 +119,7 @@ const issueTenantChoice = (res, user, memberships) =>
  * Finishes a successful sign-in: picks the agency to work in, then issues the session.
  * Someone in several agencies is asked to choose unless `tenantId` names one they belong to.
  */
-const completeLogin = async (req, res, user, statusCode, message, { tenantId } = {}) => {
+export const completeLogin = async (req, res, user, statusCode, message, { tenantId } = {}) => {
   if (isCustomer(user)) return sendTokenResponse(req, res, user, customerWorkspace(user), statusCode, message);
 
   const memberships = await membershipDb.listUsableMemberships(user.id);

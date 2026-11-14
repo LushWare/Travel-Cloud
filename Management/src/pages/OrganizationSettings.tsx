@@ -13,6 +13,8 @@ import SupportAccessNote from '../components/SupportAccessNote';
 import EmailIntegrationSettings from '../components/EmailIntegrationSettings';
 import GoogleAdsIntegrationSettings from '../components/GoogleAdsIntegrationSettings';
 import FacebookLeadAdsIntegrationSettings from '../components/FacebookLeadAdsIntegrationSettings';
+import WhatsAppIntegrationSettings from '../components/WhatsAppIntegrationSettings';
+import StripeIntegrationSettings from '../components/StripeIntegrationSettings';
 
 interface SettingsForm {
   companyName: string;
@@ -184,13 +186,15 @@ function Section({
   title,
   description,
   children,
+  id,
 }: {
   title: string;
   description?: string;
   children: ReactNode;
+  id?: string;
 }) {
   return (
-    <Card>
+    <Card id={id}>
       <CardHeader>
         <CardTitle>{title}</CardTitle>
         {description && <CardDescription>{description}</CardDescription>}
@@ -323,16 +327,17 @@ const OrganizationSettings = () => {
             <EmailIntegrationSettings />
             <GoogleAdsIntegrationSettings />
             <FacebookLeadAdsIntegrationSettings />
+            <WhatsAppIntegrationSettings />
+            <StripeIntegrationSettings />
 
             <Section
               title="Other integrations"
               description="These services are currently configured by Lushware. Agency-specific setup is not available yet."
             >
-              <IntegrationAvailability name="WhatsApp" detail="Meta WhatsApp Business" />
               <IntegrationAvailability name="Flights" detail="Duffel / Travelport" />
               <IntegrationAvailability name="Hotels" detail="LiteAPI" />
               <IntegrationAvailability name="Voice assistant" detail="ElevenLabs" />
-              <IntegrationAvailability name="Payments" detail="Stripe / Razorpay" />
+              <IntegrationAvailability name="Other payment providers" detail="Razorpay" />
             </Section>
           </div>
         ) : (
@@ -344,6 +349,7 @@ const OrganizationSettings = () => {
         <Section
           title="Company Identity"
           description="Shown on quotations, invoices, and the Management sidebar"
+          id="company-identity"
         >
           <Field label="Company Name" required value={form.companyName} onChange={set('companyName')} />
           <Field label="Short Name" value={form.companyShortName} onChange={set('companyShortName')} />
@@ -487,6 +493,7 @@ const OrganizationSettings = () => {
         <Section
           title="Bank & Payment Details"
           description="Shown on quotation PDFs when configured - visible to customers"
+          id="bank-payment-details"
         >
           <Field label="Bank Name" value={form.bankName} onChange={set('bankName')} />
           <Field label="Account Name" value={form.bankAccountName} onChange={set('bankAccountName')} />

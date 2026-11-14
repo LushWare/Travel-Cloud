@@ -10,7 +10,7 @@ vi.mock('../../config/logger.js', () => ({ default: { error: mockLoggerError, in
 
 const {
   sendWelcomeEmail, sendEmailVerification, sendPasswordReset,
-  sendPasswordChanged, sendOTPEmail, sendLoginNotification,
+  sendPasswordChanged, sendOTPEmail, sendLoginNotification, sendAgencySignupCode,
 } = await import('../email.js');
 
 const USER = { name: 'Jane Doe', email: 'jane@test.com' };
@@ -30,6 +30,7 @@ describe('auth-service email templates — structure', () => {
     ['sendWelcomeEmail', () => sendWelcomeEmail(USER)],
     ['sendEmailVerification', () => sendEmailVerification(USER, 'tok-1')],
     ['sendPasswordReset', () => sendPasswordReset(USER, 'tok-1')],
+    ['sendAgencySignupCode', () => sendAgencySignupCode(USER, '123456')],
     ['sendPasswordChanged', () => sendPasswordChanged(USER)],
     ['sendOTPEmail', () => sendOTPEmail(USER, '123456')],
     ['sendLoginNotification', () => sendLoginNotification(USER)],
@@ -69,6 +70,15 @@ describe('auth-service email templates — structure', () => {
     expect(args.html).toContain('654321');
     expect(args.text).toContain('654321');
   });
+
+  it('sends an agency signup code without including a verification link', async () => {
+    await sendAgencySignupCode(USER, '654321');
+    const args = mockSendViaNotificationService.mock.calls[0][0];
+    expect(args.subject).toBe('Verify your agency account');
+    expect(args.html).toContain('654321');
+    expect(args.text).toContain('10 minutes');
+    expect(args.html).not.toContain('verify-email');
+  });
 });
 
 describe('auth-service email templates — failure semantics', () => {
@@ -91,6 +101,7 @@ describe('auth-service email templates — failure semantics', () => {
 
   it.each([
     ['sendOTPEmail', () => sendOTPEmail(USER, '123456')],
+    ['sendAgencySignupCode', () => sendAgencySignupCode(USER, '123456')],
     ['sendPasswordReset', () => sendPasswordReset(USER, 'tok-1')],
   ])('%s is blocking: propagates a send failure to the caller', async (_name, call) => {
     mockSendViaNotificationService.mockRejectedValue(new Error('SMTP down'));

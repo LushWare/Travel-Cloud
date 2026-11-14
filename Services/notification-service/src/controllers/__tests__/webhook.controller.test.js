@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const {
-  mockSubmitGoogleAdsLead, mockLogWhatsappCommunication, mockVerifyGoogleAdsWebhookKey,
+  mockSubmitGoogleAdsLead, mockLogWhatsappCommunication, mockVerifyGoogleAdsWebhookKey, mockResolveWhatsappTenant,
 } = vi.hoisted(() => ({
   mockSubmitGoogleAdsLead: vi.fn(),
   mockLogWhatsappCommunication: vi.fn(),
   mockVerifyGoogleAdsWebhookKey: vi.fn(),
+  mockResolveWhatsappTenant: vi.fn(),
 }));
 
 vi.mock('../../services/lead.client.js', () => ({
@@ -15,6 +16,7 @@ vi.mock('../../services/lead.client.js', () => ({
 
 vi.mock('../../services/integration.client.js', () => ({
   verifyGoogleAdsWebhookKey: mockVerifyGoogleAdsWebhookKey,
+  resolveWhatsappTenant: mockResolveWhatsappTenant,
 }));
 
 const { handleGoogleAdsLeadWebhook, verifyWhatsappWebhook, handleWhatsappWebhook } = await import('../webhook.controller.js');
@@ -29,6 +31,7 @@ beforeEach(() => {
   mockSubmitGoogleAdsLead.mockReset();
   mockLogWhatsappCommunication.mockReset();
   mockVerifyGoogleAdsWebhookKey.mockReset();
+  mockResolveWhatsappTenant.mockReset().mockResolvedValue('11111111-1111-4111-8111-111111111111');
   mockVerifyGoogleAdsWebhookKey.mockResolvedValue(true);
   process.env.WHATSAPP_VERIFY_TOKEN = 'test-verify-token';
   process.env.NODE_ENV = 'test';
@@ -142,6 +145,7 @@ describe('handleWhatsappWebhook — inbound messages and status callbacks', () =
 
     const { req, res } = buildWhatsappWebhookReqRes({
       entry: [{ changes: [{ value: {
+        metadata: { phone_number_id: '123456789' },
         messages: [{ from: '15551234567', type: 'text', text: { body: 'When does the trip start?' }, timestamp: '1700000000' }],
       } }] }],
     });
@@ -149,6 +153,7 @@ describe('handleWhatsappWebhook — inbound messages and status callbacks', () =
     await new Promise((resolve) => setImmediate(resolve));
 
     expect(mockLogWhatsappCommunication).toHaveBeenCalledWith(expect.objectContaining({
+      tenantId: '11111111-1111-4111-8111-111111111111',
       phone: '15551234567',
       notes: expect.stringContaining('When does the trip start?'),
     }));
@@ -160,6 +165,7 @@ describe('handleWhatsappWebhook — inbound messages and status callbacks', () =
 
     const { req, res } = buildWhatsappWebhookReqRes({
       entry: [{ changes: [{ value: {
+        metadata: { phone_number_id: '123456789' },
         statuses: [{ recipient_id: '15557654321', status: 'delivered', timestamp: '1700000001' }],
       } }] }],
     });
@@ -167,6 +173,7 @@ describe('handleWhatsappWebhook — inbound messages and status callbacks', () =
     await new Promise((resolve) => setImmediate(resolve));
 
     expect(mockLogWhatsappCommunication).toHaveBeenCalledWith(expect.objectContaining({
+      tenantId: '11111111-1111-4111-8111-111111111111',
       phone: '15557654321',
       notes: expect.stringContaining('delivered'),
     }));
@@ -177,11 +184,31 @@ describe('handleWhatsappWebhook — inbound messages and status callbacks', () =
     mockLogWhatsappCommunication.mockReturnValue(new Promise((resolve) => { resolveLog = resolve; }));
 
     const { req, res } = buildWhatsappWebhookReqRes({
-      entry: [{ changes: [{ value: { messages: [{ from: '15551234567', type: 'text', text: { body: 'hi' } }] } }] }],
+      entry: [{ changes: [{ value: {
+        metadata: { phone_number_id: '123456789' },
+        messages: [{ from: '15551234567', type: 'text', text: { body: 'hi' } }],
+      } }] }],
     });
     await handleWhatsappWebhook(req, res, vi.fn());
 
     expect(res.status).toHaveBeenCalledWith(200);
     resolveLog({ matched: true });
+  });
+
+  it('does not log a webhook for an unknown phone number route', async () => {
+    mockResolveWhatsappTenant.mockResolvedValue(null);
+    const { req, res } = buildWhatsappWebhookReqRes({
+      entry: [{ changes: [{ value: {
+        metadata: { phone_number_id: '999999999' },
+        messages: [{ from: '15551234567', type: 'text', text: { body: 'hi' } }],
+      } }] }],
+    });
+
+    await handleWhatsappWebhook(req, res, vi.fn());
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(mockResolveWhatsappTenant).toHaveBeenCalledWith('999999999');
+    expect(mockLogWhatsappCommunication).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(200);
   });
 });

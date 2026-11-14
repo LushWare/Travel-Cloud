@@ -40,6 +40,21 @@ export const sendEmailVerification = (user, token) => {
     .catch((err) => logger.error({ err, email: user.email }, 'Failed to send email verification'));
 };
 
+export const sendAgencySignupCode = (user, code) => {
+  const html = renderEmailLayout({
+    title: 'Verify your agency email',
+    preheader: 'Enter the code to finish creating your agency account.',
+    bodyHtml: `
+      <h2 style="margin:0 0 12px;font-size:20px;">Verify your email</h2>
+      <p style="margin:0 0 12px;">Hi ${escapeHtml(user.name)}, enter this code in Management to verify your agency account:</p>
+      <p style="margin:0 0 12px;font-family:monospace;font-size:28px;font-weight:700;letter-spacing:6px;">${escapeHtml(code)}</p>
+      <p style="margin:0;color:#64748B;font-size:13px;">This code expires in 10 minutes. If you did not start this signup, you can ignore this email.</p>`,
+  });
+  const text = `Hi ${user.name},\n\nYour agency signup verification code is: ${code}\n\nThis code expires in 10 minutes. If you did not start this signup, you can ignore this email.${FOOTER_TEXT}`;
+
+  return send({ to: user.email, subject: 'Verify your agency account', html, text });
+};
+
 export const sendPasswordReset = (user, token) => {
   const url = `${process.env.CLIENT_URL || 'http://localhost:5173'}/reset-password/${token}`;
   const html = renderEmailLayout({
