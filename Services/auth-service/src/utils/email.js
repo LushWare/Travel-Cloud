@@ -55,6 +55,25 @@ export const sendAgencySignupCode = (user, code) => {
   return send({ to: user.email, subject: 'Verify your agency account', html, text });
 };
 
+export const sendSubscriptionReminder = (user, { billingUrl, suspended }) => {
+  const subject = suspended ? 'Your agency account is read-only' : 'Action needed: update your agency billing';
+  const heading = suspended ? 'Your agency is temporarily suspended' : 'Update your payment method';
+  const detail = suspended
+    ? 'Your subscription is still unpaid, so the agency account has been temporarily suspended. Update your payment method to restore access.'
+    : 'We could not confirm payment for your agency subscription. Update your payment method to avoid a read-only account.';
+  const html = renderEmailLayout({
+    title: heading,
+    preheader: detail,
+    bodyHtml: `
+      <h2 style="margin:0 0 12px;font-size:20px;">${heading}</h2>
+      <p style="margin:0 0 16px;">Hi ${escapeHtml(user.name)}, ${detail}</p>
+      ${renderButton({ href: billingUrl, label: 'Review billing' })}
+      <p style="margin:16px 0 0;color:#64748B;font-size:13px;">If you have already updated your payment details, no further action is needed.</p>`,
+  });
+  const text = `Hi ${user.name},\n\n${detail}\n\nReview billing: ${billingUrl}${FOOTER_TEXT}`;
+  return send({ to: user.email, subject, html, text });
+};
+
 export const sendPasswordReset = (user, token) => {
   const url = `${process.env.CLIENT_URL || 'http://localhost:5173'}/reset-password/${token}`;
   const html = renderEmailLayout({

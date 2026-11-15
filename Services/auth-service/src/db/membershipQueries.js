@@ -5,6 +5,9 @@ const USABLE_TENANT_STATUSES = ['trial', 'active', 'past_due'];
 
 const toWorkspace = (row) => ({
   tenantId: row.tenantId,
+  tenantStatus: row.tenantStatus,
+  pastDueAt: row.pastDueAt,
+  billingSuspended: row.billingSuspended,
   tenantSlug: row.tenantSlug,
   tenantName: row.tenantName,
   membershipId: row.membershipId,
@@ -16,12 +19,16 @@ const toWorkspace = (row) => ({
 export async function listUsableMemberships(userId) {
   const rows = await prisma.$queryRaw`
     SELECT m.id AS "membershipId", m."tenantId"::text AS "tenantId", m.role::text AS role,
-           m.permissions, m."isOwner", t.slug AS "tenantSlug", t.name AS "tenantName"
+           m.permissions, m."isOwner", t.slug AS "tenantSlug", t.name AS "tenantName",
+           t.status::text AS "tenantStatus", t."pastDueAt", t."billingSuspended"
     FROM crm_users."Membership" m
     JOIN crm_platform."Tenant" t ON t.id = m."tenantId"
     WHERE m."userId" = ${userId}
       AND m.status = 'active'
-      AND t.status::text = ANY(${USABLE_TENANT_STATUSES})
+      AND (
+        t.status::text = ANY(${USABLE_TENANT_STATUSES})
+        OR (t.status::text = 'suspended' AND t."billingSuspended")
+      )
     ORDER BY t.name ASC
   `;
   return rows.map(toWorkspace);

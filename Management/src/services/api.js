@@ -209,8 +209,39 @@ export const authAPI = {
   },
 };
 
+export const billingAPI = {
+  getStatus: async () => {
+    const api = new ApiService();
+    return api.get("/auth/billing");
+  },
+  getPlans: async () => {
+    const api = new ApiService();
+    return api.get("/auth/signup-plans");
+  },
+  startCheckout: async (planVersionId) => {
+    const api = new ApiService();
+    return api.post("/auth/billing/checkout", { planVersionId });
+  },
+  openPortal: async () => {
+    const api = new ApiService();
+    return api.post("/auth/billing/portal", {});
+  },
+  changePlan: async (planVersionId) => {
+    const api = new ApiService();
+    return api.post("/auth/billing/change-plan", { planVersionId });
+  },
+};
+
 // Lead API Methods
 export const leadAPI = {
+  previewCsvImport: async (csv) => {
+    const api = new ApiService();
+    return api.post("/leads/import/preview", { csv });
+  },
+  importCsvRows: async (rows) => {
+    const api = new ApiService();
+    return api.post("/leads/import", { rows });
+  },
   // Get all leads with filters
   getAllLeads: async (params = {}) => {
     const api = new ApiService();

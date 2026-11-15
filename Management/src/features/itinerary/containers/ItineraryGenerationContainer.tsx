@@ -43,8 +43,6 @@ import {
 import { VALIDATION_MESSAGES } from '../utils/constants';
 import { createDefaultPackage } from '../types';
 
-// Sample data
-import { SAMPLE_PACKAGES } from './sampleData';
 import { apiErrorMessage } from '@/lib/apiErrorMessage';
 import PageHeader from '../../../components/PageHeader';
 import RecommendationStrip from '@/features/recommendations/RecommendationStrip';
@@ -94,7 +92,7 @@ const ItineraryGenerationContainer = () => {
     (user?.role === 'salesRep' && hasPermission('manage_packages'));
 
   // Use custom hooks
-  const { packages, setPackages, updatePackage, deletePackage } = usePackageState(SAMPLE_PACKAGES);
+  const { packages, setPackages, updatePackage, deletePackage } = usePackageState([]);
   // Was previously passed as the first arg (packageId: string|null), not the second
   // (initialData) - only ever type-checked because of an `as any` cast, which is what
   // surfaced this. formData/newFormData initialized to a generic empty shape instead
@@ -671,7 +669,11 @@ const ItineraryGenerationContainer = () => {
             onClearLinkedFilter={() => setSearchParams({})}
           />
 
-          {filteredPackages.length === 0 ? (
+          {isLoadingPackages ? (
+            <div className="flex items-center justify-center py-16 text-muted-foreground" role="status">
+              Loading packages...
+            </div>
+          ) : filteredPackages.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
               <Package className="w-16 h-16 mb-4 opacity-50" />
               <p className="text-lg font-medium text-foreground">No packages found</p>

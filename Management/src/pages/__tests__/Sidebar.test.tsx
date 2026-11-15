@@ -318,16 +318,16 @@ describe('Sidebar navigation', () => {
     }
   });
 
-  it('shows super-admin items and hides sales-only items for a super admin', async () => {
+  it('shows Leads to an agency owner while keeping permission-gated items hidden', async () => {
     setUser({ name: 'Root', role: 'superAdmin', isSuperAdmin: true });
     setPermissions(() => false);
 
     render(<Sidebar />);
 
-    for (const label of ['Dashboard', 'Packages', 'Flights', 'Hotels', 'Career', 'Settings']) {
+    for (const label of ['Dashboard', 'Leads', 'Packages', 'Flights', 'Hotels', 'Career', 'Settings']) {
       expect(await screen.findByTitle(label)).toBeInTheDocument();
     }
-    for (const label of ['Analytics', 'Leads', 'Billing', 'Users']) {
+    for (const label of ['Analytics', 'Billing', 'Users']) {
       expect(screen.queryByTitle(label)).not.toBeInTheDocument();
     }
   });

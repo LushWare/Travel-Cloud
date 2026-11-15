@@ -8,6 +8,7 @@
     "start": "node src/index.js",
     "test": "vitest run",
     "test:watch": "vitest",
+    "billing:lifecycle": "node scripts/process-subscription-lifecycle.mjs",
     "db:generate": "npx prisma@5 generate",
     "db:push": "npx prisma@5 db push",
     "db:migrate": "npx prisma@5 migrate dev",

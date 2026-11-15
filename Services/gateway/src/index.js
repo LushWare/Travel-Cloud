@@ -7,6 +7,7 @@ import rateLimit from 'express-rate-limit';
 import cookieParser from 'cookie-parser';
 import { createAccessTokenVerifier, loadPublicKeys } from './accessToken.js';
 import { blockedModule } from './planModules.js';
+import { billingAccessFailure } from './billingAccess.js';
 import { DEMO_TENANT_ID } from '../../shared/constants/src/index.js';
 import { correlationId, requestLogger } from './middleware/requestLogger.js';
 import logger from './config/logger.js';
@@ -243,6 +244,18 @@ const refuseModule = (req, res, user) => {
   return true;
 };
 
+const refuseBillingAccess = (req, res, user) => {
+  const failure = billingAccessFailure(req.method, req.path, user);
+  if (!failure) return false;
+  res.status(403).json({
+    success: false,
+    status: 'fail',
+    ...failure,
+    ...(req.requestId && { requestId: req.requestId }),
+  });
+  return true;
+};
+
 // Anonymous visitors of the public website see this agency's catalogue.
 const PUBLIC_SITE_TENANT_ID = process.env.PUBLIC_SITE_TENANT_ID || DEMO_TENANT_ID;
 
@@ -292,6 +305,7 @@ app.use((req, res, next) => {
     // Refused requests are logged against the agency too, so a burst of refusals is traceable.
     if (user.tid) req.verifiedTenantId = user.tid;
     if (refuseHelpWrite(req, res, user)) return undefined;
+    if (refuseBillingAccess(req, res, user)) return undefined;
     if (refuseModule(req, res, user)) return undefined;
     forwardIdentity(req, user);
     next();
@@ -427,7 +441,7 @@ app.use(`${V1}/vacancies`, proxy(SERVICES.career));
 
 // ElevenLabs voice-agent webhooks
 app.use(`${V1}/webhooks/voice`, proxy(SERVICES.voice));
-
+app.use(`${V1}/webhooks/stripe-billing`, proxy(SERVICES.auth));
 app.use(`${V1}/webhooks/duffel-flights`, proxy(SERVICES.flight));
 
 // Webhooks & notifications → notification-service

@@ -9,6 +9,7 @@ import errorHandler from './middleware/errorHandler.js';
 import { correlationId, requestLogger } from './middleware/requestLogger.js';
 import logger from './config/logger.js';
 import { assertSigningKeyConfigured } from './config/jwtKeys.js';
+import { receiveStripeBillingWebhook } from './controllers/billing.controller.js';
 
 assertSigningKeyConfigured();
 
@@ -16,13 +17,12 @@ const app = express();
 
 app.use(helmet());
 app.use(cors({ origin: true, credentials: true }));
+app.use(correlationId);
+app.use(requestLogger);
+app.post('/api/v1/webhooks/stripe-billing', express.raw({ type: 'application/json', limit: '1mb' }), receiveStripeBillingWebhook);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
-
-// Request ID + structured logging (replaces morgan)
-app.use(correlationId);
-app.use(requestLogger);
 
 app.get('/health', (req, res) =>
   res.json({ status: 'ok', service: 'auth-service', timestamp: new Date().toISOString() })

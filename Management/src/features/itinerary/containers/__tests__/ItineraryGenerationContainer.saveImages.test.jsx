@@ -182,6 +182,37 @@ describe('ItineraryGenerationContainer — package pagination', () => {
   });
 });
 
+describe('ItineraryGenerationContainer — initial package loading', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockApiService.getPackageStats.mockResolvedValue({
+      success: true,
+      data: { total: 0, active: 0, featured: 0, avgRating: 0 },
+    });
+  });
+
+  it('does not render sample packages while the API request is pending', async () => {
+    let resolvePackages;
+    mockApiService.getPackagesProtected.mockReturnValue(new Promise((resolve) => {
+      resolvePackages = resolve;
+    }));
+
+    render(
+      <MemoryRouter>
+        <ItineraryGenerationContainer />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('status')).toHaveTextContent('Loading packages...');
+    expect(screen.queryByText('Paris Romance Getaway')).not.toBeInTheDocument();
+    expect(screen.queryByText('Bali Family Adventure')).not.toBeInTheDocument();
+    expect(screen.queryByText('No packages found')).not.toBeInTheDocument();
+
+    resolvePackages({ success: true, data: [] });
+    expect(await screen.findByText('No packages found')).toBeInTheDocument();
+  });
+});
+
 describe('ItineraryGenerationContainer — draft filtering', () => {
   beforeEach(() => {
     vi.clearAllMocks();

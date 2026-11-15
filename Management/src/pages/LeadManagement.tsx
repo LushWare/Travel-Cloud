@@ -8,6 +8,7 @@ import {
   Users,
   LayoutGrid,
   List,
+  Upload,
 } from "lucide-react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { leadAPI, adminAPI, authAPI } from "../services/api";
@@ -37,6 +38,8 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { apiErrorMessage } from '@/lib/apiErrorMessage';
 import PageHeader from '@/components/PageHeader';
 import RecommendationStrip from '@/features/recommendations/RecommendationStrip';
+import LeadCsvImportDialog from '@/features/lead-management/components/LeadCsvImportDialog';
+import { useAuth } from '@/contexts/AuthContext';
 
 // Lifecycle status maps (10 states) plus old-status fallbacks
 const statusColors: Record<string, string> = {
@@ -62,6 +65,7 @@ const statusLabels: Record<string, string> = {
 };
 
 const LeadManagement = () => {
+  const { user } = useAuth();
   const [leads, setLeads] = useState<any[]>([]);
   const [totalLeads, setTotalLeads] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -80,6 +84,7 @@ const LeadManagement = () => {
   const [statusCounts, setStatusCounts] = useState<Record<string, number>>({ all: 0 });
 
   const [showNewDialog, setShowNewDialog] = useState(false);
+  const [showCsvImportDialog, setShowCsvImportDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showRemarksDialog, setShowRemarksDialog] = useState(false);
   const [showWhatsappDialog, setShowWhatsappDialog] = useState(false);
@@ -460,6 +465,12 @@ const LeadManagement = () => {
                     {assignmentSettings.mode === "auto" ? `Auto: ${assignmentSettings.strategy}` : "Manual"}
                   </span>
                 </Button>
+                {(user?.role === 'admin' || user?.isSuperAdmin) && (
+                  <Button onClick={() => setShowCsvImportDialog(true)} variant="outline">
+                    <Upload className="w-4 h-4" />
+                    <span className="hidden sm:inline">Import CSV</span>
+                  </Button>
+                )}
                 <Button onClick={() => setShowNewDialog(true)}>
                   <Plus className="w-4 h-4" />
                   <span className="hidden sm:inline">New Lead</span>
@@ -612,6 +623,11 @@ const LeadManagement = () => {
         onClose={() => setShowNewDialog(false)}
         salesReps={salesReps}
         onSuccess={handleLeadSuccess}
+      />
+      <LeadCsvImportDialog
+        open={showCsvImportDialog}
+        onOpenChange={setShowCsvImportDialog}
+        onImported={handleLeadSuccess}
       />
 
       <EditLeadDialog

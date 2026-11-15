@@ -40,6 +40,8 @@ async function autoAssignSalesRep(tx, leadData) {
   return null;
 }
 
+export const autoAssignForImport = autoAssignSalesRep;
+
 // ─── Controllers ───────────────────────────────────────────────
 
 export const createLead = asyncHandler(async (req, res) => {

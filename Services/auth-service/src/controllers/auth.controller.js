@@ -14,6 +14,7 @@ import * as emailService from '../utils/email.js';
 import { signJwt, verifyJwt } from '../config/jwtKeys.js';
 import * as rateLimit from '../services/rateLimit.service.js';
 import { modulesSwitchedOffFor } from '../services/planModules.service.js';
+import { billingAccessClaims } from '../services/billingAccessClaims.js';
 import {
   createSession, consumeSession, revokeFamily, revokeUserSessions, revokeSessionByToken,
 } from '../services/session.service.js';
@@ -53,6 +54,7 @@ const signToken = (user, workspace, off = []) =>
       name: user.name,
       permissions: workspace.permissions,
       isSuperAdmin: workspace.isOwner || workspace.role === 'superAdmin',
+      ...billingAccessClaims(workspace),
       ...(off.length > 0 && { off }),
     },
     isCustomer(user) ? process.env.JWT_EXPIRE || '7d' : process.env.STAFF_ACCESS_TOKEN_TTL || '15m'

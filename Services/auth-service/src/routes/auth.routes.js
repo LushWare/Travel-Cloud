@@ -11,8 +11,10 @@ import {
   resendAgencySignupCodeHandler,
   verifyAgencySignupCode,
 } from '../controllers/agencySignup.controller.js';
+import billingRoutes from './billing.routes.js';
 
 const router = express.Router();
+router.use('/billing', billingRoutes);
 
 // Public
 router.get('/signup-plans', getSignupPlans);

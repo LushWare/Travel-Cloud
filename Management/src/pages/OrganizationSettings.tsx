@@ -9,6 +9,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 
 import PageHeader from '../components/PageHeader';
 import AgencyPlanSummary from '../components/AgencyPlanSummary';
+import AgencyBillingSettings from '../components/AgencyBillingSettings';
 import SupportAccessNote from '../components/SupportAccessNote';
 import EmailIntegrationSettings from '../components/EmailIntegrationSettings';
 import GoogleAdsIntegrationSettings from '../components/GoogleAdsIntegrationSettings';
@@ -343,6 +344,7 @@ const OrganizationSettings = () => {
         ) : (
           <div id="organization-settings-panel" role="tabpanel" aria-labelledby="organization-settings-tab" className="space-y-6">
             <AgencyPlanSummary />
+            <AgencyBillingSettings />
 
             <SupportAccessNote />
 

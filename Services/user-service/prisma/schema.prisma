@@ -252,6 +252,17 @@ model Tenant {
   trialEndsAt            DateTime?
   postTrialPlanVersionId String?                   @db.Uuid
   postTrialPlanVersion   PlanVersion?              @relation("TenantPostTrialPlan", fields: [postTrialPlanVersionId], references: [id], onDelete: Restrict)
+  stripeCheckoutPlanVersion PlanVersion?            @relation("TenantCheckoutPlanVersion", fields: [stripeCheckoutPlanVersionId], references: [id], onDelete: Restrict)
+  stripeCustomerId       String?                   @unique
+  stripeSubscriptionId   String?                   @unique
+  stripeCheckoutSessionId String?                   @unique
+  stripeCheckoutPlanVersionId String?              @db.Uuid
+  stripeCheckoutGeneration Int                     @default(0)
+  subscriptionCurrentPeriodEnd DateTime?
+  pastDueAt              DateTime?
+  pastDueReminderLevel   Int                       @default(0)
+  billingSuspended       Boolean                   @default(false)
+  cancelAtPeriodEnd      Boolean                   @default(false)
   memberships            Membership[]
   planAssignment         TenantPlan?
   planOverrides          PlanEntitlementOverride[]
@@ -292,6 +303,8 @@ model PlanVersion {
   plan             Plan         @relation(fields: [planId], references: [id], onDelete: Restrict)
   assignments      TenantPlan[]
   postTrialTenants Tenant[]     @relation("TenantPostTrialPlan")
+  checkoutTenants  Tenant[]     @relation("TenantCheckoutPlanVersion")
+  stripePrices     StripePlanPrice[]
 
   @@unique([planId, version])
   @@index([planId, isCurrent])
@@ -311,6 +324,25 @@ model TenantPlan {
   planVersion     PlanVersion @relation(fields: [planVersionId], references: [id], onDelete: Restrict)
 
   @@index([planVersionId])
+  @@schema("crm_platform")
+}
+
+model StripePlanPrice {
+  id              String      @id @default(uuid()) @db.Uuid
+  planVersionId   String      @unique @db.Uuid
+  stripeProductId String
+  stripePriceId   String      @unique
+  createdAt       DateTime    @default(now())
+  planVersion     PlanVersion @relation(fields: [planVersionId], references: [id], onDelete: Restrict)
+
+  @@schema("crm_platform")
+}
+
+model StripeWebhookEvent {
+  id         String   @id @db.VarChar(255)
+  type       String   @db.VarChar(255)
+  receivedAt DateTime @default(now())
+
   @@schema("crm_platform")
 }
 

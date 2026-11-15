@@ -20,6 +20,7 @@ import {
 } from '../controllers/lead-package-selection.controller.js';
 import { previewPricing } from '../controllers/pricing.controller.js';
 import { getAssignmentSettings, updateAssignmentSettings } from '../controllers/settings.controller.js';
+import { importLeadCsv, previewLeadCsv } from '../controllers/leadImport.controller.js';
 import {
   getTripBrief, getPaymentBrief, attachPackageForVoice, adjustItineraryForVoice, previewPricingForVoice,
   approveAiChange,
@@ -55,6 +56,8 @@ router.post('/internal/voice-auto-quote', internalTokenAuth, autoQuoteVoiceBooki
 // Protected
 router.use(requireAuth);
 router.post('/pricing/preview', authorize('admin', 'salesRep'), previewPricing);
+router.post('/import/preview', authorize('admin'), previewLeadCsv);
+router.post('/import', authorize('admin'), importLeadCsv);
 router.route('/').post(authorize('admin', 'salesRep'), createLead).get(authorize('admin', 'salesRep'), getLeads);
 router.get('/search', authorize('admin', 'salesRep'), searchLeads);
 router.get('/my-leads', authorize('salesRep'), getMyLeads);
