@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { signupService, userDb, email, limiter, completeLogin } = vi.hoisted(() => ({
+const { signupService, userDb, email, limiter, completeLogin, memberships } = vi.hoisted(() => ({
   signupService: {
     createAgencySignup: vi.fn(),
     listSignupPlans: vi.fn(),
@@ -11,13 +11,15 @@ const { signupService, userDb, email, limiter, completeLogin } = vi.hoisted(() =
   email: { sendAgencySignupCode: vi.fn() },
   limiter: { hit: vi.fn() },
   completeLogin: vi.fn(),
+  memberships: { findPendingApprovalAgency: vi.fn() },
 }));
 
 vi.mock('../../services/agencySignup.service.js', () => signupService);
 vi.mock('../../db/userQueries.js', () => userDb);
 vi.mock('../../utils/email.js', () => email);
 vi.mock('../../services/rateLimit.service.js', () => limiter);
-vi.mock('../auth.controller.js', () => ({ completeLogin }));
+vi.mock('../auth.controller.js', () => ({ completeLogin, PENDING_APPROVAL_MESSAGE: 'Your agency is waiting for approval.' }));
+vi.mock('../../db/membershipQueries.js', () => memberships);
 
 import {
   getSignupPlans,
@@ -54,6 +56,7 @@ beforeEach(() => {
   });
   userDb.findUserById.mockResolvedValue({ id: 'owner-id', name: 'Alex Owner', email: 'alex@example.com', role: 'admin' });
   email.sendAgencySignupCode.mockResolvedValue();
+  memberships.findPendingApprovalAgency.mockResolvedValue(null);
 });
 
 describe('agency signup endpoints', () => {
@@ -123,5 +126,22 @@ describe('agency signup endpoints', () => {
     expect(error).toBeUndefined();
     expect(body.message).toContain('If an unfinished signup exists');
     expect(email.sendAgencySignupCode).not.toHaveBeenCalled();
+  });
+});
+
+describe('agency signup awaiting approval', () => {
+  it('confirms the email but opens no session while the agency awaits approval', async () => {
+    memberships.findPendingApprovalAgency.mockResolvedValue('North Star Travel');
+
+    const { body } = await call(verifyAgencySignupCode, { body: { email: 'alex@example.com', code: '123456' } });
+
+    expect(body.data).toEqual({ pendingApproval: true });
+    expect(completeLogin).not.toHaveBeenCalled();
+  });
+
+  it('signs the owner in straight away when no approval is needed', async () => {
+    await call(verifyAgencySignupCode, { body: { email: 'alex@example.com', code: '123456' } });
+
+    expect(completeLogin).toHaveBeenCalledOnce();
   });
 });

@@ -1,4 +1,5 @@
 import { assertPlanFeature, metered } from './plan.service.js';
+import { cloudRunAuthHeader } from './cloudRunAuth.js';
 
 const NOTIFICATION_SERVICE_URL = process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:3008';
 const INTERNAL_EVENTS_TOKEN = process.env.INTERNAL_EVENTS_TOKEN || '';
@@ -17,6 +18,8 @@ export async function sendWhatsappText({ to, body, fetchImpl = fetch }) {
       headers: {
         'content-type': 'application/json',
         'x-internal-token': INTERNAL_EVENTS_TOKEN,
+        // notification-service is private on Cloud Run; without this the call is refused at its edge.
+        ...(await cloudRunAuthHeader(NOTIFICATION_SERVICE_URL)),
       },
       body: JSON.stringify({ type: 'text', to, body, meta: { sourceService: 'lead-service', kind: 'agent-reply' } }),
     });

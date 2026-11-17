@@ -2,7 +2,9 @@
 // (auth-service, refreshed on every page load). The server enforces them; this only explains
 // them in the UI before someone runs into a refusal.
 
-export type PlanModule = 'finance_docs' | 'whatsapp' | 'vendors' | 'travel_booking' | 'analytics_full';
+export type PlanModule =
+  | 'finance_docs' | 'whatsapp' | 'vendors' | 'travel_booking' | 'analytics_full'
+  | 'ai_copilot' | 'voice_agent' | 'public_website';
 
 // Modules whose existing records stay viewable when the plan leaves them out.
 const READ_ONLY_WHEN_OFF: ReadonlySet<PlanModule> = new Set(['finance_docs', 'vendors', 'travel_booking']);

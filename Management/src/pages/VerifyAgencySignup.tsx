@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
-import { Loader2, MailCheck } from 'lucide-react';
+import { Clock, Loader2, MailCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '../contexts/AuthContext';
@@ -16,8 +16,26 @@ export default function VerifyAgencySignup() {
   const [resending, setResending] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [awaitingApproval, setAwaitingApproval] = useState(false);
 
   if (isAuthenticated) return <Navigate to="/" replace />;
+
+  if (awaitingApproval) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-background px-4 py-10">
+        <div className="w-full max-w-md rounded-xl border border-border p-6 text-center sm:p-8" role="status">
+          <Clock className="mx-auto mb-3 h-8 w-8 text-primary" aria-hidden="true" />
+          <h1 className="font-heading text-2xl font-bold text-foreground">Your email is confirmed</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            We review each new agency before it opens. We will email you as soon as yours is ready, and your 14-day free trial starts then.
+          </p>
+          <p className="mt-5 text-sm text-muted-foreground">
+            <Link to="/login" className="font-medium text-primary hover:underline">Back to sign in</Link>
+          </p>
+        </div>
+      </main>
+    );
+  }
 
   const verify = async (event: FormEvent) => {
     event.preventDefault();
@@ -26,6 +44,11 @@ export default function VerifyAgencySignup() {
     setMessage('');
     try {
       const response = await authService.verifyAgencySignup(email, code);
+      // Lushware reviews new agencies while approval is switched on: no session until it is approved.
+      if (response.data?.pendingApproval) {
+        setAwaitingApproval(true);
+        return;
+      }
       setAuth(response.data.user);
       navigate('/', { replace: true });
     } catch (requestError) {

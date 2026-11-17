@@ -195,3 +195,53 @@ export async function statusBeforeSuspension(id) {
   );
   return rows[0]?.previous ?? null;
 }
+
+const TRIAL_DAYS = 14;
+
+/**
+ * Lushware's decision on a self-signup that was waiting for approval. Approving starts the 14-day
+ * trial from today; rejecting closes the agency for good (it keeps its row as a tombstone, so the
+ * owner's email stays taken). Returns the owners to email, or null if the agency was no longer
+ * waiting (someone else decided first).
+ */
+export async function decidePendingSignup(id, { approve, audit }) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rowCount } = approve
+      ? await client.query(
+        `UPDATE crm_platform."Tenant"
+         SET status = 'trial', "trialEndsAt" = NOW() + make_interval(days => $2), "updatedAt" = NOW()
+         WHERE id = $1 AND status::text = 'pending_approval'`,
+        [id, TRIAL_DAYS],
+      )
+      : await client.query(
+        `UPDATE crm_platform."Tenant" SET status = 'deleted', "updatedAt" = NOW()
+         WHERE id = $1 AND status::text = 'pending_approval'`,
+        [id],
+      );
+    if (rowCount !== 1) {
+      await client.query('ROLLBACK');
+      return null;
+    }
+    await client.query(
+      `INSERT INTO crm_platform."AuditLog"
+         ("tenantId", "actorId", "actorEmail", "actorRole", action, "targetType", "targetId", summary, details, "ipAddress", "requestId")
+       VALUES ($1::uuid, $2, $3, $4, $5, 'agency', $6, $7, $8::jsonb, $9, $10)`,
+      [id, audit.actorId, audit.actorEmail, audit.actorRole, audit.action, String(id), audit.summary,
+        JSON.stringify(audit.details ?? null), audit.ipAddress, audit.requestId],
+    );
+    const { rows: owners } = await client.query(
+      `SELECT u.name, u.email FROM crm_users."Membership" m JOIN crm_users."User" u ON u.id = m."userId"
+       WHERE m."tenantId" = $1 AND m."isOwner"`,
+      [id],
+    );
+    await client.query('COMMIT');
+    return owners;
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+}

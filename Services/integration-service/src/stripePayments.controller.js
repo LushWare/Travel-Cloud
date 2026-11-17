@@ -4,6 +4,7 @@ import { requireTenantId, runWithTenant } from '../../shared/tenancy/src/context
 import { tenantDb } from './db.js';
 import { decryptSecret } from './crypto.js';
 import { findStripeIntegration } from './stripe.controller.js';
+import { cloudRunAuthHeader } from './cloudRunAuth.js';
 import {
   createStripeCheckoutSession,
   expireStripeCheckoutSession,
@@ -40,6 +41,8 @@ async function callBilling(path, tenantId, body) {
       'x-internal-token': internalToken,
       'x-tenant-id': tenantId,
       ...(body && { 'content-type': 'application/json' }),
+      // Private on Cloud Run: without this Google ID token the call is refused at its edge.
+      ...(await cloudRunAuthHeader(integrationBaseUrl())),
     },
     ...(body && { body: JSON.stringify(body) }),
     signal: AbortSignal.timeout(10_000),

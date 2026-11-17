@@ -1,4 +1,5 @@
 import logger from '../config/logger.js';
+import { cloudRunAuthHeader } from './cloudRunAuth.js';
 
 const LEAD_SERVICE_URL = process.env.LEAD_SERVICE_URL || 'http://localhost:3004';
 const INTERNAL_EVENTS_TOKEN = process.env.INTERNAL_EVENTS_TOKEN || '';
@@ -25,6 +26,8 @@ export async function submitLeadIntake(payload, { fetchImpl = fetch } = {}) {
       headers: {
         'content-type': 'application/json',
         'x-internal-token': INTERNAL_EVENTS_TOKEN,
+        // Private on Cloud Run: without this Google ID token the call is refused at its edge.
+        ...(await cloudRunAuthHeader(LEAD_SERVICE_URL)),
       },
       body: JSON.stringify(payload),
       signal: controller.signal,

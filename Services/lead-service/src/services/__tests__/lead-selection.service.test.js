@@ -95,7 +95,7 @@ describe('deriveSelectionView', () => {
     expect(view.packageName).toBe('Sri Lanka Explorer');
     expect(view.days).toHaveLength(1);
     expect(view.costLines.length).toBeGreaterThan(0);
-    expect(fetchImpl).toHaveBeenCalledWith(expect.stringContaining('/packages/pkg-1'));
+    expect(fetchImpl).toHaveBeenCalledWith(expect.stringContaining('/packages/pkg-1'), { headers: {} });
   });
 
   it('carries catalog place/activity names through the load round-trip (derive → editor)', async () => {

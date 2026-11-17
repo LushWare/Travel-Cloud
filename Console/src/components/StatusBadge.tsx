@@ -1,6 +1,7 @@
 import type { AgencyStatus } from '../lib/api';
 
 const STYLE: Record<AgencyStatus, { label: string; className: string }> = {
+  pending_approval: { label: 'Awaiting approval', className: 'bg-warning/10 text-warning ring-warning/30' },
   active: { label: 'Active', className: 'bg-success/10 text-success ring-success/30' },
   trial: { label: 'Trial', className: 'bg-accent text-primary ring-primary/30' },
   past_due: { label: 'Unpaid', className: 'bg-warning/10 text-warning ring-warning/30' },

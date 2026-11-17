@@ -34,6 +34,19 @@ export async function listUsableMemberships(userId) {
   return rows.map(toWorkspace);
 }
 
+/** The name of an agency this person belongs to that is still waiting for Lushware's approval, or null. */
+export async function findPendingApprovalAgency(userId) {
+  const rows = await prisma.$queryRaw`
+    SELECT t.name
+    FROM crm_users."Membership" m
+    JOIN crm_platform."Tenant" t ON t.id = m."tenantId"
+    WHERE m."userId" = ${userId} AND m.status = 'active' AND t.status::text = 'pending_approval'
+    ORDER BY t."createdAt" DESC
+    LIMIT 1
+  `;
+  return rows[0]?.name ?? null;
+}
+
 /** Any membership (invited, active or suspended) of a person in one agency. */
 export async function findMembership(userId, tenantId) {
   if (!userId || !tenantId) return null;

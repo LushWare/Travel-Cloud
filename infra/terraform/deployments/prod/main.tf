@@ -7,12 +7,18 @@ module "deployment" {
   region       = var.region
   image_tag    = var.image_tag
 
+  # Failed scheduled jobs (the hourly billing job) are emailed here; empty = no alert.
+  ops_alert_email = var.ops_alert_email
+
   # Cycle-breaker for notification-service's LEAD_SERVICE_URL — this
   # environment's lead-service Cloud Run URL (fill in after the first apply).
   notification_lead_service_url = var.notification_lead_service_url
   # Cycle-breaker for lead-service's BILLING_SERVICE_URL — this
   # environment's billing-service Cloud Run URL (fill in after the first apply).
   lead_billing_service_url = var.lead_billing_service_url
+  # Two more cycle-breakers of the same kind (fill in after the first apply).
+  package_lead_service_url        = var.package_lead_service_url
+  billing_integration_service_url = var.billing_integration_service_url
 
   # Plain company-specific config
   cloudinary_cloud_name        = var.cloudinary_cloud_name

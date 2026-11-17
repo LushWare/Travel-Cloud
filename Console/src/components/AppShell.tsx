@@ -24,10 +24,12 @@ type Props = {
   onChangePassword: () => void;
   onSignOut: () => void;
   children: ReactNode;
+  /** Use the full width of the screen (wide tables) instead of the centred reading width. */
+  wide?: boolean;
 };
 
 /** The same sidebar + page-header layout as Management, so staff move between the two without relearning. */
-export default function AppShell({ user, active, title, subtitle, actions, onChangePassword, onSignOut, children }: Props) {
+export default function AppShell({ user, active, title, subtitle, actions, onChangePassword, onSignOut, children, wide = false }: Props) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const sidebar = (
@@ -111,7 +113,7 @@ export default function AppShell({ user, active, title, subtitle, actions, onCha
             {actions && <div className="ml-auto flex flex-wrap items-center gap-2">{actions}</div>}
           </div>
         </header>
-        <main className="mx-auto w-full max-w-6xl flex-1 p-4 sm:p-6">{children}</main>
+        <main className={`mx-auto w-full flex-1 p-4 sm:p-6 ${wide ? '' : 'max-w-6xl'}`}>{children}</main>
       </div>
     </div>
   );

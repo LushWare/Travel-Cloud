@@ -5,7 +5,7 @@ import {
   Menu, X, Home, Users, MapPin, DollarSign, User, LogOut,
   BarChart3, Briefcase, ChevronRight, PanelLeftClose, PanelLeftOpen, Sparkles, Plane, Hotel, Settings, Building2, Lock
 } from "lucide-react";
-import { moduleLockReason, type PlanModule } from "../lib/planModules";
+import { isModuleOff, moduleLockReason, type PlanModule } from "../lib/planModules";
 import { useAuth } from "../contexts/AuthContext";
 import { usePermission } from "../contexts/PermissionContext";
 import toast from '@/lib/toast';
@@ -152,10 +152,10 @@ const Sidebar = () => {
       }
     },
     { icon: Plane, label: "Flights", path: "/flights", requiredPermission: null, allowedRoles: ["salesRep", "admin", "superAdmin"], module: "travel_booking" },
-    { icon: Hotel, label: "Hotels", path: "/hotels", requiredPermission: null, allowedRoles: ["salesRep", "admin", "superAdmin"] },
+    { icon: Hotel, label: "Hotels", path: "/hotels", requiredPermission: null, allowedRoles: ["salesRep", "admin", "superAdmin"], module: "travel_booking" },
     { icon: DollarSign, label: "Billing", path: "/billing", requiredPermission: "manage_billing" },
     { icon: BarChart3, label: "Analytics", path: "/analytics", requiredPermission: "view_reports", module: "analytics_full" },
-    { icon: Sparkles, label: "AI Insights", path: "/ai-insights", requiredPermission: null, allowedRoles: ["salesRep", "admin", "superAdmin"] },
+    { icon: Sparkles, label: "AI Insights", path: "/ai-insights", requiredPermission: null, allowedRoles: ["salesRep", "admin", "superAdmin"], module: "ai_copilot" },
     { icon: User, label: "Users", path: "/users", requiredPermission: null, requiresAnyPermission: ["manage_users", "manage_sales_reps", "manage_vendors", "manage_admins"] },
     {
       icon: Briefcase,
@@ -175,6 +175,8 @@ const Sidebar = () => {
 
   // Filter navigation items based on permissions and roles
   const accessibleItems = navigationItems.filter((item) => {
+    // Careers is Lushware's own hiring page, part of its public website: other agencies never see it.
+    if (item.path === '/career' && isModuleOff(user, 'public_website')) return false;
     if (item.customCheck) {
       return item.customCheck(user?.role, user?.isSuperAdmin, (perm: string) => permission.hasPermission(perm));
     }

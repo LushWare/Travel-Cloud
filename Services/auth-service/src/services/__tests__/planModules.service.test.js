@@ -10,6 +10,9 @@ vi.mock('../../config/logger.js', () => ({ default: loggerMock }));
 import { modulesSwitchedOffFor } from '../planModules.service.js';
 
 const AGENCY = '00000000-0000-4000-8000-000000000003';
+// The opt-in modules (AI, voice, public website) are off unless named; name them on so these
+// tests are only about the modules they switch off.
+const LUSH_ONLY_ON = { ai_copilot: true, voice_agent: true, public_website: true };
 const plan = (features) => [{
   id: 'v', planId: 'p', version: 1, name: 'Starter', entitlements: { features },
   catalogPlanId: 'p', planKey: 'starter',
@@ -19,14 +22,14 @@ beforeEach(() => vi.clearAllMocks());
 
 describe('modulesSwitchedOffFor', () => {
   it('returns the modules the assigned plan switches off', async () => {
-    prismaMock.$queryRawUnsafe.mockResolvedValueOnce(plan({ finance_docs: false, whatsapp: false })).mockResolvedValueOnce([]);
+    prismaMock.$queryRawUnsafe.mockResolvedValueOnce(plan({ finance_docs: false, whatsapp: false, ...LUSH_ONLY_ON })).mockResolvedValueOnce([]);
 
     expect(await modulesSwitchedOffFor(AGENCY)).toEqual(['finance_docs', 'whatsapp']);
   });
 
   it('applies an agency override that turns a module back on', async () => {
     prismaMock.$queryRawUnsafe
-      .mockResolvedValueOnce(plan({ finance_docs: false }))
+      .mockResolvedValueOnce(plan({ finance_docs: false, ...LUSH_ONLY_ON }))
       .mockResolvedValueOnce([{ entitlementKey: 'features.finance_docs', value: true }]);
 
     expect(await modulesSwitchedOffFor(AGENCY)).toEqual([]);

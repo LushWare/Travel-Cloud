@@ -629,3 +629,43 @@ describe('agency on the request log line', () => {
       .toEqual({ tenantId: '00000000-0000-4000-8000-000000000002' });
   });
 });
+
+describe('Lushware-only and hotel modules', () => {
+  const AGENCY = '00000000-0000-4000-8000-000000000002';
+  const staff = (off) => `Bearer ${tokenFor({ id: 'user-1', tid: AGENCY, role: 'admin', email: 'a@x.test', name: 'A', permissions: [], off })}`;
+
+  it.each([
+    ['POST', '/api/v1/hotels/search', 'travel_booking'],
+    ['POST', '/api/v1/hotels/book', 'travel_booking'],
+    ['POST', '/api/v1/hotels/bookings/b-1/cancel', 'travel_booking'],
+    ['GET', '/api/v1/recommendations', 'ai_copilot'],
+    ['POST', '/api/v1/leads/lead-1/ai-verify', 'ai_copilot'],
+    ['GET', '/api/v1/voice/leads/lead-1/calls', 'voice_agent'],
+    ['GET', '/api/v1/vacancies/admin/all', 'public_website'],
+    ['GET', '/api/v1/careers', 'public_website'],
+    ['GET', '/api/v1/analytics/website/overview', 'public_website'],
+  ])('refuses %s %s when %s is off', async (method, path, module) => {
+    const res = await request(app)[method.toLowerCase()](path).set('Authorization', staff([module])).send({});
+
+    expect(res.status).toBe(403);
+    expect(res.body.module).toBe(module);
+  });
+
+  it('keeps existing hotel bookings readable when hotel booking is off', async () => {
+    const res = await request(app).get('/api/v1/hotels/bookings').set('Authorization', staff(['travel_booking']));
+
+    expect(res.status).toBe(200);
+  });
+
+  it('keeps AI hotel suggestions for itineraries outside hotel booking', async () => {
+    const res = await request(app).post('/api/v1/hotels/suggest').set('Authorization', staff(['travel_booking'])).send({});
+
+    expect(res.status).toBe(200);
+  });
+
+  it('still serves the public careers page when careers are off for staff', async () => {
+    const res = await request(app).get('/api/v1/vacancies');
+
+    expect(res.status).toBe(200);
+  });
+});

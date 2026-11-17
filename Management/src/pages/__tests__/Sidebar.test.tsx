@@ -552,7 +552,7 @@ describe('Sidebar plan modules', () => {
     setUser({ ...ADMIN, planModulesOff: ['travel_booking'] });
     render(<Sidebar />);
 
-    expect(await screen.findByTestId('plan-lock-travel_booking')).toBeInTheDocument();
+    expect(await screen.findAllByTestId('plan-lock-travel_booking')).toHaveLength(2);
     expect(screen.getByLabelText('Flights (not in your plan)')).toHaveAttribute('title', expect.stringMatching(/^Flights: View only/));
   });
 
@@ -587,5 +587,36 @@ describe('Sidebar plan modules', () => {
 
     await screen.findByTitle('Flights');
     expect(screen.queryByTestId(/^plan-lock-/)).not.toBeInTheDocument();
+  });
+});
+
+describe('Sidebar Lushware-only modules', () => {
+  it('hides Career for an agency owner without the public website', async () => {
+    setUser({ name: 'Owner', role: 'superAdmin', isSuperAdmin: true, planModulesOff: ['public_website'] });
+    render(<Sidebar />);
+
+    await screen.findByTitle('Dashboard');
+    expect(screen.queryByTitle('Career')).not.toBeInTheDocument();
+  });
+
+  it('keeps Career for Lushware\'s own agency', async () => {
+    setUser({ name: 'Owner', role: 'superAdmin', isSuperAdmin: true, planModulesOff: [] });
+    render(<Sidebar />);
+
+    expect(await screen.findByTitle('Career')).toBeInTheDocument();
+  });
+
+  it('locks Hotels when hotel booking is not in the plan', async () => {
+    setUser({ ...ADMIN, planModulesOff: ['travel_booking'] });
+    render(<Sidebar />);
+
+    expect(await screen.findByLabelText('Hotels (not in your plan)')).toBeInTheDocument();
+  });
+
+  it('locks AI Insights when the AI module is not in the plan', async () => {
+    setUser({ ...ADMIN, planModulesOff: ['ai_copilot'] });
+    render(<Sidebar />);
+
+    expect(await screen.findByLabelText('AI Insights (not in your plan)')).toBeInTheDocument();
   });
 });

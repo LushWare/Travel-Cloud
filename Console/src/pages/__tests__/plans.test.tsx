@@ -64,7 +64,7 @@ describe('Plans page', () => {
     await user.click(await screen.findByRole('button', { name: /Edit/ }));
 
     expect(screen.getByLabelText('Invoices, receipts, credit notes and vouchers')).toBeChecked();
-    expect(screen.getByLabelText('Flight booking')).toBeChecked();
+    expect(screen.getByLabelText('Flight and hotel booking')).toBeChecked();
   });
 
   it('saves a module switched off as false', async () => {
@@ -97,6 +97,20 @@ describe('Plans page', () => {
     expect(screen.getByLabelText('WhatsApp delivery')).toBeChecked();
     expect(screen.getByLabelText('AI itinerary builder')).not.toBeChecked();
   });
+
+  it.each(['AI insights and recommendations', 'Voice agent', 'Public website, careers and website analytics'])(
+    'starts a new plan with the Lushware-only module "%s" off',
+    async (label) => {
+      const user = userEvent.setup();
+      fetchMock = vi.fn().mockResolvedValue(response([]));
+      vi.stubGlobal('fetch', fetchMock);
+      open();
+
+      await user.click(await screen.findByRole('button', { name: /New plan/ }));
+
+      expect(screen.getByLabelText(label)).not.toBeChecked();
+    },
+  );
 
   it('creates a new immutable version when editing an existing plan', async () => {
     const user = userEvent.setup();

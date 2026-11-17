@@ -32,5 +32,7 @@ export function membershipMock(userDb) {
         : null;
     }),
     activateInvitedMemberships: vi.fn(async () => {}),
+    // No agency is waiting for approval unless a test says so.
+    findPendingApprovalAgency: vi.fn(async () => null),
   };
 }

@@ -1,3 +1,4 @@
+import { cloudRunAuthHeader } from './cloudRunAuth.js';
 const INTEGRATION_SERVICE_URL = process.env.INTEGRATION_SERVICE_URL || 'http://localhost:3015';
 const INTERNAL_EVENTS_TOKEN = process.env.INTERNAL_EVENTS_TOKEN || '';
 
@@ -9,6 +10,8 @@ export async function createStripeInvoicePaymentLink({ invoiceId, tenantId, fetc
       'content-type': 'application/json',
       'x-internal-token': INTERNAL_EVENTS_TOKEN,
       'x-tenant-id': tenantId,
+      // Private on Cloud Run: without this Google ID token the call is refused at its edge.
+      ...(await cloudRunAuthHeader(INTEGRATION_SERVICE_URL)),
     },
     body: JSON.stringify({ invoiceId }),
     signal: AbortSignal.timeout(10_000),

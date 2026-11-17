@@ -217,3 +217,10 @@ export function mapFacebookLeadToLead(facebookData, platformHint) {
     message: fields.comments || fields.message || '',
   };
 }
+
+/** Confirms a stored page token still works (the page answers with its own id). */
+export async function checkFacebookPageToken(pageId, accessToken) {
+  const params = new URLSearchParams({ fields: 'id', access_token: accessToken });
+  const page = await graphRequest(encodeURIComponent(pageId), { params });
+  if (page?.id !== pageId) throw new Error('Meta returned a different page');
+}

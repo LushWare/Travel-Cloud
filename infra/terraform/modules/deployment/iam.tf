@@ -129,6 +129,135 @@ resource "google_cloud_run_v2_service_iam_member" "gateway_invoker_notification"
   role     = "roles/run.invoker"
   member   = "serviceAccount:${google_service_account.services["gateway"].email}"
 }
+
+# auth-service's emails (sign-in codes, password resets, sign-up codes, and billing reminders
+# from the hourly billing-lifecycle job, which runs as auth-service's account) go through
+# notification-service. Without this grant Cloud Run refuses them at its edge.
+resource "google_cloud_run_v2_service_iam_member" "auth_invoker_notification" {
+  project  = var.project_id
+  location = var.region
+  name     = module.notification_service.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.services["auth-service"].email}"
+}
+
+# Customer emails and WhatsApp go through notification-service. Each caller below sends a
+# Google ID token (src/services/cloudRunAuth.js); without its grant Cloud Run refuses the call.
+resource "google_cloud_run_v2_service_iam_member" "billing_invoker_notification" {
+  project  = var.project_id
+  location = var.region
+  name     = module.notification_service.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.services["billing-service"].email}"
+}
+
+resource "google_cloud_run_v2_service_iam_member" "booking_invoker_notification" {
+  project  = var.project_id
+  location = var.region
+  name     = module.notification_service.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.services["booking-service"].email}"
+}
+
+resource "google_cloud_run_v2_service_iam_member" "career_invoker_notification" {
+  project  = var.project_id
+  location = var.region
+  name     = module.notification_service.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.services["career-service"].email}"
+}
+
+resource "google_cloud_run_v2_service_iam_member" "integration_invoker_notification" {
+  # The daily integration-health job (integration-service's account) emails owners about broken connections.
+  project  = var.project_id
+  location = var.region
+  name     = module.notification_service.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.services["integration-service"].email}"
+}
+
+resource "google_cloud_run_v2_service_iam_member" "lead_invoker_notification" {
+  project  = var.project_id
+  location = var.region
+  name     = module.notification_service.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.services["lead-service"].email}"
+}
+
+# Other service-to-service calls. Each caller sends a Google ID token (cloudRunAuth.js);
+# a call without its grant here is refused at Cloud Run's edge, in production only.
+resource "google_cloud_run_v2_service_iam_member" "package_invoker_user" {
+  # Agency branding for package PDFs and the trip wizard.
+  project  = var.project_id
+  location = var.region
+  name     = module.user_service.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.services["package-service"].email}"
+}
+
+resource "google_cloud_run_v2_service_iam_member" "package_invoker_lead" {
+  # Website trip-wizard enquiries become leads.
+  project  = var.project_id
+  location = var.region
+  name     = module.lead_service.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.services["package-service"].email}"
+}
+
+resource "google_cloud_run_v2_service_iam_member" "lead_invoker_package" {
+  # Copying a package's itinerary into a lead.
+  project  = var.project_id
+  location = var.region
+  name     = module.package_service.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.services["lead-service"].email}"
+}
+
+resource "google_cloud_run_v2_service_iam_member" "lead_invoker_billing" {
+  # Creating a quotation from a lead.
+  project  = var.project_id
+  location = var.region
+  name     = module.billing_service.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.services["lead-service"].email}"
+}
+
+resource "google_cloud_run_v2_service_iam_member" "billing_invoker_user" {
+  # Branding and bank details on every quotation, invoice, receipt and voucher.
+  project  = var.project_id
+  location = var.region
+  name     = module.user_service.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.services["billing-service"].email}"
+}
+
+resource "google_cloud_run_v2_service_iam_member" "billing_invoker_lead" {
+  # Lead status events and timeline notes when documents are sent or paid.
+  project  = var.project_id
+  location = var.region
+  name     = module.lead_service.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.services["billing-service"].email}"
+}
+
+resource "google_cloud_run_v2_service_iam_member" "billing_invoker_integration" {
+  # Stripe payment links on invoices.
+  project  = var.project_id
+  location = var.region
+  name     = module.integration_service.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.services["billing-service"].email}"
+}
+
+resource "google_cloud_run_v2_service_iam_member" "integration_invoker_billing" {
+  # A Stripe payment becomes a receipt in billing.
+  project  = var.project_id
+  location = var.region
+  name     = module.billing_service.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.services["integration-service"].email}"
+}
+
 resource "google_cloud_run_v2_service_iam_member" "gateway_invoker_integration" {
   project  = var.project_id
   location = var.region

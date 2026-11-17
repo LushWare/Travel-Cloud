@@ -1,5 +1,6 @@
 import AppError from '../utils/appError.js';
 import { buildItineraryCostLines } from '../../../shared/lead-pricing-engine/src/index.js';
+import { cloudRunAuthHeader } from './cloudRunAuth.js';
 
 const PACKAGE_SERVICE_URL = process.env.PACKAGE_SERVICE_URL || 'http://localhost:3003';
 
@@ -9,7 +10,10 @@ const PACKAGE_SERVICE_URL = process.env.PACKAGE_SERVICE_URL || 'http://localhost
  * @param {Function} [fetchImpl] - injectable for tests
  */
 export async function fetchPackage(packageId, fetchImpl = fetch) {
-  const res = await fetchImpl(`${PACKAGE_SERVICE_URL}/api/v1/packages/${packageId}`);
+  // Private on Cloud Run: without this Google ID token the call is refused at its edge.
+  const res = await fetchImpl(`${PACKAGE_SERVICE_URL}/api/v1/packages/${packageId}`, {
+    headers: await cloudRunAuthHeader(PACKAGE_SERVICE_URL),
+  });
   if (!res.ok) {
     throw new AppError(`Package not found: ${packageId}`, 404);
   }

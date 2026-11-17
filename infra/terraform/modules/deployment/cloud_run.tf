@@ -152,6 +152,8 @@ module "package_service" {
   ]
   plain_env = merge(local.services.package-service.plain_env, {
     USER_SERVICE_URL = module.user_service.uri
+    # Cycle-breaker (lead-service already points at package-service); see variables.tf.
+    LEAD_SERVICE_URL = var.package_lead_service_url
   })
   memory                = local.services.package-service.memory
   cpu                   = local.services.package-service.cpu
@@ -252,6 +254,8 @@ module "billing_service" {
     USER_SERVICE_URL         = module.user_service.uri
     LEAD_SERVICE_URL         = module.lead_service.uri
     NOTIFICATION_SERVICE_URL = module.notification_service.uri
+    # Cycle-breaker (integration-service already points at billing-service); see variables.tf.
+    INTEGRATION_SERVICE_URL = var.billing_integration_service_url
   })
   memory                = local.services.billing-service.memory
   cpu                   = local.services.billing-service.cpu
@@ -282,7 +286,10 @@ module "career_service" {
       env_var   = local.secret_env_names[id]
     }
   ]
-  plain_env             = local.services.career-service.plain_env
+  # Without this the application emails would go to localhost inside the container.
+  plain_env = merge(local.services.career-service.plain_env, {
+    NOTIFICATION_SERVICE_URL = module.notification_service.uri
+  })
   memory                = local.services.career-service.memory
   cpu                   = local.services.career-service.cpu
   allow_unauthenticated = local.services.career-service.allow_unauthenticated
@@ -487,6 +494,8 @@ module "integration_service" {
     PUBLIC_API_URL  = var.elevenlabs_public_base_url
     MANAGEMENT_URL  = local.management_url
     LEAD_SERVICE_URL = module.lead_service.uri
+    # Stripe payments are recorded as receipts in billing.
+    BILLING_SERVICE_URL = module.billing_service.uri
   })
   memory                = local.services.integration-service.memory
   cpu                   = local.services.integration-service.cpu

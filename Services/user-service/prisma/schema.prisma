@@ -233,6 +233,7 @@ model PolicyDocument {
 // crm_platform is the tenant registry: not tenant-owned, so never under tenant RLS.
 
 enum TenantStatus {
+  pending_approval
   trial
   active
   past_due
@@ -495,4 +496,14 @@ model Membership {
   @@unique([tenantId, userId])
   @@index([userId])
   @@schema("crm_users")
+}
+
+// Lushware-wide switches set from the Console (e.g. require_signup_approval). Admin connection only.
+model PlatformSetting {
+  key         String   @id @db.VarChar(64)
+  value       Json
+  updatedById String?
+  updatedAt   DateTime @default(now())
+
+  @@schema("crm_platform")
 }

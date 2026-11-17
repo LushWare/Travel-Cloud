@@ -12,7 +12,7 @@ import {
   Users, DollarSign, Globe, Briefcase,
   TrendingUp, ArrowRight, Layers, Zap, Lock
 } from 'lucide-react';
-import { moduleLockReason } from '../lib/planModules';
+import { isModuleOff, moduleLockReason } from '../lib/planModules';
 import { useAuth } from '../contexts/AuthContext';
 import { useSearchParams } from 'react-router-dom';
 
@@ -56,6 +56,8 @@ const Analytics = () => {
   ];
 
   const tabs = allTabs.filter((tab) => {
+    // Website analytics is about Lushware's own public website; other agencies have none.
+    if (tab.id === 'website' && isModuleOff(user, 'public_website')) return false;
     if (user?.role === 'salesRep') return !ADMIN_ONLY_TAB_IDS.includes(tab.id);
     return !SALESREP_ONLY_TAB_IDS.includes(tab.id);
   });

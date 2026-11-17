@@ -101,6 +101,34 @@ describe('processStripeEvent', () => {
     expect(tx.$executeRaw.mock.calls[0]).toContain('sub_1');
   });
 
+  it('leaves a closed agency alone when its cancelled subscription is reported', async () => {
+    tx.$queryRaw.mockResolvedValue([{ id: 'evt_deleted' }]);
+
+    await processStripeEvent({
+      id: 'evt_deleted',
+      type: 'customer.subscription.deleted',
+      data: { object: { id: 'sub_1', customer: 'cus_1', status: 'canceled' } },
+    });
+
+    const updateSql = tx.$executeRaw.mock.calls.map((call) => call[0].join('')).find((text) => text.includes('UPDATE crm_platform."Tenant"'));
+    expect(updateSql).toContain("status NOT IN ('pending_deletion', 'deleted')");
+  });
+
+  it('never reopens a closed agency when a late invoice payment arrives', async () => {
+    vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_secret');
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ status: 'canceled', items: { data: [] } }) }));
+    tx.$queryRaw.mockResolvedValue([{ id: 'evt_paid' }]);
+
+    await processStripeEvent({
+      id: 'evt_paid',
+      type: 'invoice.payment_succeeded',
+      data: { object: { customer: 'cus_1', subscription: 'sub_1' } },
+    });
+
+    const updateSql = tx.$executeRaw.mock.calls.map((call) => call[0].join('')).find((text) => text.includes('"billingSuspended" = false'));
+    expect(updateSql).toContain("status NOT IN ('pending_deletion', 'deleted')");
+  });
+
   it('applies the paid plan only after Stripe confirms an active invoice', async () => {
     vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_secret');
     const fetch = vi.fn().mockResolvedValue({

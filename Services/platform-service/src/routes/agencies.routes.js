@@ -1,5 +1,7 @@
 import { Router } from 'express';
-import { getAgency, listAgencies, restoreAgency, startHelp, suspendAgency } from '../controllers/agencies.controller.js';
+import {
+  approveAgency, getAgency, listAgencies, rejectAgency, restoreAgency, startHelp, suspendAgency,
+} from '../controllers/agencies.controller.js';
 import { assignAgencyPlan, getAgencyPlan, removeAgencyOverride, setAgencyOverride } from '../controllers/plans.controller.js';
 import { requirePlatformRole, requirePlatformSession } from '../middleware/requirePlatformSession.js';
 
@@ -15,6 +17,8 @@ router.put('/:id/overrides/:key', requirePlatformRole('platform_admin'), setAgen
 router.delete('/:id/overrides/:key', requirePlatformRole('platform_admin'), removeAgencyOverride);
 router.post('/:id/suspend', requirePlatformRole('platform_admin'), suspendAgency);
 router.post('/:id/restore', requirePlatformRole('platform_admin'), restoreAgency);
+router.post('/:id/approve', requirePlatformRole('platform_admin'), approveAgency);
+router.post('/:id/reject', requirePlatformRole('platform_admin'), rejectAgency);
 // Support and admins can both open view-only help access.
 router.post('/:id/help-access', startHelp);
 

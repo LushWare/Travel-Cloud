@@ -17,6 +17,8 @@ type Preview = {
   totalRows: number;
   validCount: number;
   invalidCount: number;
+  // Columns in the file that are not lead fields; their values are not imported.
+  ignoredColumns?: string[];
   rows: ImportRow[];
 };
 
@@ -95,7 +97,7 @@ export default function LeadCsvImportDialog({ open, onOpenChange, onImported }: 
         <DialogHeader>
           <DialogTitle>Import leads from CSV</DialogTitle>
           <DialogDescription>
-            Upload a CSV up to 1 MB and 500 rows. Supported columns include name, email, phone, whatsapp, destination, travelDate, numberOfTravelers, budget, and message.
+            Upload a CSV up to 1 MB and 500 rows. We read name, email, phone, whatsapp, city, destination, travel date, number of travellers, budget and message (common spellings such as "Full Name" or "phone_number" work too). Other columns are skipped.
           </DialogDescription>
         </DialogHeader>
 
@@ -123,6 +125,11 @@ export default function LeadCsvImportDialog({ open, onOpenChange, onImported }: 
               <p className="text-sm font-medium">
                 {preview.validCount} ready to import · {preview.invalidCount} need attention · {preview.totalRows} total
               </p>
+              {preview.ignoredColumns && preview.ignoredColumns.length > 0 && (
+                <p className="text-xs text-muted-foreground" data-testid="csv-ignored-columns">
+                  Not imported ({preview.ignoredColumns.length} column{preview.ignoredColumns.length === 1 ? '' : 's'} we don't use): {preview.ignoredColumns.join(', ')}
+                </p>
+              )}
               {visibleErrors.length > 0 && (
                 <div className="max-h-56 overflow-auto rounded-md border border-border">
                   <table className="w-full text-left text-sm">

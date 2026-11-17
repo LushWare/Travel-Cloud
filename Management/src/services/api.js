@@ -543,6 +543,11 @@ export const adminAPI = {
     const api = new ApiService();
     return api.get("/admin/support-access");
   },
+  // The whole agency's data as a ZIP of CSV files (owner only). Resolves to a Blob.
+  exportAgencyData: async () => {
+    const api = new ApiService();
+    return api.get("/admin/data-export", { responseType: "blob" });
+  },
   getSalesReps: async () => {
     const api = new ApiService();
     // fetch active sales reps, large limit to avoid pagination in UI (backend caps at 100)

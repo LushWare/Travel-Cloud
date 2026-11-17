@@ -34,4 +34,20 @@ describe('VerifyAgencySignup', () => {
       expect(setAuth).toHaveBeenCalledWith(user);
     });
   });
+
+  it('tells the owner the agency is waiting for approval instead of signing in', async () => {
+    authService.verifyAgencySignup.mockResolvedValue({ data: { pendingApproval: true } });
+
+    render(
+      <MemoryRouter initialEntries={['/verify-signup?email=alex%40example.com']}>
+        <VerifyAgencySignup />
+      </MemoryRouter>,
+    );
+
+    fireEvent.change(screen.getByLabelText('Six-digit verification code'), { target: { value: '123456' } });
+    fireEvent.click(screen.getByRole('button', { name: /Verify and open your agency/ }));
+
+    expect(await screen.findByText('Your email is confirmed')).toBeInTheDocument();
+    expect(setAuth).not.toHaveBeenCalled();
+  });
 });

@@ -6,6 +6,7 @@ const { userDb, memberships, sessions, bcryptCompare } = vi.hoisted(() => ({
   userDb: { findUserByEmail: vi.fn(), findUserById: vi.fn(), updateLastLogin: vi.fn() },
   memberships: {
     listUsableMemberships: vi.fn(), findUsableMembership: vi.fn(), findMembership: vi.fn(), activateInvitedMemberships: vi.fn(),
+    findPendingApprovalAgency: vi.fn().mockResolvedValue(null),
   },
   sessions: {
     createSession: vi.fn(), consumeSession: vi.fn(), revokeFamily: vi.fn(),
@@ -126,6 +127,16 @@ describe('signing in to an agency', () => {
     const { error } = await loginAs(USER);
 
     expect(error.statusCode).toBe(403);
+  });
+
+  it('tells the owner of an agency awaiting approval to wait, with AGENCY_PENDING_APPROVAL', async () => {
+    memberships.listUsableMemberships.mockResolvedValue([]);
+    memberships.findPendingApprovalAgency.mockResolvedValueOnce('North Star Travel');
+
+    const { error, res } = await loginAs(USER);
+
+    expect(error).toMatchObject({ statusCode: 403, code: 'AGENCY_PENDING_APPROVAL' });
+    expect(res.cookie).not.toHaveBeenCalled();
   });
 
   it('places website customers in the public website agency', async () => {

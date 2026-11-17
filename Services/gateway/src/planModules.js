@@ -12,6 +12,18 @@ export const MODULE_ROUTES = [
   { module: 'finance_docs', mode: 'changes', pattern: /^\/api\/v1\/invoices(\/|$)/ },
   { module: 'vendors', mode: 'changes', pattern: /^\/api\/v1\/vendors(\/|$)/ },
   { module: 'travel_booking', mode: 'changes', pattern: /^\/api\/v1\/flights(\/|$)/ },
+  // Hotel search and booking run on Lushware's LiteAPI account. Searching is a POST, so it is
+  // refused too; existing hotel bookings stay readable. /hotels/suggest is itinerary help, not booking.
+  { module: 'travel_booking', mode: 'changes', pattern: /^\/api\/v1\/hotels\/(?!suggest(\/|$))/ },
+  // AI that runs on Lushware's Gemini account.
+  { module: 'ai_copilot', mode: 'all', pattern: /^\/api\/v1\/recommendations(\/|$)/ },
+  { module: 'ai_copilot', mode: 'all', pattern: /^\/api\/v1\/leads\/[^/]+\/ai-verify$/ },
+  // Lushware's single ElevenLabs agent and number.
+  { module: 'voice_agent', mode: 'all', pattern: /^\/api\/v1\/voice(\/|$)/ },
+  // Lushware's own public website: its careers admin and website analytics. The public pages
+  // themselves (apply, open vacancies) are public routes and never reach this check.
+  { module: 'public_website', mode: 'all', pattern: /^\/api\/v1\/(careers|vacancies)(\/|$)/ },
+  { module: 'public_website', mode: 'all', pattern: /^\/api\/v1\/analytics\/website(\/|$)/ },
   // The dashboard's own figures (lead and billing overview, a rep's own performance) stay in every plan.
   { module: 'analytics_full', mode: 'all', pattern: /^\/api\/v1\/analytics\/(packages|users|website|business)(\/|$)/ },
   { module: 'analytics_full', mode: 'all', pattern: /^\/api\/v1\/analytics\/salesreps\/performance(\/|$)/ },

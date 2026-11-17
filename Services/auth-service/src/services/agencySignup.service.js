@@ -18,6 +18,23 @@ const createSlug = (name) => {
 
 const newVerificationCode = () => String(crypto.randomInt(100000, 1000000));
 
+/**
+ * Whether Lushware currently checks each new agency before it can be used (Console switch).
+ * Read inside the signup transaction. Before the migration that creates the setting, sign-up
+ * stays open as it always was; any other read failure fails the signup rather than guessing.
+ */
+export async function signupApprovalRequired(db = prisma) {
+  try {
+    const rows = await db.$queryRaw`
+      SELECT value FROM crm_platform."PlatformSetting" WHERE key = 'require_signup_approval' LIMIT 1
+    `;
+    return rows.length > 0 && rows[0].value === true;
+  } catch (error) {
+    if (/PlatformSetting.* does not exist/i.test(String(error?.meta?.message ?? error?.message))) return false;
+    throw error;
+  }
+}
+
 async function findSignupPlans(db = prisma) {
   return db.$queryRaw`
     SELECT p.key, pv.id AS "planVersionId", pv.name, pv.description,
@@ -59,6 +76,7 @@ export async function createAgencySignup({
   const membershipId = crypto.randomUUID();
   const settingsId = crypto.randomUUID();
   const tenantPlanId = crypto.randomUUID();
+  let pendingApproval = false;
 
   try {
     const created = await prisma.$transaction(async (tx) => {
@@ -76,12 +94,15 @@ export async function createAgencySignup({
         throw new AppError('An account with this email already exists. Sign in instead.', 409);
       }
 
+      // Awaiting approval: the trial clock starts when Lushware approves (see platform-service).
+      pendingApproval = await signupApprovalRequired(tx);
+      const status = pendingApproval ? 'pending_approval' : 'trial';
       await tx.$executeRaw`
         INSERT INTO crm_platform."Tenant"
           (id, slug, name, status, "trialEndsAt", "postTrialPlanVersionId", "createdAt", "updatedAt")
         VALUES
-          (${tenantId}::uuid, ${createSlug(agencyName)}, ${agencyName}, 'trial',
-           ${trialEndsAt}, ${selectedPlan.planVersionId}::uuid, NOW(), NOW())
+          (${tenantId}::uuid, ${createSlug(agencyName)}, ${agencyName}, ${status}::crm_platform."TenantStatus",
+           ${pendingApproval ? null : trialEndsAt}, ${selectedPlan.planVersionId}::uuid, NOW(), NOW())
       `;
 
       await tx.$executeRaw`
@@ -132,7 +153,7 @@ export async function createAgencySignup({
       return { userId, ownerName, email, tenantId };
     });
 
-    return { ...created, code };
+    return { ...created, code, pendingApproval };
   } catch (error) {
     if (error?.code === '23505') {
       throw new AppError('An account with this email already exists. Sign in instead.', 409);

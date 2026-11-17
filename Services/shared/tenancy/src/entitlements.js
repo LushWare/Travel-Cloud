@@ -6,21 +6,30 @@ export const MODULE_ENTITLEMENTS = Object.freeze({
   finance_docs: 'Invoices, receipts, credit notes and vouchers',
   whatsapp: 'WhatsApp delivery',
   vendors: 'Vendors and suppliers',
-  travel_booking: 'Flight booking',
+  travel_booking: 'Flight and hotel booking',
   analytics_full: 'Full analytics',
+  // These run on Lushware's own accounts (Gemini, ElevenLabs) or exist only for Lushware's own
+  // public website, so they are off unless a plan says otherwise. Later sold as add-ons.
+  ai_copilot: 'AI insights and recommendations',
+  voice_agent: 'Voice agent',
+  public_website: 'Public website, careers and website analytics',
 });
+
+// Modules a stored plan must name explicitly to include (see FEATURE_DEFAULT_WHEN_MISSING).
+export const OPT_IN_MODULES = Object.freeze(['ai_copilot', 'voice_agent', 'public_website']);
 
 export const FEATURE_ENTITLEMENTS = Object.freeze({
   ai_itinerary_builder: 'AI itinerary builder',
   ...MODULE_ENTITLEMENTS,
 });
 
-// What a stored plan version means when it does not mention a feature. Modules were added
-// after the first plans were saved; reading their absence as "included" keeps those plans
-// (and every agency on them) working exactly as before until someone saves a new version.
+// What a stored plan version means when it does not mention a feature. The first modules were
+// added after plans were saved; reading their absence as "included" kept those plans working.
+// The opt-in modules are the opposite: absent means off, so no agency gets Lushware's AI, voice
+// or website features unless its plan names them (Lush Internal does, by migration).
 const FEATURE_DEFAULT_WHEN_MISSING = Object.freeze({
   ai_itinerary_builder: false,
-  ...Object.fromEntries(Object.keys(MODULE_ENTITLEMENTS).map((key) => [key, true])),
+  ...Object.fromEntries(Object.keys(MODULE_ENTITLEMENTS).map((key) => [key, !OPT_IN_MODULES.includes(key)])),
 });
 
 export const LIMIT_ENTITLEMENTS = Object.freeze({

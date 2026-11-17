@@ -31,11 +31,16 @@ describe('starting plan catalogue', () => {
     expect(growth.entitlements.packages).toBeGreaterThan(starter.entitlements.packages);
   });
 
-  it('switches no module off on the internal or Pro plans', () => {
-    for (const key of ['internal', 'pro']) {
-      const plan = DEFAULT_PLANS.find((p) => p.key === key);
-      expect(switchedOffModules(normalizePlanEntitlements(plan.entitlements))).toEqual([]);
-    }
+  it('switches no module off on Lushware\'s internal plan', () => {
+    const internal = DEFAULT_PLANS.find((p) => p.key === 'internal');
+
+    expect(switchedOffModules(normalizePlanEntitlements(internal.entitlements))).toEqual([]);
+  });
+
+  it('gives Pro every module except the Lushware-only ones', () => {
+    const pro = DEFAULT_PLANS.find((p) => p.key === 'pro');
+
+    expect(switchedOffModules(normalizePlanEntitlements(pro.entitlements))).toEqual(['ai_copilot', 'voice_agent', 'public_website']);
   });
 
   it('switches every module off on Starter', () => {
@@ -44,10 +49,11 @@ describe('starting plan catalogue', () => {
     expect(switchedOffModules(normalizePlanEntitlements(starter.entitlements))).toEqual(Object.keys(MODULE_ENTITLEMENTS));
   });
 
-  it('leaves only flight booking out of Growth', () => {
+  it('leaves flight and hotel booking and the Lushware-only modules out of Growth', () => {
     const growth = DEFAULT_PLANS.find((p) => p.key === 'growth');
 
-    expect(switchedOffModules(normalizePlanEntitlements(growth.entitlements))).toEqual(['travel_booking']);
+    expect(switchedOffModules(normalizePlanEntitlements(growth.entitlements)))
+      .toEqual(['travel_booking', 'ai_copilot', 'voice_agent', 'public_website']);
   });
 
   it('assigns only plans that exist', () => {

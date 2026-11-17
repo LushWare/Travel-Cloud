@@ -78,7 +78,12 @@ describe('plan entitlements', () => {
     const { entitlements } = resolveEntitlements({
       planVersion: {
         id: 'v', planId: 'p', version: 1, name: 'Starter',
-        entitlements: { features: { ai_itinerary_builder: false, finance_docs: false, travel_booking: false } },
+        entitlements: {
+          features: {
+            ai_itinerary_builder: false, finance_docs: false, travel_booking: false,
+            ai_copilot: true, voice_agent: true, public_website: true,
+          },
+        },
       },
     });
 
@@ -105,5 +110,25 @@ describe('plan entitlements', () => {
     expect(prisma.$queryRawUnsafe).toHaveBeenCalledTimes(2);
     expect(prisma.$queryRawUnsafe.mock.calls[0][1]).toBe(TENANT_ID);
     expect(prisma.$queryRawUnsafe.mock.calls[1][1]).toBe(TENANT_ID);
+  });
+});
+describe('Lushware-only modules', () => {
+  it.each(['ai_copilot', 'voice_agent', 'public_website'])('switches %s off for a plan that never mentions it', (key) => {
+    expect(normalizePlanEntitlements({ features: {} }).features[key]).toBe(false);
+  });
+
+  it('keeps every Lushware-only module on for an agency with no plan', () => {
+    const { features } = resolveEntitlements().entitlements;
+
+    expect([features.ai_copilot, features.voice_agent, features.public_website]).toEqual([true, true, true]);
+  });
+
+  it('lets an override give one agency the AI module', () => {
+    const { entitlements } = resolveEntitlements({
+      planVersion: { id: 'v', planId: 'p', version: 1, name: 'Growth', entitlements: { features: {} } },
+      overrides: [{ entitlementKey: 'features.ai_copilot', value: true }],
+    });
+
+    expect(switchedOffModules(entitlements)).toEqual(['voice_agent', 'public_website']);
   });
 });

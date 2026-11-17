@@ -2,6 +2,7 @@ import prisma from '../db/client.js';
 import AppError from '../utils/appError.js';
 import { fetchPackage, buildDraftData } from './lead-draft.service.js';
 import { computePricing, toLineDescriptor } from './pricing.service.js';
+import { cloudRunAuthHeader } from './cloudRunAuth.js';
 // zod v4, bundled inside @travel-crm/contracts — never .extend()/.merge() this
 // with a local (zod v3) validator schema, only .parse() it standalone.
 import { LeadSnapshotForQuotation } from '@travel-crm/contracts';
@@ -412,6 +413,8 @@ export async function snapshotSelectionQuotation(selectionId, { createdById = nu
     headers: {
       'content-type': 'application/json',
       'x-internal-token': process.env.INTERNAL_EVENTS_TOKEN || '',
+      // Private on Cloud Run: without this Google ID token the call is refused at its edge.
+      ...(await cloudRunAuthHeader(BILLING_SERVICE_URL)),
     },
     body: JSON.stringify(payload),
   });
@@ -435,6 +438,7 @@ export async function sendVoiceQuotation(quotationId, payload, requestId, fetchI
         'content-type': 'application/json',
         'x-internal-token': token,
         ...(requestId ? { 'x-request-id': requestId } : {}),
+        ...(await cloudRunAuthHeader(BILLING_SERVICE_URL)),
       },
       body: JSON.stringify(payload),
       signal: controller.signal,

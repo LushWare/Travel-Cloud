@@ -13,6 +13,7 @@ import {
   deletePolicyDocumentHandler, getInternalPolicyDocuments,
 } from '../controllers/policyDocuments.controller.js';
 import { listSupportAccess } from '../controllers/auditLog.controller.js';
+import { exportAgencyData } from '../controllers/dataExport.controller.js';
 
 const router = express.Router();
 
@@ -47,6 +48,7 @@ router.use(requireAuth, authorize('admin', 'superAdmin'));
 router.get('/stats', getDashboardStats);
 router.get('/plan', getAgencyPlan);
 router.get('/support-access', listSupportAccess);
+router.get('/data-export', exportAgencyData);
 router.get('/settings', getSettings);
 router.put('/settings', updateSettings);
 

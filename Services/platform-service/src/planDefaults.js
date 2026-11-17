@@ -2,10 +2,14 @@
 // decided; change them later in the console (that creates a new plan version, so agencies already
 // on a plan keep the price they were given). Used only by scripts/seed-plans.mjs.
 
+// Everything a paying agency can have. AI insights, the voice agent and the public website run on
+// Lushware's own accounts, so only Lushware's own agency has them for now.
 const ALL_FEATURES = Object.freeze({
   ai_itinerary_builder: true, finance_docs: true, whatsapp: true, vendors: true,
   travel_booking: true, analytics_full: true,
+  ai_copilot: false, voice_agent: false, public_website: false,
 });
+const LUSH_ONLY_FEATURES = Object.freeze({ ai_copilot: true, voice_agent: true, public_website: true });
 
 export const DEFAULT_PLANS = [
   {
@@ -15,7 +19,7 @@ export const DEFAULT_PLANS = [
     priceMinorUnits: null,
     currency: 'USD',
     billingInterval: null,
-    entitlements: { staff_seats: null, packages: null, features: ALL_FEATURES },
+    entitlements: { staff_seats: null, packages: null, features: { ...ALL_FEATURES, ...LUSH_ONLY_FEATURES } },
   },
   {
     key: 'starter',
@@ -34,6 +38,7 @@ export const DEFAULT_PLANS = [
       features: {
         ai_itinerary_builder: false, finance_docs: false, whatsapp: false, vendors: false,
         travel_booking: false, analytics_full: false,
+        ai_copilot: false, voice_agent: false, public_website: false,
       },
     },
   },

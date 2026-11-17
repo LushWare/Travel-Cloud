@@ -5,7 +5,7 @@ import { Input } from './ui/input';
 import ReasonHint from './ReasonHint';
 
 type Props = {
-  mode: 'suspend' | 'restore';
+  mode: 'suspend' | 'restore' | 'reject';
   agencyName: string;
   slug: string;
   onConfirm: (reason: string) => Promise<void>;
@@ -20,6 +20,7 @@ export default function StatusChangeDialog({ mode, agencyName, slug, onConfirm, 
   const [busy, setBusy] = useState(false);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const suspending = mode === 'suspend';
+  const rejecting = mode === 'reject';
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -48,12 +49,14 @@ export default function StatusChangeDialog({ mode, agencyName, slug, onConfirm, 
       <form onSubmit={submit} className="space-y-4 p-6">
         <div>
           <h2 id="status-dialog-title" className="font-heading text-lg font-semibold">
-            {suspending ? `Suspend ${agencyName}?` : `Restore ${agencyName}?`}
+            {suspending ? `Suspend ${agencyName}?` : rejecting ? `Reject ${agencyName}?` : `Restore ${agencyName}?`}
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
             {suspending
               ? 'Everyone in this agency is signed out within a few minutes and cannot sign in until it is restored. Their data is kept.'
-              : 'Staff can sign in again straight away.'}
+              : rejecting
+                ? 'The agency is closed and the owner is emailed. Their email address cannot be used to sign up again.'
+                : 'Staff can sign in again straight away.'}
           </p>
         </div>
 
@@ -62,7 +65,7 @@ export default function StatusChangeDialog({ mode, agencyName, slug, onConfirm, 
         <div className="text-sm">
           <label htmlFor="status-reason" className="mb-1.5 block font-medium">Reason</label>
           <textarea id="status-reason" value={reason} onChange={(e) => setReason(e.target.value)} rows={3} maxLength={500} required
-            aria-describedby="status-reason-hint" placeholder={suspending ? 'e.g. Unpaid for 60 days' : 'e.g. Payment received'}
+            aria-describedby="status-reason-hint" placeholder={suspending ? 'e.g. Unpaid for 60 days' : rejecting ? 'e.g. Looks like a spam sign-up' : 'e.g. Payment received'}
             className="w-full rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50" />
           <ReasonHint id="status-reason-hint" reason={reason} note="Recorded in the agency's history." />
         </div>
@@ -78,9 +81,9 @@ export default function StatusChangeDialog({ mode, agencyName, slug, onConfirm, 
 
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
-          <Button type="submit" variant={suspending ? 'destructive' : 'default'} disabled={!ready || busy}>
+          <Button type="submit" variant={suspending || rejecting ? 'destructive' : 'default'} disabled={!ready || busy}>
             {busy && <Loader2 className="animate-spin" aria-hidden="true" />}
-            {suspending ? 'Suspend agency' : 'Restore agency'}
+            {suspending ? 'Suspend agency' : rejecting ? 'Reject sign-up' : 'Restore agency'}
           </Button>
         </div>
       </form>

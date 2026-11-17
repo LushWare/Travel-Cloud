@@ -117,6 +117,8 @@ const issueTenantChoice = (res, user, memberships) =>
     },
   });
 
+export const PENDING_APPROVAL_MESSAGE = 'Your agency is waiting for approval. We will email you as soon as it is ready.';
+
 /**
  * Finishes a successful sign-in: picks the agency to work in, then issues the session.
  * Someone in several agencies is asked to choose unless `tenantId` names one they belong to.
@@ -126,6 +128,9 @@ export const completeLogin = async (req, res, user, statusCode, message, { tenan
 
   const memberships = await membershipDb.listUsableMemberships(user.id);
   if (memberships.length === 0) {
+    if (await membershipDb.findPendingApprovalAgency(user.id)) {
+      throw new AppError(PENDING_APPROVAL_MESSAGE, 403, { code: 'AGENCY_PENDING_APPROVAL' });
+    }
     throw new AppError('Your account is not part of any active agency. Please contact your administrator.', 403);
   }
   const chosen = tenantId

@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertCircle, ArrowUpRight, Lightbulb, RefreshCw } from 'lucide-react';
+import { AlertCircle, ArrowUpRight, Lightbulb, Lock, RefreshCw } from 'lucide-react';
+import { useOptionalAuth } from '@/contexts/AuthContext';
+import { moduleLockReason } from '@/lib/planModules';
 import PageHeader from '@/components/PageHeader';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -11,7 +13,23 @@ import type { RecommendationMode } from '@/features/recommendations/recommendati
 
 const categories = ['all', 'sales', 'finance', 'packages', 'operations', 'performance'];
 
+/** AI Insights runs on Lushware's Gemini account, so agencies without the AI module get an explanation. */
 export default function AIInsights() {
+  const auth = useOptionalAuth();
+  const lockReason = moduleLockReason(auth?.user, 'ai_copilot');
+  if (lockReason) {
+    return (
+      <div className="mx-auto max-w-xl px-4 py-16 text-center" role="status">
+        <Lock className="mx-auto h-8 w-8 text-muted-foreground" aria-hidden="true" />
+        <h2 className="mt-4 text-lg font-semibold text-foreground">AI Insights isn't in your plan</h2>
+        <p className="mt-2 text-sm text-muted-foreground">{lockReason}</p>
+      </div>
+    );
+  }
+  return <AIInsightsContent />;
+}
+
+function AIInsightsContent() {
   const [items, setItems] = useState<BusinessRecommendation[]>([]);
   const [category, setCategory] = useState('all');
   const [status, setStatus] = useState('active');

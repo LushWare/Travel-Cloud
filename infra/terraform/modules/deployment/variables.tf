@@ -516,3 +516,22 @@ variable "api_domain" {
   type        = string
   default     = ""
 }
+
+# Where alerts about failed scheduled jobs go (e.g. the billing lifecycle). Empty: no alert is created.
+variable "ops_alert_email" {
+  description = "Email address alerted when a scheduled job fails. Empty disables the alert."
+  type        = string
+  default     = ""
+}
+
+variable "package_lead_service_url" {
+  description = "URL of this environment's lead-service Cloud Run instance, consumed by package-service (LEAD_SERVICE_URL). Cycle-breaker for the package<->lead (lead-service already consumes package-service's URL). Fill in after the first apply; empty leaves that feature off in package-service."
+  type        = string
+  default     = ""
+}
+
+variable "billing_integration_service_url" {
+  description = "URL of this environment's integration-service Cloud Run instance, consumed by billing-service (INTEGRATION_SERVICE_URL). Cycle-breaker for the billing<->integration (integration-service already consumes billing-service's URL). Fill in after the first apply; empty leaves that feature off in billing-service."
+  type        = string
+  default     = ""
+}

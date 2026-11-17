@@ -136,11 +136,25 @@ describe('fetchPackage', () => {
       json: async () => ({ success: true, data: { id: 'pkg-1', title: 'Sri Lanka Explorer' } }),
     });
     await expect(fetchPackage('pkg-1', fetchImpl)).resolves.toMatchObject({ id: 'pkg-1' });
-    expect(fetchImpl).toHaveBeenCalledWith(expect.stringContaining('/api/v1/packages/pkg-1'));
+    expect(fetchImpl).toHaveBeenCalledWith(expect.stringContaining('/api/v1/packages/pkg-1'), { headers: {} });
   });
 
   it('throws a 404-style error when the package is missing', async () => {
     const fetchImpl = vi.fn().mockResolvedValue({ ok: false, status: 404 });
     await expect(fetchPackage('nope', fetchImpl)).rejects.toThrow(AppError);
+  });
+});
+
+describe('fetchPackage on Cloud Run', () => {
+  it('sends a Google ID token for package-service', async () => {
+    vi.resetModules();
+    vi.doMock('../cloudRunAuth.js', () => ({ cloudRunAuthHeader: vi.fn(async () => ({ Authorization: 'Bearer id-token' })) }));
+    const { fetchPackage: fetchPackageOnCloudRun } = await import('../lead-draft.service.js');
+    const fetchImpl = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ data: { package: { id: 'pkg-1' } } }) });
+
+    await fetchPackageOnCloudRun('pkg-1', fetchImpl);
+
+    expect(fetchImpl.mock.calls[0][1]).toEqual({ headers: { Authorization: 'Bearer id-token' } });
+    vi.doUnmock('../cloudRunAuth.js');
   });
 });

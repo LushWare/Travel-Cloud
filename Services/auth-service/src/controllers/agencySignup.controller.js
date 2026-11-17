@@ -4,7 +4,8 @@ import asyncHandler from '../utils/asyncHandler.js';
 import * as rateLimit from '../services/rateLimit.service.js';
 import * as emailService from '../utils/email.js';
 import * as userDb from '../db/userQueries.js';
-import { completeLogin } from './auth.controller.js';
+import * as membershipDb from '../db/membershipQueries.js';
+import { PENDING_APPROVAL_MESSAGE, completeLogin } from './auth.controller.js';
 import {
   createAgencySignup,
   listSignupPlans,
@@ -92,6 +93,14 @@ export const verifyAgencySignupCode = asyncHandler(async (req, res) => {
   ]);
 
   const userId = await verifyAgencySignup(input);
+  // Held for Lushware's review: the email is confirmed, but no session until the agency is approved.
+  if (await membershipDb.findPendingApprovalAgency(userId)) {
+    return res.status(200).json({
+      status: 'success',
+      message: PENDING_APPROVAL_MESSAGE,
+      data: { pendingApproval: true },
+    });
+  }
   const user = await userDb.findUserById(userId);
   if (!user) throw new AppError('The signup could not be completed. Please sign in or contact support.', 500);
   await completeLogin(req, res, user, 200, 'Email verified. Your agency is ready.');

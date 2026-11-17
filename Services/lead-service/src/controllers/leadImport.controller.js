@@ -3,7 +3,7 @@ import AppError from '../utils/appError.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import { normalizePhone } from '../utils/phone.js';
 import { requireTenantId } from '../../../shared/tenancy/src/index.js';
-import { parseLeadCsv, leadCsvBodySchema, leadCsvImportSchema } from '../services/leadCsvImport.js';
+import { parseLeadCsvWithColumns, leadCsvBodySchema, leadCsvImportSchema } from '../services/leadCsvImport.js';
 import { audit } from '../utils/audit.js';
 import { autoAssignForImport } from './lead.controller.js';
 
@@ -74,8 +74,9 @@ function markDuplicates(rows, existing) {
 export const previewLeadCsv = asyncHandler(async (req, res) => {
   const { csv } = parseOrThrow(leadCsvBodySchema, req.body);
   let rows;
+  let ignoredColumns;
   try {
-    rows = parseLeadCsv(csv);
+    ({ rows, ignoredColumns } = parseLeadCsvWithColumns(csv));
   } catch (error) {
     throw new AppError(error.message, 400, { code: 'INVALID_CSV' });
   }
@@ -88,6 +89,7 @@ export const previewLeadCsv = asyncHandler(async (req, res) => {
       totalRows: checkedRows.length,
       validCount,
       invalidCount: checkedRows.length - validCount,
+      ignoredColumns,
       rows: checkedRows,
     },
   });

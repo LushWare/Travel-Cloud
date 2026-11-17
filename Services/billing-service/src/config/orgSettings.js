@@ -10,6 +10,7 @@
 // must not hard-fail just because user-service is briefly unreachable.
 
 import { createTenantCache } from '../../../shared/tenancy/src/index.js';
+import { cloudRunAuthHeader } from '../services/cloudRunAuth.js';
 
 const USER_SERVICE_URL = process.env.USER_SERVICE_URL || 'http://localhost:3002';
 const INTERNAL_SERVICE_KEY = process.env.INTERNAL_SERVICE_KEY || '';
@@ -82,7 +83,8 @@ const cache = createTenantCache({ ttlMs: CACHE_TTL_MS });
 
 async function fetchFromUserService(fetchImpl) {
   const res = await fetchImpl(`${USER_SERVICE_URL}/api/v1/admin/internal/organization-settings`, {
-    headers: { 'x-internal-token': INTERNAL_SERVICE_KEY },
+    // Private on Cloud Run: without this Google ID token the call is refused at its edge.
+    headers: { 'x-internal-token': INTERNAL_SERVICE_KEY, ...(await cloudRunAuthHeader(USER_SERVICE_URL)) },
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`user-service returned ${res.status}`);

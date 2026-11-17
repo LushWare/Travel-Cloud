@@ -140,7 +140,8 @@ locals {
       name    = "${var.env}-career-service"
       memory  = "512Mi"
       cpu     = "1"
-      secrets = ["${var.env}-database-url", "${var.env}-direct-url", "${var.env}-cloudinary-api-key", "${var.env}-cloudinary-api-secret"]
+      # internal-events-token: application emails go through notification-service, which checks it.
+      secrets = ["${var.env}-database-url", "${var.env}-direct-url", "${var.env}-cloudinary-api-key", "${var.env}-cloudinary-api-secret", "${var.env}-internal-events-token"]
       plain_env = {
         NODE_ENV              = "production"
         CLOUDINARY_CLOUD_NAME = var.cloudinary_cloud_name
@@ -239,7 +240,8 @@ locals {
       name    = "${var.env}-integration-service"
       memory  = "512Mi"
       cpu     = "1"
-      secrets = ["${var.env}-database-url", "${var.env}-internal-events-token", "${var.env}-facebook-app-secret", "${var.env}-facebook-verify-token"]
+      # direct-url (admin connection) is read only by the daily integration-health job, which checks every agency.
+      secrets = ["${var.env}-database-url", "${var.env}-direct-url", "${var.env}-internal-events-token", "${var.env}-facebook-app-secret", "${var.env}-facebook-verify-token"]
       plain_env = {
         NODE_ENV                 = "production"
         KMS_INTEGRATION_KEY_NAME = google_kms_crypto_key.integrations.id

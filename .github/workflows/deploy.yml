@@ -244,6 +244,33 @@ jobs:
             --image ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/travel-crm/${{ matrix.service }}:${{ env.TARGET_ENV }}-${GITHUB_SHA:0:7} \
             --region ${{ vars.GCP_REGION }}
 
+      # The hourly billing job runs auth-service's code, so it moves to the same image.
+      # Skipped until Terraform has created the job (infra/.../scheduled_jobs.tf).
+      - name: Update the billing lifecycle job
+        if: matrix.service == 'auth-service'
+        run: |
+          JOB=${{ env.TARGET_ENV }}-billing-lifecycle
+          if gcloud run jobs describe "$JOB" --region ${{ vars.GCP_REGION }} >/dev/null 2>&1; then
+            gcloud run jobs update "$JOB" \
+              --image ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/travel-crm/auth-service:${{ env.TARGET_ENV }}-${GITHUB_SHA:0:7} \
+              --region ${{ vars.GCP_REGION }}
+          else
+            echo "No $JOB yet; run terraform apply to create it."
+          fi
+
+      # The daily integration-health job runs integration-service's code.
+      - name: Update the integration health job
+        if: matrix.service == 'integration-service'
+        run: |
+          JOB=${{ env.TARGET_ENV }}-integration-health
+          if gcloud run jobs describe "$JOB" --region ${{ vars.GCP_REGION }} >/dev/null 2>&1; then
+            gcloud run jobs update "$JOB" \
+              --image ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/travel-crm/integration-service:${{ env.TARGET_ENV }}-${GITHUB_SHA:0:7} \
+              --region ${{ vars.GCP_REGION }}
+          else
+            echo "No $JOB yet; run terraform apply to create it."
+          fi
+
   deploy-hosting:
     name: Deploy Firebase Hosting sites
     runs-on: ubuntu-latest

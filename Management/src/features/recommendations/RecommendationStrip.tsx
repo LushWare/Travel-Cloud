@@ -20,6 +20,7 @@ import {
 import RecommendationModeSwitch from './RecommendationModeSwitch';
 import type { RecommendationMode } from './recommendationMode';
 import { formatEvidenceValue } from './formatEvidenceValue';
+import { isModuleOff } from '@/lib/planModules';
 
 const MODULE_PATHS: Record<string, string> = {
   dashboard: '/',
@@ -141,7 +142,23 @@ export function RecommendationDetailDialog({
   );
 }
 
+/** AI recommendations run on Lushware's Gemini account; agencies without the AI module see none. */
+// The strip sits on many pages, so it reads the signed-in user AuthContext saves on every sign-in
+// and page load, instead of needing the auth provider wherever it is rendered.
+function savedUser(): { planModulesOff?: unknown } | null {
+  try {
+    return JSON.parse(localStorage.getItem('user') || 'null');
+  } catch {
+    return null;
+  }
+}
+
 export default function RecommendationStrip({ module }: { module: string }) {
+  if (isModuleOff(savedUser(), 'ai_copilot')) return null;
+  return <RecommendationStripContent module={module} />;
+}
+
+function RecommendationStripContent({ module }: { module: string }) {
   const [items, setItems] = useState<BusinessRecommendation[]>([]);
   const [counts, setCounts] = useState({ active: 0, reviewed: 0 });
   const [selected, setSelected] = useState<BusinessRecommendation | null>(null);

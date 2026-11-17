@@ -6,13 +6,15 @@ import * as planDb from '../db/plans.js';
 import { resolveEntitlements } from '../../../shared/tenancy/src/entitlements.js';
 import { startHelpAccess } from '../db/help.js';
 import { hashToken, newSessionToken } from '../security/tokens.js';
+import { sendSignupDecisionEmail } from '../utils/email.client.js';
+import logger from '../config/logger.js';
 
 // The one-time link that opens the help session must be used within this time.
 const HANDOFF_SECONDS = 120;
 
 // The agency that serves the public website; suspending it would take the website down.
 const PUBLIC_SITE_TENANT_ID = () => process.env.PUBLIC_SITE_TENANT_ID || '00000000-0000-4000-8000-000000000001';
-const STATUSES = ['trial', 'active', 'past_due', 'suspended', 'pending_deletion', 'deleted'];
+const STATUSES = ['pending_approval', 'trial', 'active', 'past_due', 'suspended', 'pending_deletion', 'deleted'];
 const RESTORABLE = new Set(['trial', 'active', 'past_due']);
 
 const listSchema = z.object({
@@ -125,6 +127,7 @@ export const restoreAgency = asyncHandler(async (req, res) => {
   const { reason } = parse(reasonSchema, req.body);
   if (agency.status !== 'suspended') throw new AppError('Only a suspended agency can be restored.', 409);
 
+
   const previous = await agencies.statusBeforeSuspension(agency.id);
   const status = RESTORABLE.has(previous) ? previous : 'active';
   const changed = await agencies.setAgencyStatus(agency.id, {
@@ -134,3 +137,40 @@ export const restoreAgency = asyncHandler(async (req, res) => {
   if (!changed) throw new AppError('This agency changed while you were looking at it. Refresh and try again.', 409);
   res.json({ status: 'success', data: { agency: { ...agency, status } } });
 });
+
+const approveSchema = z.object({
+  reason: z.string().trim().max(500).optional(),
+}).strict();
+
+/** Emails each owner the outcome. The decision already stands, so a failed email is logged, not thrown. */
+async function emailOwners(req, owners, agencyName, approved) {
+  const results = await Promise.allSettled(owners.map((owner) => sendSignupDecisionEmail({ owner, agencyName, approved })));
+  const failed = results.filter((result) => result.status === 'rejected').length;
+  if (failed) logger.error({ failed, requestId: req.requestId }, 'Sign-up decision email could not be sent');
+  return failed === 0;
+}
+
+async function decide(req, res, approve) {
+  const agency = await loadAgency(req);
+  const { reason } = parse(approve ? approveSchema : reasonSchema, req.body);
+  if (agency.status !== 'pending_approval') {
+    throw new AppError('This agency is not waiting for approval.', 409);
+  }
+  const action = approve ? 'platform.agency_approved' : 'platform.agency_rejected';
+  const summary = approve ? `Lushware approved ${agency.name}` : `Lushware rejected ${agency.name}: ${reason}`;
+  const owners = await agencies.decidePendingSignup(agency.id, {
+    approve,
+    audit: auditOf(req, action, summary, { reason: reason ?? null }),
+  });
+  if (!owners) throw new AppError('This agency changed while you were looking at it. Refresh and try again.', 409);
+
+  const emailed = await emailOwners(req, owners, agency.name, approve);
+  const status = approve ? 'trial' : 'deleted';
+  res.json({ status: 'success', data: { agency: { ...agency, status }, ownersEmailed: emailed } });
+}
+
+/** Opens a self-signup that was waiting for approval; its 14-day trial starts now. */
+export const approveAgency = asyncHandler((req, res) => decide(req, res, true));
+
+/** Turns down a self-signup that was waiting for approval. A reason is required. */
+export const rejectAgency = asyncHandler((req, res) => decide(req, res, false));

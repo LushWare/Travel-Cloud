@@ -440,3 +440,20 @@ variable "elevenlabs_public_base_url" {
   default     = ""
 }
 
+variable "ops_alert_email" {
+  description = "Email address alerted when a scheduled job (the hourly billing job) fails. Empty disables the alert."
+  type        = string
+  default     = ""
+}
+
+variable "package_lead_service_url" {
+  description = "This environment's lead-service Cloud Run URL, used by package-service. Fill in after the first apply."
+  type        = string
+  default     = ""
+}
+
+variable "billing_integration_service_url" {
+  description = "This environment's integration-service Cloud Run URL, used by billing-service. Fill in after the first apply."
+  type        = string
+  default     = ""
+}

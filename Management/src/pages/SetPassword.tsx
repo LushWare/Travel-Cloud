@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { API_BASE_URL, authFetch } from '@/lib/authFetch';
 import { nextStepAfterSignIn } from '@/lib/pendingTenantChoice';
 import { useAuth } from '../contexts/AuthContext';
+import BRANDING from '../config/branding';
 
 const MIN_LENGTH = 12;
 
@@ -65,7 +66,7 @@ export default function SetPassword() {
             </div>
           </div>
           <h1 className="font-heading text-2xl font-bold text-foreground mb-1">Set your password</h1>
-          <p className="text-muted-foreground text-sm">Choose a password to sign in to LushTravel.</p>
+          <p className="text-muted-foreground text-sm">Choose a password to sign in to {BRANDING.company.name}.</p>
         </div>
 
         <form onSubmit={handleSubmit} className="bg-card border border-border rounded-xl p-5 sm:p-8 space-y-4">

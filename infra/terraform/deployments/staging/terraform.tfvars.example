@@ -94,3 +94,10 @@ whatsapp_template_invoice      = "<whatsapp-template-invoice>"
 whatsapp_template_receipt      = "<whatsapp-template-receipt>"
 whatsapp_template_voucher      = "<whatsapp-template-voucher>"
 admin_emails                   = "<admin-emails>"
+
+# Email that gets an alert if the hourly billing job fails (leave empty for no alert).
+ops_alert_email = ""
+
+# Fill in after the first apply (same as lead_billing_service_url).
+package_lead_service_url        = "https://staging-lead-service-<hash>.run.app"
+billing_integration_service_url = "https://staging-integration-service-<hash>.run.app"

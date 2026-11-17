@@ -11,6 +11,7 @@ import PageHeader from '../components/PageHeader';
 import AgencyPlanSummary from '../components/AgencyPlanSummary';
 import AgencyBillingSettings from '../components/AgencyBillingSettings';
 import SupportAccessNote from '../components/SupportAccessNote';
+import DataExportSection from '../components/DataExportSection';
 import EmailIntegrationSettings from '../components/EmailIntegrationSettings';
 import GoogleAdsIntegrationSettings from '../components/GoogleAdsIntegrationSettings';
 import FacebookLeadAdsIntegrationSettings from '../components/FacebookLeadAdsIntegrationSettings';
@@ -332,8 +333,8 @@ const OrganizationSettings = () => {
             <StripeIntegrationSettings />
 
             <Section
-              title="Other integrations"
-              description="These services are currently configured by Lushware. Agency-specific setup is not available yet."
+              title="Coming soon"
+              description="Connecting your own accounts for these is on the way. They are not part of your plan yet."
             >
               <IntegrationAvailability name="Flights" detail="Duffel / Travelport" />
               <IntegrationAvailability name="Hotels" detail="LiteAPI" />
@@ -347,6 +348,8 @@ const OrganizationSettings = () => {
             <AgencyBillingSettings />
 
             <SupportAccessNote />
+
+            <DataExportSection />
 
         <Section
           title="Company Identity"
@@ -545,7 +548,7 @@ function IntegrationAvailability({ name, detail }: { name: string; detail: strin
       </div>
       <span className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
         <PlugZap className="h-3.5 w-3.5" aria-hidden="true" />
-        Lushware-managed
+        Coming soon
       </span>
     </div>
   );

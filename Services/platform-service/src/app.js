@@ -6,6 +6,7 @@ import { correlationId, requestLogger } from './middleware/requestLogger.js';
 import authRoutes from './routes/auth.routes.js';
 import agencyRoutes from './routes/agencies.routes.js';
 import staffRoutes from './routes/staff.routes.js';
+import settingsRoutes from './routes/settings.routes.js';
 import planRoutes from './routes/plans.routes.js';
 
 const app = express();
@@ -23,6 +24,7 @@ app.use('/api/v1/platform/auth', authRoutes);
 app.use('/api/v1/platform/agencies', agencyRoutes);
 app.use('/api/v1/platform/plans', planRoutes);
 app.use('/api/v1/platform/staff', staffRoutes);
+app.use('/api/v1/platform/settings', settingsRoutes);
 
 app.use((req, res) => res.status(404).json({
   success: false, status: 'fail', code: 'NOT_FOUND', message: "We couldn't find what you were looking for.",

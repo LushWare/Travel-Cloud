@@ -5,13 +5,14 @@ import { formatDate, timeAgo } from '../lib/format';
 import { navigate } from '../lib/route';
 import AppShell from '../components/AppShell';
 import StatusBadge, { STATUS_LABEL } from '../components/StatusBadge';
+import SignupApprovalSwitch from '../components/SignupApprovalSwitch';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 
 type Props = { user: PlatformUser; onSignOut: () => void; onChangePassword: () => void };
 
 const LIMIT = 25;
-const STATUS_FILTERS: (AgencyStatus | '')[] = ['', 'active', 'trial', 'past_due', 'suspended'];
+const STATUS_FILTERS: (AgencyStatus | '')[] = ['', 'pending_approval', 'active', 'trial', 'past_due', 'suspended'];
 const SORT_LABEL: Record<AgencySort, string> = { name: 'Name', activity: 'Last activity', created: 'Newest', staff: 'Most staff' };
 const selectClass = 'h-9 rounded-lg border border-input bg-background px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50';
 
@@ -63,9 +64,10 @@ export default function Agencies({ user, onSignOut, onChangePassword }: Props) {
   }, [query, status, sort, page]);
 
   return (
-    <AppShell user={user} active="agencies" title="Agencies"
+    <AppShell user={user} active="agencies" title="Agencies" wide
       subtitle={loading ? 'Loading…' : `${total.toLocaleString()} ${total === 1 ? 'agency' : 'agencies'}`}
       onChangePassword={onChangePassword} onSignOut={onSignOut}>
+      <SignupApprovalSwitch canChange={user.role === 'platform_admin'} />
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <div className="relative min-w-0 flex-1 basis-60">
           <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />

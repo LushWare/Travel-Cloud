@@ -9,7 +9,22 @@ const ALLOWED_HEADERS = new Set([
   'destinationCountry', 'destination', 'travelDate', 'endDate',
   'numberOfTravelers', 'budget', 'message',
 ]);
-const HEADER_NAMES = new Map([...ALLOWED_HEADERS].map((header) => [header.toLowerCase(), header]));
+// Column names compared without case, spaces, underscores or dashes, so "Travel Date",
+// "travel_date" and "travelDate" all match. Common spreadsheet spellings map to our fields.
+const squash = (value) => value.toLowerCase().replace(/[\s_-]+/g, '');
+const HEADER_ALIASES = {
+  fullname: 'name', customername: 'name', leadname: 'name', contactname: 'name',
+  emailaddress: 'email', mail: 'email',
+  phonenumber: 'phone', mobile: 'phone', mobilenumber: 'phone', telephone: 'phone', tel: 'phone', contactnumber: 'phone',
+  whatsappnumber: 'whatsapp',
+  travellers: 'numberOfTravelers', travelers: 'numberOfTravelers', pax: 'numberOfTravelers', numberoftravellers: 'numberOfTravelers',
+  startdate: 'travelDate', departuredate: 'travelDate', returndate: 'endDate',
+  notes: 'message', note: 'message', comments: 'message', comment: 'message', enquiry: 'message', inquiry: 'message',
+};
+const HEADER_NAMES = new Map([
+  ...[...ALLOWED_HEADERS].map((header) => [squash(header), header]),
+  ...Object.entries(HEADER_ALIASES),
+]);
 
 const importRowSchema = createLeadSchema.pick({
   name: true,
@@ -121,10 +136,11 @@ function validateRecord(row, headers, rowNumber) {
   if (row.length !== headers.length) {
     return { rowNumber, errors: ['The number of fields does not match the header row.'] };
   }
+  // Only the columns we recognise are read; anything else in the sheet is left out (null header).
   const input = Object.fromEntries(headers.map((header, index) => [
     header,
-    normalizeValue(header, row[index]),
-  ]).filter(([, value]) => value !== undefined));
+    header ? normalizeValue(header, row[index]) : undefined,
+  ]).filter(([header, value]) => header && value !== undefined));
   const parsed = importRowSchema.safeParse(input);
   if (!parsed.success) {
     return {
@@ -135,22 +151,39 @@ function validateRecord(row, headers, rowNumber) {
   return { rowNumber, data: parsed.data, errors: [] };
 }
 
-export function parseLeadCsv(csv) {
+/**
+ * Reads a spreadsheet export. Columns we recognise become lead fields; every other column is
+ * skipped and listed in `ignoredColumns`, so a sheet exported from another tool (with ids,
+ * timestamps, call notes …) imports without editing. Returns { rows, ignoredColumns }.
+ */
+export function parseLeadCsvWithColumns(csv) {
   if (typeof csv !== 'string' || Buffer.byteLength(csv, 'utf8') > CSV_MAX_BYTES) {
     throw new Error('The CSV file must be smaller than 1 MB.');
   }
   const records = parseRecords(csv);
   if (records.length < 2) throw new Error('The CSV must include a header and at least one data row.');
 
-  const headers = records[0].map((header) => HEADER_NAMES.get(header.trim().toLowerCase()) || header.trim());
-  const duplicates = headers.filter((header, index) => headers.indexOf(header) !== index);
-  const unknown = headers.filter((header) => !ALLOWED_HEADERS.has(header));
-  if (duplicates.length) throw new Error('The CSV contains duplicate column names.');
-  if (unknown.length) throw new Error(`Unsupported CSV columns: ${unknown.join(', ')}.`);
-  if (!headers.length || headers.some((header) => !header)) throw new Error('The CSV header row is empty.');
+  const rawHeaders = records[0].map((header) => header.trim());
+  if (!rawHeaders.some(Boolean)) throw new Error('The CSV header row is empty.');
+  const headers = rawHeaders.map((header) => (header ? HEADER_NAMES.get(squash(header)) ?? null : null));
+  const ignoredColumns = rawHeaders.filter((header, index) => header && !headers[index]);
+
+  const used = headers.filter(Boolean);
+  const duplicates = [...new Set(used.filter((header, index) => used.indexOf(header) !== index))];
+  if (duplicates.length) throw new Error(`More than one column means the same thing: ${duplicates.join(', ')}. Keep one of each.`);
+  if (!used.some((header) => ['name', 'email', 'phone', 'whatsapp'].includes(header))) {
+    throw new Error('The CSV needs at least one of these columns: name, email, phone or whatsapp.');
+  }
   if (records.length - 1 > CSV_MAX_ROWS) throw new Error(`The CSV cannot contain more than ${CSV_MAX_ROWS} data rows.`);
 
-  return records.slice(1).map((record, index) => validateRecord(record, headers, index + 2));
+  return {
+    rows: records.slice(1).map((record, index) => validateRecord(record, headers, index + 2)),
+    ignoredColumns,
+  };
+}
+
+export function parseLeadCsv(csv) {
+  return parseLeadCsvWithColumns(csv).rows;
 }
 
 export const leadCsvBodySchema = z.object({

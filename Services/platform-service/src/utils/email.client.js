@@ -29,3 +29,27 @@ export async function sendPlatformSetupEmail({ user, token, purpose, fetchImpl =
   if (!response.ok) throw new Error(`Notification service returned ${response.status}.`);
   return response.json();
 }
+/** Tells an agency owner the outcome of Lushware's review of their sign-up. */
+export async function sendSignupDecisionEmail({ owner, agencyName, approved, fetchImpl = fetch }) {
+  const internalToken = process.env.INTERNAL_EVENTS_TOKEN;
+  if (!internalToken) throw new Error('INTERNAL_EVENTS_TOKEN is required to send sign-up decision email.');
+  const managementUrl = (process.env.MANAGEMENT_URL || (process.env.NODE_ENV === 'production' ? '' : 'http://localhost:5174')).replace(/\/$/, '');
+
+  const name = escapeHtml(owner.name || 'there');
+  const agency = escapeHtml(agencyName);
+  const subject = approved ? `${agencyName} is ready` : `About your ${agencyName} sign-up`;
+  const text = approved
+    ? `Hello ${owner.name || 'there'},\n\nYour agency ${agencyName} has been approved. Your 14-day free trial starts today.\n\nSign in: ${managementUrl}/login`
+    : `Hello ${owner.name || 'there'},\n\nThank you for signing up. We are not able to open ${agencyName} at this time.\n\nIf you think this is a mistake, reply to this email.`;
+  const html = approved
+    ? `<p>Hello ${name},</p><p>Your agency <strong>${agency}</strong> has been approved. Your 14-day free trial starts today.</p><p><a href="${escapeHtml(`${managementUrl}/login`)}">Sign in</a></p>`
+    : `<p>Hello ${name},</p><p>Thank you for signing up. We are not able to open <strong>${agency}</strong> at this time.</p><p>If you think this is a mistake, reply to this email.</p>`;
+
+  const response = await fetchImpl(`${NOTIFICATION_SERVICE_URL}/api/v1/notifications/internal/email`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-internal-token': internalToken },
+    body: JSON.stringify({ to: owner.email, subject, html, text }),
+  });
+  if (!response.ok) throw new Error(`Notification service returned ${response.status}.`);
+  return response.json();
+}

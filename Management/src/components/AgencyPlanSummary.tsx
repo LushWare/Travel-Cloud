@@ -31,9 +31,13 @@ const FEATURE_LABELS: Record<string, string> = {
   finance_docs: 'Invoices, receipts, credit notes and vouchers',
   whatsapp: 'WhatsApp delivery',
   vendors: 'Vendors and suppliers',
-  travel_booking: 'Flight booking',
+  travel_booking: 'Flight and hotel booking',
   analytics_full: 'Full analytics',
+  ai_copilot: 'AI insights and recommendations',
+  voice_agent: 'Voice agent',
 };
+// Lushware's own website module means nothing to other agencies, so it is never listed.
+const HIDDEN_FEATURES = new Set(['public_website']);
 
 export default function AgencyPlanSummary() {
   const [summary, setSummary] = useState<PlanSummary | null>(null);
@@ -75,7 +79,7 @@ export default function AgencyPlanSummary() {
           })}
         </div>
         <ul className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {Object.entries(summary.entitlements.features).map(([key, enabled]) => (
+          {Object.entries(summary.entitlements.features).filter(([key]) => !HIDDEN_FEATURES.has(key)).map(([key, enabled]) => (
             <li key={key} className="flex items-center justify-between border-b border-border py-2 text-sm">
               <span>{FEATURE_LABELS[key] ?? key}</span>
               <span className={enabled ? 'text-emerald-700' : 'text-muted-foreground'}>{enabled ? 'Included' : 'Not included'}</span>

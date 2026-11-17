@@ -95,3 +95,12 @@ describe('Analytics — plan without full analytics', () => {
     expect(screen.getByText('Lead Analytics Content')).toBeInTheDocument();
   });
 });
+
+describe('Analytics — website tab', () => {
+  it('hides Website analytics for an agency without the public website', () => {
+    mockUseAuth.mockReturnValue({ user: { role: 'admin', planModulesOff: ['public_website'] } });
+    render(<Analytics />);
+
+    expect(screen.queryByText('Website Analytics')).not.toBeInTheDocument();
+  });
+});

@@ -37,6 +37,7 @@ export async function logWhatsappCommunication({ tenantId, phone, notes, occurre
       'content-type': 'application/json',
       'x-internal-token': INTERNAL_EVENTS_TOKEN,
       'x-tenant-id': tenantId,
+      ...(await getCloudRunAuthorization(LEAD_SERVICE_URL)),
     },
     body: JSON.stringify({ phone, type: 'whatsapp', notes, occurredAt }),
   });

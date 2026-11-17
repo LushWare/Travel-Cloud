@@ -70,6 +70,12 @@ creates real rows there. To keep that safe:
   status update. No lead/billing entanglement; this is the smoke test for
   the whole harness (health-wait, real auth, cleanup wiring) and the
   cheapest flow to get green first.
+- **`flows/new-agency-signup.spec.js`** — a brand-new agency end to end: sign-up
+  → email code → its own Growth trial → sees no other agency's leads → company
+  details → first lead → price → quotation → invoice numbered from 1 → paid.
+  Creates a throwaway `[E2E-<run>]` agency and deletes it afterwards. Runs only
+  when `E2E_ADMIN_DATABASE_URL` is set (the emailed code and the cleanup need the
+  admin connection), and with the Console's sign-up approval switch off.
 - **`flows/lead-to-payment-lifecycle.spec.js`** — one continuous, stateful
   journey: create lead → assign → manual package selection → pricing →
   quotation → send → accept → convert to invoice → send → payment receipt →

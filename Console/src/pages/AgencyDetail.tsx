@@ -22,8 +22,11 @@ const OVERRIDE_KEYS = [
   ['features.finance_docs', 'Invoices, receipts, credit notes and vouchers'],
   ['features.whatsapp', 'WhatsApp delivery'],
   ['features.vendors', 'Vendors and suppliers'],
-  ['features.travel_booking', 'Flight booking'],
+  ['features.travel_booking', 'Flight and hotel booking'],
   ['features.analytics_full', 'Full analytics'],
+  ['features.ai_copilot', 'AI insights and recommendations'],
+  ['features.voice_agent', 'Voice agent'],
+  ['features.public_website', 'Public website, careers and website analytics'],
 ] as const;
 
 const Panel = ({ title, children }: { title: string; children: ReactNode }) => (
@@ -52,7 +55,7 @@ const Check = ({ ok, label }: { ok: boolean; label: string }) => (
 export default function AgencyDetail({ id, user, onSignOut, onChangePassword }: Props) {
   const [detail, setDetail] = useState<Detail | null>(null);
   const [error, setError] = useState('');
-  const [dialog, setDialog] = useState<'suspend' | 'restore' | 'help' | null>(null);
+  const [dialog, setDialog] = useState<'suspend' | 'restore' | 'reject' | 'help' | null>(null);
   const [notice, setNotice] = useState('');
   const [catalog, setCatalog] = useState<PlanCatalogItem[]>([]);
   const [planVersionId, setPlanVersionId] = useState('');
@@ -110,6 +113,13 @@ export default function AgencyDetail({ id, user, onSignOut, onChangePassword }: 
   };
 
   const changeStatus = async (reason: string) => {
+    if (dialog === 'reject') {
+      const result = await agencyApi.reject(id, reason);
+      setNotice(result.ownersEmailed ? 'Sign-up rejected. The owner has been emailed.' : 'Sign-up rejected, but the email to the owner could not be sent.');
+      setDialog(null);
+      await load();
+      return;
+    }
     const action = dialog === 'suspend' ? agencyApi.suspend : agencyApi.restore;
     if (dialog !== 'suspend' && dialog !== 'restore') return;
     await action(id, reason);
@@ -122,13 +132,26 @@ export default function AgencyDetail({ id, user, onSignOut, onChangePassword }: 
   const agency = detail?.agency;
   const canSuspend = agency && isAdmin && ['active', 'trial', 'past_due'].includes(agency.status) && !detail?.isPublicSite;
   const canRestore = agency && isAdmin && agency.status === 'suspended';
+  const canDecide = agency && isAdmin && agency.status === 'pending_approval';
 
-  const canHelp = agency && !['pending_deletion', 'deleted'].includes(agency.status);
+  const approve = async () => {
+    if (!agency || !window.confirm(`Approve ${agency.name}? Its 14-day trial starts now and the owner is emailed.`)) return;
+    setError('');
+    try {
+      const result = await agencyApi.approve(id);
+      setNotice(result.ownersEmailed ? 'Agency approved. The owner has been emailed.' : 'Agency approved, but the email to the owner could not be sent.');
+      await load();
+    } catch (err) { setError(err instanceof ApiError ? err.message : 'Could not approve this agency.'); }
+  };
+
+  const canHelp = agency && !['pending_approval', 'pending_deletion', 'deleted'].includes(agency.status);
   const actions = (
     <>
       {canHelp && <Button variant="outline" onClick={() => setDialog('help')}><Eye /> Help this agency</Button>}
       {canSuspend && <Button variant="destructive" onClick={() => setDialog('suspend')}><CircleSlash /> Suspend</Button>}
       {canRestore && <Button onClick={() => setDialog('restore')}><RotateCcw /> Restore</Button>}
+      {canDecide && <Button onClick={approve}><CheckCircle2 /> Approve</Button>}
+      {canDecide && <Button variant="destructive" onClick={() => setDialog('reject')}><XCircle /> Reject</Button>}
     </>
   );
 
@@ -292,7 +315,7 @@ export default function AgencyDetail({ id, user, onSignOut, onChangePassword }: 
         </div>
       )}
 
-      {(dialog === 'suspend' || dialog === 'restore') && agency && (
+      {(dialog === 'suspend' || dialog === 'restore' || dialog === 'reject') && agency && (
         <StatusChangeDialog mode={dialog} agencyName={agency.name} slug={agency.slug}
           onConfirm={changeStatus} onClose={() => setDialog(null)} />
       )}

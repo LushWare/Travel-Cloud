@@ -370,6 +370,7 @@ export async function processStripeEvent(event) {
          WHERE "stripeCustomerId" = ${customerId}
            AND "stripeSubscriptionId" = ${invoiceSubscriptionId}
            AND (status IN ('trial', 'active', 'past_due') OR "billingSuspended")
+           AND status NOT IN ('pending_deletion', 'deleted')
       `;
       const paidPriceId = paidSubscription?.status === 'active'
         ? paidSubscription.items?.data?.[0]?.price?.id
@@ -428,6 +429,8 @@ export async function processStripeEvent(event) {
                "updatedAt" = NOW()
          WHERE "stripeSubscriptionId" = ${subscriptionId}
            AND (status <> 'suspended' OR "billingSuspended" OR ${subscriptionStatus} = 'canceled')
+           -- A closed agency cancels its own subscription; the resulting event must not reopen or suspend it.
+           AND status NOT IN ('pending_deletion', 'deleted')
       `;
     }
     return { duplicate: false };

@@ -145,3 +145,64 @@ describe('resending agency signup verification', () => {
     await expect(resendAgencySignupCode('alex@example.com')).resolves.toBeNull();
   });
 });
+
+describe('agency signup with approval required', () => {
+  const answerApproval = (value) => tx.$queryRaw.mockImplementation((strings) => {
+    const query = strings.join('');
+    if (query.includes('crm_platform."Plan"')) return plans;
+    if (query.includes('PlatformSetting')) return value === undefined ? [] : [{ value }];
+    return [];
+  });
+  const tenantInsert = () => tx.$executeRaw.mock.calls.find((call) => sql(call).includes('crm_platform."Tenant"'));
+  const signup = () => createAgencySignup({
+    agencyName: 'North Star Travel', ownerName: 'Alex Owner', email: 'alex@example.com',
+    password: 'a secure password', planKey: 'starter',
+  });
+
+  it('creates the agency as pending approval with no trial clock when the switch is on', async () => {
+    answerApproval(true);
+
+    const result = await signup();
+
+    expect(result.pendingApproval).toBe(true);
+    expect(tenantInsert().slice(1)).toContain('pending_approval');
+    expect(tenantInsert().slice(1)).toContain(null);
+  });
+
+  it('starts the 14-day trial straight away when the switch is off', async () => {
+    answerApproval(false);
+
+    const result = await signup();
+
+    expect(result.pendingApproval).toBe(false);
+    expect(tenantInsert().slice(1)).toContain('trial');
+  });
+
+  it('keeps sign-up open when the switch has never been set', async () => {
+    answerApproval(undefined);
+
+    expect((await signup()).pendingApproval).toBe(false);
+  });
+
+  it('keeps sign-up open before the setting table exists', async () => {
+    tx.$queryRaw.mockImplementation((strings) => {
+      const query = strings.join('');
+      if (query.includes('PlatformSetting')) throw new Error('relation "crm_platform.PlatformSetting" does not exist');
+      if (query.includes('crm_platform."Plan"')) return plans;
+      return [];
+    });
+
+    expect((await signup()).pendingApproval).toBe(false);
+  });
+
+  it('fails the signup rather than guessing when the setting cannot be read', async () => {
+    tx.$queryRaw.mockImplementation((strings) => {
+      const query = strings.join('');
+      if (query.includes('PlatformSetting')) throw new Error('connection reset');
+      if (query.includes('crm_platform."Plan"')) return plans;
+      return [];
+    });
+
+    await expect(signup()).rejects.toThrow('connection reset');
+  });
+});

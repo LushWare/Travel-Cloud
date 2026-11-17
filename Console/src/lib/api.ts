@@ -40,7 +40,7 @@ export class ApiError extends Error {
   }
 }
 
-export type AgencyStatus = 'trial' | 'active' | 'past_due' | 'suspended' | 'pending_deletion' | 'deleted';
+export type AgencyStatus = 'pending_approval' | 'trial' | 'active' | 'past_due' | 'suspended' | 'pending_deletion' | 'deleted';
 export type AgencySort = 'name' | 'created' | 'activity' | 'staff';
 
 export type AgencyRow = {
@@ -76,10 +76,16 @@ export const PLAN_FEATURES = {
   finance_docs: 'Invoices, receipts, credit notes and vouchers',
   whatsapp: 'WhatsApp delivery',
   vendors: 'Vendors and suppliers',
-  travel_booking: 'Flight booking',
+  travel_booking: 'Flight and hotel booking',
   analytics_full: 'Full analytics',
+  ai_copilot: 'AI insights and recommendations',
+  voice_agent: 'Voice agent',
+  public_website: 'Public website, careers and website analytics',
 } as const;
 export type PlanFeatureKey = keyof typeof PLAN_FEATURES;
+
+// Off unless a plan names them (they run on Lushware's own accounts); mirrors OPT_IN_MODULES.
+const OFF_WHEN_MISSING: readonly PlanFeatureKey[] = ['ai_itinerary_builder', 'ai_copilot', 'voice_agent', 'public_website'];
 
 // Mirrors LIMIT_ENTITLEMENTS in Services/shared/tenancy/src/entitlements.js. Null is unlimited.
 export const PLAN_LIMITS = {
@@ -102,7 +108,7 @@ export const withFeatureDefaults = (entitlements: Partial<Record<PlanLimitKey, n
 }): PlanEntitlements => ({
   ...(Object.fromEntries((Object.keys(PLAN_LIMITS) as PlanLimitKey[]).map((key) => [key, entitlements[key] ?? null])) as Record<PlanLimitKey, number | null>),
   features: Object.fromEntries((Object.keys(PLAN_FEATURES) as PlanFeatureKey[]).map((key) => [
-    key, entitlements.features?.[key] ?? key !== 'ai_itinerary_builder',
+    key, entitlements.features?.[key] ?? !OFF_WHEN_MISSING.includes(key),
   ])) as Record<PlanFeatureKey, boolean>,
 });
 
@@ -197,6 +203,16 @@ export const agencyApi = {
     platformRequest<{ grantId: string; expiresAt: string; code: string }>(`/agencies/${encodeURIComponent(id)}/help-access`, { method: 'POST', body: { reason, minutes } }),
   restore: (id: string, reason: string) =>
     platformRequest<{ agency: { status: AgencyStatus } }>(`/agencies/${encodeURIComponent(id)}/restore`, { method: 'POST', body: { reason } }),
+  approve: (id: string) =>
+    platformRequest<{ agency: { status: AgencyStatus }; ownersEmailed: boolean }>(`/agencies/${encodeURIComponent(id)}/approve`, { method: 'POST', body: {} }),
+  reject: (id: string, reason: string) =>
+    platformRequest<{ agency: { status: AgencyStatus }; ownersEmailed: boolean }>(`/agencies/${encodeURIComponent(id)}/reject`, { method: 'POST', body: { reason } }),
+};
+
+export const settingsApi = {
+  get: () => platformRequest<{ requireSignupApproval: boolean }>('/settings'),
+  setSignupApproval: (enabled: boolean) =>
+    platformRequest<{ requireSignupApproval: boolean }>('/settings/signup-approval', { method: 'PUT', body: { enabled } }),
 };
 
 export const plansApi = {
