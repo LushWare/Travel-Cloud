@@ -24,7 +24,29 @@ describe('DataExportSection', () => {
     await userEvent.setup().click(screen.getByRole('button', { name: 'Download all data' }));
 
     await waitFor(() => expect(click).toHaveBeenCalledTimes(1));
-    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:export');
+  });
+
+  it('tells the owner the download has started and the file name', async () => {
+    mockAuth.mockReturnValue({ user: { role: 'superAdmin', isSuperAdmin: true } });
+    exportAgencyData.mockResolvedValue(new Blob(['zip']));
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    render(<DataExportSection />);
+
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Download all data' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent(/Download started: agency-data-\d{4}-\d{2}-\d{2}\.zip/);
+  });
+
+  it('keeps the file link alive while the browser starts the download', async () => {
+    mockAuth.mockReturnValue({ user: { role: 'superAdmin', isSuperAdmin: true } });
+    exportAgencyData.mockResolvedValue(new Blob(['zip']));
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    render(<DataExportSection />);
+
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Download all data' }));
+
+    await waitFor(() => expect(click).toHaveBeenCalledTimes(1));
+    expect(URL.revokeObjectURL).not.toHaveBeenCalled();
   });
 
   it('shows the reason when the export fails', async () => {
@@ -51,5 +73,15 @@ describe('DataExportSection', () => {
     const { container } = render(<DataExportSection />);
 
     expect(container).toBeEmptyDOMElement();
+  });
+});
+
+describe('DataExportSection for an owner whose session lacks the owner flag', () => {
+  it('is offered to role superAdmin', () => {
+    mockAuth.mockReturnValue({ user: { role: 'superAdmin' } });
+
+    render(<DataExportSection />);
+
+    expect(screen.getByRole('button', { name: 'Download all data' })).toBeInTheDocument();
   });
 });

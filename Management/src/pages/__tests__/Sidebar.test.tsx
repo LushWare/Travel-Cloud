@@ -547,6 +547,36 @@ describe('Sidebar current agency', () => {
   });
 });
 
+describe('Sidebar role name', () => {
+  it.each([
+    [{ ...ADMIN, role: 'superAdmin', isSuperAdmin: true }, 'Owner'],
+    [ADMIN, 'Admin'],
+    [{ ...ADMIN, role: 'salesRep' }, 'Sales rep'],
+  ])('shows the role in plain words (%o)', (user, label) => {
+    setUser(user);
+
+    render(<Sidebar />);
+
+    expect(screen.getByTestId('current-role')).toHaveTextContent(label);
+  });
+
+  it('calls an owner whose membership role is admin the Owner', () => {
+    setUser({ ...ADMIN, isSuperAdmin: true });
+
+    render(<Sidebar />);
+
+    expect(screen.getByTestId('current-role')).toHaveTextContent('Owner');
+  });
+
+  it('shows no sparkle icon next to an owner', () => {
+    setUser({ ...ADMIN, role: 'superAdmin', isSuperAdmin: true });
+
+    render(<Sidebar />);
+
+    expect(screen.getByTestId('current-role').parentElement?.querySelector('.lucide-sparkles')).toBeNull();
+  });
+});
+
 describe('Sidebar plan modules', () => {
   it('marks Flights with a lock when the plan leaves flight booking out', async () => {
     setUser({ ...ADMIN, planModulesOff: ['travel_booking'] });

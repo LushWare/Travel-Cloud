@@ -25,6 +25,15 @@ const deriveInitials = (name: string): string => {
   return "";
 };
 
+const ROLE_NAMES: Record<string, string> = {
+  superAdmin: 'Owner',
+  admin: 'Admin',
+  salesRep: 'Sales rep',
+  vendor: 'Vendor',
+};
+const roleName = (user: { role?: string; isSuperAdmin?: boolean }): string =>
+  user.isSuperAdmin ? 'Owner' : ROLE_NAMES[user.role ?? ''] ?? '';
+
 interface OrgBranding {
   companyName?: string;
   companyShortName?: string;
@@ -346,9 +355,9 @@ const Sidebar = () => {
                       <span className="truncate" data-testid="current-agency">{user.tenant.name}</span>
                     </p>
                   )}
-                  <div className="mt-1 flex items-center gap-1">
-                    {user.role === 'superAdmin' && <Sparkles className="w-4 h-4 flex-shrink-0 text-sidebar-primary" />}
-                  </div>
+                  {roleName(user) && (
+                    <p className="mt-0.5 text-xs text-muted-foreground truncate" data-testid="current-role">{roleName(user)}</p>
+                  )}
                 </div>
               </div>
             </div>
