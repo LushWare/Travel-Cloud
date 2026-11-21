@@ -131,6 +131,21 @@ describe('DuffelClient', () => {
       expect(thrown.message).not.toContain('DUFFEL_ACCESS_TOKEN');
       expect(thrown.code).toBe('PROVIDER_UNAVAILABLE');
     });
+
+    it("sends an agency's own token instead of Lushware's", async () => {
+      const axios = (await import('axios')).default;
+      mockAxiosInstance.get.mockResolvedValue(mockDuffelOrder());
+
+      await new DuffelClient({ accessToken: 'duffel_test_agency_token_1' }).getOrder('ord_00009hthhsUZ8W4LxQgkjo');
+
+      expect(axios.create).toHaveBeenLastCalledWith(expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: 'Bearer duffel_test_agency_token_1' }),
+      }));
+    });
+
+    it('refuses an agency account with no token', () => {
+      expect(() => new DuffelClient({ accessToken: '' })).toThrow('temporarily unavailable');
+    });
   });
 
   // A Duffel error names the supplier and its own field paths. None of that may

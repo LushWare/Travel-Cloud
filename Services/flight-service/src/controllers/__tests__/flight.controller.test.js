@@ -32,6 +32,7 @@ const {
   listBookings,
   getBooking,
   cancelBooking,
+  acknowledgeAirlineChange,
 } = await import('../../controllers/flight.controller.js');
 
 const prisma = (await import('../../db/client.js')).default;
@@ -419,6 +420,59 @@ describe('cancelBooking', () => {
 
     await cancelBooking(req, mockRes(), next);
 
+    expect(next.mock.calls[0][0].statusCode).toBe(404);
+  });
+});
+
+describe('cancelBooking — refund', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("saves what Duffel refunded to the agency's balance", async () => {
+    prisma.flightBooking.findFirst.mockResolvedValue({ id: 'b1', status: 'confirmed', travelportOrderId: 'ord_1' });
+    prisma.flightBooking.update.mockResolvedValue({ id: 'b1', status: 'cancelled' });
+    const client = {
+      createCancellationQuote: vi.fn(),
+      confirmCancellation: vi.fn().mockResolvedValue({ status: 'cancelled', refundAmount: '150.25', refundCurrency: 'USD', refundTo: 'balance' }),
+    };
+    const req = mockReq({ params: { id: 'b1' }, body: { cancellationId: 'ore_1' }, flightClient: client });
+
+    await cancelBooking(req, mockRes(), vi.fn());
+
+    expect(prisma.flightBooking.update.mock.calls[0][0].data).toMatchObject({
+      status: 'cancelled', refundAmount: 150.25, refundCurrency: 'USD', refundTo: 'balance',
+    });
+  });
+
+  it('saves no refund when the provider gives none', async () => {
+    prisma.flightBooking.findFirst.mockResolvedValue({ id: 'b1', status: 'confirmed', travelportOrderId: 'ORDER-1' });
+    prisma.flightBooking.update.mockResolvedValue({ id: 'b1', status: 'cancelled' });
+    const req = mockReq({ params: { id: 'b1' } });
+
+    await cancelBooking(req, mockRes(), vi.fn());
+
+    expect(prisma.flightBooking.update.mock.calls[0][0].data.refundAmount).toBeUndefined();
+  });
+});
+
+describe('acknowledgeAirlineChange', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('clears the airline change label', async () => {
+    prisma.flightBooking.findFirst.mockResolvedValue({ id: 'b1', airlineChangeKind: 'changed' });
+    prisma.flightBooking.update.mockResolvedValue({ id: 'b1', airlineChangeKind: null });
+
+    await acknowledgeAirlineChange(mockReq({ params: { id: 'b1' } }), mockRes(), vi.fn());
+
+    expect(prisma.flightBooking.update.mock.calls[0][0].data).toEqual({ airlineChangeAt: null, airlineChangeKind: null });
+  });
+
+  it("does not let a sales rep clear another rep's booking", async () => {
+    prisma.flightBooking.findFirst.mockResolvedValue(null);
+    const next = vi.fn();
+
+    await acknowledgeAirlineChange(mockReq({ params: { id: 'b1' }, user: { id: 'rep-2', role: 'salesRep', isSuperAdmin: false } }), mockRes(), next);
+
+    expect(prisma.flightBooking.findFirst.mock.calls[0][0].where).toEqual({ id: 'b1', createdById: 'rep-2' });
     expect(next.mock.calls[0][0].statusCode).toBe(404);
   });
 });

@@ -669,6 +669,38 @@ export const integrationAPI = {
     const api = new ApiService();
     return api.delete("/integrations/stripe");
   },
+  getDuffel: async () => {
+    const api = new ApiService();
+    return api.get("/integrations/duffel");
+  },
+  saveDuffel: async (data) => {
+    const api = new ApiService();
+    return api.put("/integrations/duffel", data);
+  },
+  testDuffel: async () => {
+    const api = new ApiService();
+    return api.post("/integrations/duffel/test", {});
+  },
+  disconnectDuffel: async () => {
+    const api = new ApiService();
+    return api.delete("/integrations/duffel");
+  },
+  getLiteApi: async () => {
+    const api = new ApiService();
+    return api.get("/integrations/liteapi");
+  },
+  saveLiteApi: async (data) => {
+    const api = new ApiService();
+    return api.put("/integrations/liteapi", data);
+  },
+  testLiteApi: async () => {
+    const api = new ApiService();
+    return api.post("/integrations/liteapi/test", {});
+  },
+  disconnectLiteApi: async () => {
+    const api = new ApiService();
+    return api.delete("/integrations/liteapi");
+  },
 };
 
 // Manual Itinerary API Methods

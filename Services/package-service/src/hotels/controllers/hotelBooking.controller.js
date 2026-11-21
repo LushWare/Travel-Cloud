@@ -1,14 +1,15 @@
 import prisma from '../../db/client.js';
 import asyncHandler from '../../utils/asyncHandler.js';
 import AppError from '../../utils/appError.js';
-import { createHotelClient } from '../clients/index.js';
+import { resolveHotelClient } from '../clients/index.js';
 import { SALES_REP } from '../../constants/roles.js';
 import { CREATED, NOT_FOUND, BAD_REQUEST } from '../../constants/httpStatus.js';
 import { BOOKING_NOT_FOUND, BOOKING_ALREADY_CANCELLED } from '../../constants/errorMessages.js';
 import logger from '../../config/logger.js';
 
-function getClient(req) {
-  if (!req._hotelClient) req._hotelClient = createHotelClient();
+// The current agency's own LiteAPI account (or Lushware's, for Lushware's agency); see clients/index.js.
+async function getClient(req) {
+  if (!req._hotelClient) req._hotelClient = await resolveHotelClient();
   return req._hotelClient;
 }
 
@@ -54,17 +55,17 @@ function withCancellationEligibility(booking) {
 // ── Controllers ──────────────────────────────────────────────────────
 
 export const search = asyncHandler(async (req, res) => {
-  const offers = await getClient(req).searchHotels(req.body);
+  const offers = await (await getClient(req)).searchHotels(req.body);
   req.log.info({ count: offers.length }, 'Hotel search completed');
   res.json({ success: true, data: offers, total: offers.length });
 });
 
 export const getDetails = asyncHandler(async (req, res) => {
-  res.json({ success: true, data: await getClient(req).getHotelDetails(req.body.hotelId || req.query.hotelId) });
+  res.json({ success: true, data: await (await getClient(req)).getHotelDetails(req.body.hotelId || req.query.hotelId) });
 });
 
 export const getCities = asyncHandler(async (req, res) => {
-  const cities = await getClient(req).getCities(req.query.countryCode);
+  const cities = await (await getClient(req)).getCities(req.query.countryCode);
   res.json({ success: true, data: cities });
 });
 
@@ -74,7 +75,7 @@ export const getCountries = asyncHandler(async (_req, res) => {
 });
 
 export const getHotelFilterOptions = asyncHandler(async (req, res) => {
-  const options = await getClient(req).getHotelFilterOptions();
+  const options = await (await getClient(req)).getHotelFilterOptions();
   res.json({ success: true, data: options });
 });
 
@@ -82,18 +83,18 @@ export const getReviews = asyncHandler(async (req, res) => {
   const { hotelId, limit, offset, getSentiment } = req.body;
   res.json({
     success: true,
-    data: await getClient(req).getHotelReviews(hotelId, { limit, offset, getSentiment }),
+    data: await (await getClient(req)).getHotelReviews(hotelId, { limit, offset, getSentiment }),
   });
 });
 
 export const prebook = asyncHandler(async (req, res) => {
-  res.json({ success: true, data: await getClient(req).prebook(req.body) });
+  res.json({ success: true, data: await (await getClient(req)).prebook(req.body) });
 });
 
 export const book = asyncHandler(async (req, res) => {
   const { prebookId, clientReference, guests, contact, holder, offer, payment } = req.body;
 
-  const result = await getClient(req).book({ prebookId, clientReference, guests, contact, holder, payment });
+  const result = await (await getClient(req)).book({ prebookId, clientReference, guests, contact, holder, payment });
 
   const booking = await prisma.hotelBooking.create({
     data: {
@@ -157,7 +158,7 @@ export const getBooking = asyncHandler(async (req, res) => {
   let providerRefreshFailed = false;
   if (booking.liteapiBookingId) {
     try {
-      providerBooking = await getClient(req).getBooking(booking.liteapiBookingId);
+      providerBooking = await (await getClient(req)).getBooking(booking.liteapiBookingId);
     } catch (error) {
       providerRefreshFailed = true;
       req.log.warn({ bookingId: booking.id, err: error }, 'Could not refresh hotel booking details from provider');
@@ -216,7 +217,7 @@ export const cancelBooking = asyncHandler(async (req, res) => {
   if (booking.status === 'cancelled') throw new AppError(BOOKING_ALREADY_CANCELLED, BAD_REQUEST);
   const localEligibility = getCancellationEligibility(booking);
   if (!localEligibility.canCancel) throw new AppError(localEligibility.cancellationUnavailableReason, BAD_REQUEST);
-  const providerBooking = await getClient(req).getBooking(booking.liteapiBookingId);
+  const providerBooking = await (await getClient(req)).getBooking(booking.liteapiBookingId);
   const eligibility = getCancellationEligibility({
     ...booking,
     providerStatus: providerBooking.status,
@@ -224,7 +225,7 @@ export const cancelBooking = asyncHandler(async (req, res) => {
   });
   if (!eligibility.canCancel) throw new AppError(eligibility.cancellationUnavailableReason, BAD_REQUEST);
 
-  const cancellation = await getClient(req).cancelBooking(booking.liteapiBookingId, req.body?.reason);
+  const cancellation = await (await getClient(req)).cancelBooking(booking.liteapiBookingId, req.body?.reason);
   if (cancellation && !['cancelled', 'cancelled_with_charges'].includes(cancellation.status)) {
     throw new AppError('The hotel provider did not confirm this cancellation.', BAD_REQUEST);
   }
@@ -241,7 +242,7 @@ export const cancelBooking = asyncHandler(async (req, res) => {
 export const bookWithContext = asyncHandler(async (req, res) => {
   const { prebookId, clientReference, guests, contact, holder, offer, payment, leadId, packageId, customizedPackageId, dayNumber } = req.body;
 
-  const result = await getClient(req).book({ prebookId, clientReference, guests, contact, holder, payment });
+  const result = await (await getClient(req)).book({ prebookId, clientReference, guests, contact, holder, payment });
 
   const booking = await prisma.hotelBooking.create({
     data: {
@@ -284,6 +285,6 @@ export const getHotelBookingsByLead = asyncHandler(async (req, res) => {
 });
 
 export const getEsimPackages = asyncHandler(async (req, res) => {
-  const packages = await getClient(req).getEsimPackages(req.params.countryCode);
+  const packages = await (await getClient(req)).getEsimPackages(req.params.countryCode);
   res.json({ success: true, data: packages });
 });

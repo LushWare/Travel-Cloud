@@ -61,6 +61,8 @@ export const bookForLead = asyncHandler(async (req, res) => {
       pnr: order.pnr,
       travelportOrderId: order.travelportOrderId,
       createdById: req.user.id,
+      // So an airline change to this booking can be emailed to the rep who made it.
+      bookedByEmail: req.user.email || null,
       customerId: customer.id,
       tripType: tripType || ((offer.legCount ?? 1) > 1 ? 'roundTrip' : 'oneWay'),
       cabinClass: offer.cabinClass || 'Economy',

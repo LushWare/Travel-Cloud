@@ -32,6 +32,20 @@ import {
   getPublicStripeCheckoutStatus,
   getPublicStripePaymentLink,
 } from './stripePayments.controller.js';
+import {
+  disconnectDuffel,
+  getDuffelCredentials,
+  getDuffelIntegration,
+  saveDuffelIntegration,
+  testDuffelIntegration,
+} from './duffel.controller.js';
+import {
+  disconnectLiteApi,
+  getLiteApiCredentials,
+  getLiteApiIntegration,
+  saveLiteApiIntegration,
+  testLiteApiIntegration,
+} from './liteapi.controller.js';
 
 const router = Router();
 const asyncHandler = (handler) => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
@@ -59,6 +73,16 @@ router.get('/stripe/payment-links/:token', asyncHandler(getPublicStripePaymentLi
 router.post('/stripe/payment-links/:token/checkout', asyncHandler(createPublicStripeCheckout));
 router.get('/stripe/checkout-sessions/:sessionId', asyncHandler(getPublicStripeCheckoutStatus));
 router.post('/internal/stripe/payment-links', requireInternalToken, asyncHandler(createStripePaymentLink));
+router.get('/duffel', requireAgencyAdmin, asyncHandler(getDuffelIntegration));
+router.put('/duffel', requireAgencyAdmin, asyncHandler(saveDuffelIntegration));
+router.post('/duffel/test', requireAgencyAdmin, asyncHandler(testDuffelIntegration));
+router.delete('/duffel', requireAgencyAdmin, asyncHandler(disconnectDuffel));
+router.post('/internal/duffel/credentials', requireInternalToken, asyncHandler(getDuffelCredentials));
+router.get('/liteapi', requireAgencyAdmin, asyncHandler(getLiteApiIntegration));
+router.put('/liteapi', requireAgencyAdmin, asyncHandler(saveLiteApiIntegration));
+router.post('/liteapi/test', requireAgencyAdmin, asyncHandler(testLiteApiIntegration));
+router.delete('/liteapi', requireAgencyAdmin, asyncHandler(disconnectLiteApi));
+router.post('/internal/liteapi/credentials', requireInternalToken, asyncHandler(getLiteApiCredentials));
 router.use(facebookRoutes);
 
 export default router;

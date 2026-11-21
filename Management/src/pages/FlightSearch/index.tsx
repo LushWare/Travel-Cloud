@@ -629,13 +629,25 @@ export default function FlightSearch() {
         reason: reason || 'Cancelled by agent',
         cancellationId,
       });
-      toast.success('Cancellation confirmed. Refund timing depends on the airline and payment provider.');
+      toast.success("Cancellation confirmed. Remember to refund your customer: it isn't done automatically.");
       await fetchBookings();
       return true;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- flight.service.js is untyped JS, error shape is unknown at this boundary
     } catch (error: any) {
       toast.error(apiErrorMessage(error));
       return false;
+    }
+  };
+
+  const acknowledgeAirlineChange = async (id: string): Promise<FlightBookingRecord | null> => {
+    try {
+      const response = await flightAPI.acknowledgeAirlineChange(id);
+      await fetchBookings();
+      return response.data as FlightBookingRecord;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- flight.service.js is untyped JS, error shape is unknown at this boundary
+    } catch (error: any) {
+      toast.error(apiErrorMessage(error));
+      return null;
     }
   };
 
@@ -936,6 +948,7 @@ export default function FlightSearch() {
                 onLoadBooking={loadBookingDetails}
                 onRequestCancellationQuote={requestCancellationQuote}
                 onCancel={cancelBooking}
+                onAcknowledgeAirlineChange={acknowledgeAirlineChange}
               />
             </div>
           </>

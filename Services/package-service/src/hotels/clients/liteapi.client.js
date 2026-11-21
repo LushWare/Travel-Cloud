@@ -23,9 +23,10 @@ import {
  * Booking:     https://book.liteapi.travel/v3.0 (prebook, book, cancel)
  */
 export class LiteApiClient {
-  constructor() {
-    this.#ensureConfig();
-    console.info('[package-service] Using LiteApiClient — real hotel API integration.');
+  /** @param {{ apiKey?: string }} [options] an agency's own key; without it, Lushware's LITEAPI_API_KEY */
+  constructor({ apiKey } = {}) {
+    if (apiKey) this._apiKey = apiKey;
+    else this.#ensureConfig();
   }
 
   /** @param {import('./interface.js').HotelSearchParams} params */

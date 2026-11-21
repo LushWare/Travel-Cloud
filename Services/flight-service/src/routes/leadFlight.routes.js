@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { requireAuth, authorize } from '../middleware/auth.js';
+import { injectFlightClient } from '../middleware/flightClient.js';
 import { validateBody, validateParams } from '../middleware/validate.js';
 import {
   leadBookSchema, linkDaySchema, leadIdParamSchema, bookingIdParamSchema,
@@ -11,7 +12,7 @@ import { FLIGHT_AUTHORISED_ROLES } from '../constants/roles.js';
 
 const router = Router();
 
-router.use(requireAuth, authorize(...FLIGHT_AUTHORISED_ROLES));
+router.use(requireAuth, authorize(...FLIGHT_AUTHORISED_ROLES), injectFlightClient);
 
 // ── Book for lead ───────────────────────────────────────────────────
 router.post('/book-for-lead', validateBody(leadBookSchema), bookForLead);

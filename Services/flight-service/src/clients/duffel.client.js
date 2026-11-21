@@ -32,10 +32,17 @@ const DUFFEL_BASE_URL = 'https://api.duffel.com';
  * - All request bodies wrapped in { data: {...} }
  */
 export class DuffelClient {
-  constructor() {
+  /**
+   * @param {{ accessToken?: string, cardCheckoutEnabled?: boolean }} [account] An agency's own
+   *   Duffel account. Without it, Lushware's DUFFEL_ACCESS_TOKEN (Lushware's agency only).
+   */
+  constructor(account = undefined) {
+    this.#account = account;
     this.#ensureConfig();
-    logger.info('Using DuffelClient — live Duffel API integration');
+    logger.debug('Using DuffelClient — live Duffel API integration');
   }
+
+  #account;
 
   // ── Public API (implements FlightApiClient) ──────────────────────
 
@@ -399,6 +406,8 @@ export class DuffelClient {
   // ── Private: config ──────────────────────────────────────────────
 
   #isCardCheckoutEnabled() {
+    // Card checkout is a Duffel feature switched on per account, so an agency's account pays from its balance.
+    if (this.#account) return this.#account.cardCheckoutEnabled === true;
     return process.env.DUFFEL_CARD_CHECKOUT_ENABLED === 'true';
   }
 
@@ -413,7 +422,7 @@ export class DuffelClient {
   }
 
   #ensureConfig() {
-    const token = process.env.DUFFEL_ACCESS_TOKEN;
+    const token = this.#account ? this.#account.accessToken : process.env.DUFFEL_ACCESS_TOKEN;
     if (!token) {
       throw new AppError(PROVIDER_NOT_CONFIGURED_FRIENDLY, SERVICE_UNAVAILABLE, {
         code: 'PROVIDER_UNAVAILABLE',

@@ -7,7 +7,6 @@ import flightRoutes from './routes/flight.routes.js';
 import leadFlightRoutes from './routes/leadFlight.routes.js';
 import duffelWebhookRoutes from './routes/duffelWebhook.routes.js';
 import { extractUser } from './middleware/auth.js';
-import { injectFlightClient } from './middleware/flightClient.js';
 import { correlationId, requestLogger } from './middleware/requestLogger.js';
 import errorHandler from './middleware/errorHandler.js';
 import logger from './config/logger.js';
@@ -33,9 +32,10 @@ app.use(tenantMiddleware);
 installTenantFetch();
 
 app.use(extractUser);
-app.use(injectFlightClient);
 
+// The webhook picks its own agency (and that agency's Duffel account) from the address.
 app.use('/api/v1/webhooks/duffel-flights', duffelWebhookRoutes);
+// Each agency searches and books with its own Duffel account (routes add injectFlightClient after sign-in).
 app.use('/api/v1/flights', flightRoutes);
 app.use('/api/v1/flights', leadFlightRoutes);
 

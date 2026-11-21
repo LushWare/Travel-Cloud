@@ -11,6 +11,9 @@ import {
 // ── Ensure mock mode (no real Travelport calls) ─────────────────────
 beforeAll(() => {
   process.env.TRAVELPORT_MOCK_MODE = 'true';
+  // Pretend flights are allowed only in automated tests, and only when asked for.
+  process.env.NODE_ENV = 'test';
+  process.env.FLIGHT_PROVIDER = 'mock';
 });
 
 // ── Mock prisma (no real DB) ────────────────────────────────────────

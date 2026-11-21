@@ -3,6 +3,8 @@ import { verifySmtp } from './smtp.js';
 import { getStripeAccount } from './stripe.js';
 import { getWhatsappPhoneNumber } from './whatsapp.js';
 import { checkFacebookPageToken } from './facebook.js';
+import { verifyDuffelToken } from './duffel.js';
+import { verifyLiteApiKey } from './liteapi.js';
 import { cloudRunAuthHeader } from './cloudRunAuth.js';
 
 // Daily check of every agency's connected accounts. A connection that stops working is marked
@@ -10,13 +12,15 @@ import { cloudRunAuthHeader } from './cloudRunAuth.js';
 // one that starts working again goes back to 'connected'. Google Ads has nothing to check: it
 // only receives leads with a key we issued.
 
-const NAMES = { email: 'Email', whatsapp: 'WhatsApp', facebook: 'Facebook lead ads', stripe: 'Stripe payments' };
+const NAMES = { email: 'Email', whatsapp: 'WhatsApp', facebook: 'Facebook lead ads', stripe: 'Stripe payments', duffel: 'Duffel flights', liteapi: 'LiteAPI hotels' };
 // What the agency sees in Management. Provider error details stay in the server log only.
 const FAILURE_MESSAGE = {
   email: 'Your email server stopped accepting our sign-in. Check the password or reconnect.',
   whatsapp: 'WhatsApp stopped accepting messages from this connection. Reconnect WhatsApp.',
   facebook: 'Facebook stopped giving us your page\'s leads. Reconnect Facebook.',
   stripe: 'Stripe stopped accepting this connection. Reconnect Stripe.',
+  duffel: 'Duffel stopped accepting your access token, so flights cannot be searched or booked. Paste a new token.',
+  liteapi: 'LiteAPI stopped accepting your API key, so hotels cannot be searched or booked. Paste a new key.',
 };
 
 export const CHECKERS = {
@@ -35,6 +39,12 @@ export const CHECKERS = {
   async stripe(row, secret) {
     const account = await getStripeAccount(secret.accessToken);
     if (account.id !== row.config?.accountId) throw new Error('Stripe account identity did not match');
+  },
+  async duffel(_row, secret) {
+    await verifyDuffelToken(secret.accessToken);
+  },
+  async liteapi(_row, secret) {
+    await verifyLiteApiKey(secret.apiKey);
   },
 };
 

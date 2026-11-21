@@ -39,6 +39,48 @@ interface BookingsPanelProps {
   onLoadBooking: (id: string) => Promise<FlightBookingRecord | null>;
   onRequestCancellationQuote: (id: string, reason: string) => Promise<FlightCancellationQuote | null>;
   onCancel: (id: string, reason: string, cancellationId?: string | null) => Promise<boolean>;
+  onAcknowledgeAirlineChange?: (id: string) => Promise<FlightBookingRecord | null>;
+}
+
+const AIRLINE_CHANGE_LABEL: Record<string, string> = {
+  changed: 'Changed by airline',
+  cancelled: 'Cancelled outside the CRM',
+};
+
+const REFUND_DESTINATION: Record<string, string> = {
+  balance: 'your Duffel balance',
+  original_form_of_payment: 'the card used to pay',
+  airline_credits: 'airline credit',
+  voucher: 'an airline voucher',
+};
+
+function AirlineChangeBadge({ booking }: { booking: FlightBookingRecord }) {
+  if (!booking.airlineChangeKind) return null;
+  return (
+    <span className="mt-1 flex w-fit items-center gap-1 rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning" data-testid="airline-change-badge">
+      <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+      {AIRLINE_CHANGE_LABEL[booking.airlineChangeKind] || 'Changed outside the CRM'}
+    </span>
+  );
+}
+
+/** What Duffel refunded to the agency, and a reminder that the customer's own refund is a separate step. */
+export function RefundSummary({ booking }: { booking: FlightBookingRecord }) {
+  if (booking.status !== 'cancelled') return null;
+  const hasRefund = typeof booking.refundAmount === 'number';
+  return (
+    <section className="rounded-lg border border-border bg-muted/40 p-4 text-sm" data-testid="refund-summary">
+      <h3 className="font-semibold">Refund</h3>
+      <p className="mt-1">
+        {hasRefund
+          ? `Duffel refunded ${fmtMoney(booking.refundAmount ?? 0, booking.refundCurrency || booking.currency)} to ${REFUND_DESTINATION[booking.refundTo || ''] || 'your agency'}.`
+          : 'The refund amount was not recorded for this booking. Check it in your Duffel dashboard.'}
+      </p>
+      <p className="mt-2 font-medium text-warning">
+        Your customer has not been refunded yet. Refund them the amount you agree, then note it on the lead.
+      </p>
+    </section>
+  );
 }
 
 export default function BookingsPanel({
@@ -54,7 +96,9 @@ export default function BookingsPanel({
   onLoadBooking,
   onRequestCancellationQuote,
   onCancel,
+  onAcknowledgeAirlineChange,
 }: BookingsPanelProps) {
+  const [acknowledging, setAcknowledging] = useState(false);
   const [visibleCount, setVisibleCount] = useState(BOOKINGS_PAGE_SIZE);
   const [selectedBooking, setSelectedBooking] = useState<FlightBookingRecord | null>(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
@@ -161,7 +205,16 @@ export default function BookingsPanel({
     { key: 'departure', header: 'Departure', numeric: true, render: (b) => fmtDate(b.segments?.[0]?.departureAt) },
     { key: 'travelers', header: 'Travelers', numeric: true, render: (b) => b.travelers?.length || 0 },
     { key: 'fare', header: 'Fare', numeric: true, render: (b) => fmtMoney(b.totalAmount, b.currency) },
-    { key: 'status', header: 'Status', render: (b) => <BookingStatusBadge status={b.status} /> },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (b) => (
+        <div>
+          <BookingStatusBadge status={b.status} />
+          <AirlineChangeBadge booking={b} />
+        </div>
+      ),
+    },
     {
       key: 'lead',
       header: 'Lead',
@@ -272,6 +325,35 @@ export default function BookingsPanel({
           ) : selectedBooking ? (
             <div className="space-y-6">
               {detailsError && <p role="alert" className="text-sm text-destructive">{detailsError}</p>}
+              {selectedBooking.airlineChangeKind && (
+                <section className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-warning/40 bg-warning/10 p-4 text-sm" data-testid="airline-change-alert">
+                  <p>
+                    <span className="font-semibold">{AIRLINE_CHANGE_LABEL[selectedBooking.airlineChangeKind] || 'Changed outside the CRM'}</span>
+                    {selectedBooking.airlineChangeAt ? ` on ${fmtDate(selectedBooking.airlineChangeAt)}` : ''}.{' '}
+                    {selectedBooking.airlineChangeKind === 'cancelled'
+                      ? "Arrange the customer's refund or a new flight."
+                      : 'Check the new times below with the customer.'}
+                  </p>
+                  {onAcknowledgeAirlineChange && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={acknowledging}
+                      onClick={async () => {
+                        setAcknowledging(true);
+                        const updated = await onAcknowledgeAirlineChange(selectedBooking.id);
+                        if (updated) setSelectedBooking({ ...selectedBooking, airlineChangeAt: null, airlineChangeKind: null });
+                        setAcknowledging(false);
+                      }}
+                    >
+                      {acknowledging ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                      Mark as seen
+                    </Button>
+                  )}
+                </section>
+              )}
+              <RefundSummary booking={selectedBooking} />
               <section className="grid gap-3 border-y border-border py-4 sm:grid-cols-3">
                 <div><div className="text-xs text-muted-foreground">Status</div><BookingStatusBadge status={selectedBooking.status} /></div>
                 <div><div className="text-xs text-muted-foreground">Trip / cabin</div><div className="text-sm font-medium">{selectedBooking.tripType || 'Flight'} · {selectedBooking.cabinClass || 'Cabin not recorded'}</div></div>

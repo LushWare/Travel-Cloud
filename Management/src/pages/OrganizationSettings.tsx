@@ -17,6 +17,10 @@ import GoogleAdsIntegrationSettings from '../components/GoogleAdsIntegrationSett
 import FacebookLeadAdsIntegrationSettings from '../components/FacebookLeadAdsIntegrationSettings';
 import WhatsAppIntegrationSettings from '../components/WhatsAppIntegrationSettings';
 import StripeIntegrationSettings from '../components/StripeIntegrationSettings';
+import DuffelIntegrationSettings from '../components/DuffelIntegrationSettings';
+import LiteApiIntegrationSettings from '../components/LiteApiIntegrationSettings';
+import { useAuth } from '../contexts/AuthContext';
+import { isModuleOff } from '../lib/planModules';
 
 interface SettingsForm {
   companyName: string;
@@ -209,6 +213,9 @@ function Section({
 }
 
 const OrganizationSettings = () => {
+  const { user } = useAuth();
+  // Flight and hotel booking is a plan module; without it there is nothing to connect Duffel or LiteAPI for.
+  const flightsInPlan = !isModuleOff(user, 'travel_booking');
   const [form, setForm] = useState<SettingsForm>(EMPTY_FORM);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -331,15 +338,16 @@ const OrganizationSettings = () => {
             <FacebookLeadAdsIntegrationSettings />
             <WhatsAppIntegrationSettings />
             <StripeIntegrationSettings />
+            {flightsInPlan && <DuffelIntegrationSettings />}
+            {flightsInPlan && <LiteApiIntegrationSettings />}
 
             <Section
               title="Coming soon"
               description="Connecting your own accounts for these is on the way. They are not part of your plan yet."
             >
-              <IntegrationAvailability name="Flights" detail="Duffel / Travelport" />
-              <IntegrationAvailability name="Hotels" detail="LiteAPI" />
+              {!flightsInPlan && <IntegrationAvailability name="Flights" detail="Duffel (not in your plan)" />}
+              {!flightsInPlan && <IntegrationAvailability name="Hotels" detail="LiteAPI (not in your plan)" />}
               <IntegrationAvailability name="Voice assistant" detail="ElevenLabs" />
-              <IntegrationAvailability name="Other payment providers" detail="Razorpay" />
             </Section>
           </div>
         ) : (

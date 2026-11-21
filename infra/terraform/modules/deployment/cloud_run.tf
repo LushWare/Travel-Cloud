@@ -154,6 +154,8 @@ module "package_service" {
     USER_SERVICE_URL = module.user_service.uri
     # Cycle-breaker (lead-service already points at package-service); see variables.tf.
     LEAD_SERVICE_URL = var.package_lead_service_url
+    # Each agency's own LiteAPI account for hotels (needs package_invoker_integration).
+    INTEGRATION_SERVICE_URL = module.integration_service.uri
   })
   memory                = local.services.package-service.memory
   cpu                   = local.services.package-service.cpu
@@ -319,7 +321,12 @@ module "flight_service" {
       env_var   = local.secret_env_names[id]
     }
   ]
-  plain_env             = local.services.flight-service.plain_env
+  # Each agency's own Duffel account is read from integration-service (needs flight_invoker_integration).
+  # Airline-change emails go through notification-service (needs flight_invoker_notification).
+  plain_env = merge(local.services.flight-service.plain_env, {
+    INTEGRATION_SERVICE_URL  = module.integration_service.uri
+    NOTIFICATION_SERVICE_URL = module.notification_service.uri
+  })
   memory                = local.services.flight-service.memory
   cpu                   = local.services.flight-service.cpu
   allow_unauthenticated = local.services.flight-service.allow_unauthenticated

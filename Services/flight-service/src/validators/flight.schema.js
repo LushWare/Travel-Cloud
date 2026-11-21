@@ -185,3 +185,6 @@ export const linkDaySchema = z.object({
   dayNumber: z.coerce.number().int().positive().optional(),
   flightType: z.enum(['itinerary', 'optional']).optional(),
 });
+
+/** Actions that take no input, such as marking an airline change as seen. */
+export const emptyBodySchema = z.object({}).strict();

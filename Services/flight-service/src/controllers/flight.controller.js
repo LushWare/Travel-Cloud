@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import prisma from '../db/client.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import AppError from '../utils/appError.js';
+import { refundFields } from '../utils/refund.js';
 import { SALES_REP } from '../constants/roles.js';
 import { CREATED, BAD_REQUEST, NOT_FOUND, SERVICE_UNAVAILABLE } from '../constants/httpStatus.js';
 import { BOOKING_NOT_FOUND, BOOKING_ALREADY_CANCELLED } from '../constants/errorMessages.js';
@@ -107,6 +108,8 @@ export const book = asyncHandler(async (req, res) => {
       pnr: order.pnr,
       travelportOrderId: order.travelportOrderId,
       createdById: req.user.id,
+      // So an airline change to this booking can be emailed to the rep who made it.
+      bookedByEmail: req.user.email || null,
       customerId: customer.id,
       tripType: tripType || ((offer.legCount ?? 1) > 1 ? 'roundTrip' : 'oneWay'),
       cabinClass: offer.cabinClass || 'Economy',
@@ -256,6 +259,7 @@ export const cancelBooking = asyncHandler(async (req, res) => {
   if (!booking) throw new AppError(BOOKING_NOT_FOUND, NOT_FOUND);
   if (booking.status === 'cancelled') throw new AppError(BOOKING_ALREADY_CANCELLED, BAD_REQUEST);
 
+  let refund = null;
   if (booking.travelportOrderId) {
     if (typeof req.flightClient.confirmCancellation === 'function') {
       if (!cancellationId) {
@@ -263,7 +267,7 @@ export const cancelBooking = asyncHandler(async (req, res) => {
           code: 'CANCELLATION_QUOTE_REQUIRED',
         });
       }
-      await req.flightClient.confirmCancellation(booking.travelportOrderId, cancellationId);
+      refund = await req.flightClient.confirmCancellation(booking.travelportOrderId, cancellationId);
     } else {
       await req.flightClient.cancelOrder(booking.travelportOrderId);
     }
@@ -275,7 +279,12 @@ export const cancelBooking = asyncHandler(async (req, res) => {
 
   const updated = await prisma.flightBooking.update({
     where: { id },
-    data: { status: 'cancelled', cancelledAt: new Date(), cancellationReason: reason || undefined },
+    data: {
+      status: 'cancelled',
+      cancelledAt: new Date(),
+      cancellationReason: reason || undefined,
+      ...refundFields(refund),
+    },
     include: BOOKING_INCLUDE,
   });
 
@@ -289,4 +298,21 @@ export const createLinksSession = asyncHandler(async (req, res) => {
   }
   const session = await client.createLinksSession(req.body);
   res.status(200).json({ success: true, data: session });
+});
+
+/** The rep has seen an airline change or outside cancellation: clear the label on the booking. */
+export const acknowledgeAirlineChange = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const isScopedToOwn = req.user.role === SALES_REP && !req.user.isSuperAdmin;
+  const booking = await prisma.flightBooking.findFirst({
+    where: { id, ...(isScopedToOwn && { createdById: req.user.id }) },
+  });
+  if (!booking) throw new AppError(BOOKING_NOT_FOUND, NOT_FOUND);
+
+  const updated = await prisma.flightBooking.update({
+    where: { id },
+    data: { airlineChangeAt: null, airlineChangeKind: null },
+    include: BOOKING_INCLUDE,
+  });
+  res.json({ success: true, data: updated });
 });

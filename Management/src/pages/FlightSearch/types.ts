@@ -191,6 +191,13 @@ export interface FlightBookingRecord {
   createdAt?: string;
   cancelledAt?: string | null;
   cancellationReason?: string | null;
+  // What Duffel refunded to the agency's Duffel balance on cancellation.
+  refundAmount?: number | null;
+  refundCurrency?: string | null;
+  refundTo?: string | null;
+  // Set when the airline changed the flight, or it was cancelled outside the CRM.
+  airlineChangeAt?: string | null;
+  airlineChangeKind?: 'changed' | 'cancelled' | null;
   canCancel?: boolean;
   searchSnapshot?: Record<string, unknown> & {
     refundable?: boolean;

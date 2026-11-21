@@ -83,6 +83,11 @@ class FlightService {
     }
   }
 
+  /** Clears the "changed by airline" label once the rep has dealt with it. */
+  async acknowledgeAirlineChange(id) {
+    return this.api.post(`/flights/bookings/${id}/airline-change/seen`, {});
+  }
+
   async createCancellationQuote(id, reason) {
     try {
       return await this.api.post(`/flights/bookings/${id}/cancellation-quote`, { reason });

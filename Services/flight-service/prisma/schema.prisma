@@ -73,6 +73,15 @@ model FlightBooking {
   bookedAt            DateTime?
   cancelledAt         DateTime?
   cancellationReason  String?
+  // What Duffel refunded to the agency's Duffel balance when the booking was cancelled.
+  refundAmount        Float?
+  refundCurrency      String?
+  refundTo            String?             // e.g. "balance", "original_form_of_payment", "airline_credits"
+  // The rep who booked, so airline changes can be emailed to them.
+  bookedByEmail       String?
+  // Set when the airline (not the agency) changes or cancels the flight; cleared when a rep marks it seen.
+  airlineChangeAt     DateTime?
+  airlineChangeKind   String?             // "changed" | "cancelled"
   notes               String?
 
   segments            FlightSegment[]

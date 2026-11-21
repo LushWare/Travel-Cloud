@@ -2,6 +2,12 @@ import crypto from 'node:crypto';
 import prisma from '../db/client.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import AppError from '../utils/appError.js';
+import { isTenantId, runWithTenant } from '../../../shared/tenancy/src/index.js';
+import { createFlightClient } from '../clients/index.js';
+import { DuffelClient } from '../clients/duffel.client.js';
+import { getAgencyDuffelCredentials, legacyDuffelTenantId } from '../clients/agencyDuffel.js';
+import { refundFields } from '../utils/refund.js';
+import { emailAirlineChange } from '../services/notify.js';
 
 const WEBHOOK_TOLERANCE_MS = 5 * 60 * 1000;
 
@@ -44,17 +50,50 @@ async function findBookingByOrderId(orderId) {
   return prisma.flightBooking.findFirst({ where: { travelportOrderId: orderId } });
 }
 
+const invalidSignature = () => new AppError('Invalid Duffel webhook signature.', 401, { code: 'INVALID_WEBHOOK_SIGNATURE' });
+
+/**
+ * Booking updates from an agency's own Duffel account, at /webhooks/duffel-flights/:tenantId
+ * (integration-service registers that address when the agency connects Duffel). The address only
+ * names the agency; the signature, checked with that agency's own webhook secret, proves it.
+ */
+export const handleAgencyDuffelWebhook = asyncHandler(async (req, res) => {
+  const { tenantId } = req.params;
+  if (!isTenantId(tenantId)) throw invalidSignature();
+
+  await runWithTenant(tenantId, async () => {
+    const account = await getAgencyDuffelCredentials();
+    if (!account?.webhookSecret) throw invalidSignature();
+    if (!Buffer.isBuffer(req.rawBody) || !isValidSignature(req.rawBody, req.get('x-duffel-signature'), account.webhookSecret)) {
+      throw invalidSignature();
+    }
+    const client = new DuffelClient({ accessToken: account.accessToken, cardCheckoutEnabled: false });
+    await syncBookingFromEvent(req, res, { client, usingTestToken: account.mode !== 'live' });
+  }, req.requestId);
+});
+
+/** Lushware's own account (DUFFEL_ACCESS_TOKEN / DUFFEL_WEBHOOK_SECRET), at /webhooks/duffel-flights. */
 export const handleDuffelWebhook = asyncHandler(async (req, res) => {
   const secret = process.env.DUFFEL_WEBHOOK_SECRET;
   if (!secret) throw new AppError('Duffel webhook is not configured.', 503, { code: 'WEBHOOK_UNAVAILABLE' });
 
   const rawBody = req.rawBody;
   if (!Buffer.isBuffer(rawBody) || !isValidSignature(rawBody, req.get('x-duffel-signature'), secret)) {
-    throw new AppError('Invalid Duffel webhook signature.', 401, { code: 'INVALID_WEBHOOK_SIGNATURE' });
+    throw invalidSignature();
   }
 
+  // The shared address only ever acts for Lushware's agency, never another agency's bookings.
+  const legacyTenantId = legacyDuffelTenantId();
+  const client = createFlightClient();
+  if (!client) throw new AppError('Duffel webhook is not configured.', 503, { code: 'WEBHOOK_UNAVAILABLE' });
+  await runWithTenant(legacyTenantId, () => syncBookingFromEvent(req, res, {
+    client,
+    usingTestToken: process.env.DUFFEL_ACCESS_TOKEN?.startsWith('duffel_test_') ?? false,
+  }), req.requestId);
+});
+
+async function syncBookingFromEvent(req, res, { client, usingTestToken }) {
   const event = req.body;
-  const usingTestToken = process.env.DUFFEL_ACCESS_TOKEN?.startsWith('duffel_test_') ?? false;
   if (typeof event?.live_mode === 'boolean' && event.live_mode === usingTestToken) {
     throw new AppError('Duffel webhook mode does not match this service.', 403, { code: 'WEBHOOK_MODE_MISMATCH' });
   }
@@ -104,8 +143,15 @@ export const handleDuffelWebhook = asyncHandler(async (req, res) => {
     return res.status(503).json({ success: false });
   }
 
-  const order = await req.flightClient.getOrder(orderId);
-  await prisma.flightBooking.update({
+  const order = await client.getOrder(orderId);
+  // A cancellation the CRM did not make (airline, or the agency's own Duffel dashboard), or an
+  // airline schedule change, is flagged on the booking and emailed to the rep who booked it.
+  const cancelledElsewhere = order.status === 'cancelled' && booking.status !== 'cancelled';
+  const changeKind = cancelledElsewhere
+    ? 'cancelled'
+    : event.type === 'order.airline_initiated_change_detected' ? 'changed' : null;
+  const alreadyFlagged = changeKind && booking.airlineChangeKind === changeKind && booking.airlineChangeAt;
+  const updated = await prisma.flightBooking.update({
     where: { id: booking.id },
     data: {
       ...(order.travelportOrderId && { travelportOrderId: order.travelportOrderId }),
@@ -113,11 +159,17 @@ export const handleDuffelWebhook = asyncHandler(async (req, res) => {
       status: order.status || 'pending',
       ...(order.totalAmount != null && { totalAmount: order.totalAmount }),
       ...(order.currency && { currency: order.currency }),
+      ...(cancelledElsewhere && { cancelledAt: order.cancelledAt ? new Date(order.cancelledAt) : new Date() }),
+      // A cancellation confirmed in Duffel carries what was refunded to the agency's balance.
+      ...(event.type === 'order_cancellation.confirmed' && refundFields(object)),
+      ...(changeKind && !alreadyFlagged && { airlineChangeAt: new Date(), airlineChangeKind: changeKind }),
     },
+    include: { segments: { orderBy: { sequence: 'asc' } } },
   });
+  if (changeKind && !alreadyFlagged) await emailAirlineChange(updated, changeKind);
 
   req.log.info({ bookingId: booking.id, eventId: event.id, orderId, status: order.status }, 'Duffel order synchronized from webhook');
-  res.status(200).json({ success: true });
-});
+  return res.status(200).json({ success: true });
+}
 
 export { isValidSignature };

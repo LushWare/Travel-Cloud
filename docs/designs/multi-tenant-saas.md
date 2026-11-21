@@ -448,7 +448,8 @@ An existing user can create additional workspaces from the workspace switcher (l
 - Management exposes WhatsApp connection status, connect, and disconnect controls. Unit tests cover the service boundaries and setup flow; no live Meta onboarding has been run.
 - Before enabling it, apply integration-service migration `003_whatsapp_agency_routes.sql`, configure `WHATSAPP_EMBEDDED_SIGNUP_CONFIG_ID` and the platform Meta app credentials, request advanced access for `whatsapp_business_management` and `whatsapp_business_messaging`, and configure the Meta webhook callback with the `messages` and `account_update` fields. Each agency must also add its own payment method in WhatsApp Manager before messaging is available.
 - During migration, set notification-service `WHATSAPP_LEGACY_TENANT_ID` to Lushware's tenant ID to retain the old global sender only for Lushware. Leave it blank after moving Lushware's number into the Integration Hub; other tenants never fall back to the global token.
-- Still outstanding in Phase 3: live Meta verification, Stripe Connect, automated integration health checks, and the remaining production rollout gates. Flights, LiteAPI, and agency-specific ElevenLabs remain later work.
+- Built since: Stripe Connect payments, the daily integration health check, and per-agency Duffel flights (each agency's own token; Lushware's token serves only Lushware's agency).
+- Still outstanding in Phase 3: live Meta verification, per-agency LiteAPI hotels, per-agency voice agents (decided: one ElevenLabs agent per agency on Lushware's account, sold as the voice add-on), and the remaining production rollout gates.
 
 Pilot plan: after Phase 1's gate, onboard 1–2 friendly agencies with hands-on help through Phases 2–3, and use what they actually need to order the Phase 3 integration list.
 

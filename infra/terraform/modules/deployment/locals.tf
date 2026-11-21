@@ -53,7 +53,7 @@ locals {
       name    = "${var.env}-package-service"
       memory  = "512Mi"
       cpu     = "1"
-      secrets = ["${var.env}-database-url", "${var.env}-direct-url", "${var.env}-internal-service-key", "${var.env}-cloudinary-api-key", "${var.env}-cloudinary-api-secret", "${var.env}-gemini-api-key", "${var.env}-liteapi-api-key"]
+      secrets = ["${var.env}-database-url", "${var.env}-direct-url", "${var.env}-internal-service-key", "${var.env}-cloudinary-api-key", "${var.env}-cloudinary-api-secret", "${var.env}-gemini-api-key", "${var.env}-liteapi-api-key", "${var.env}-internal-events-token"]
       plain_env = {
         NODE_ENV = "production"
         # The code default is a thinking model, and the customer Client aborts
@@ -153,7 +153,7 @@ locals {
       name    = "${var.env}-flight-service"
       memory  = "512Mi"
       cpu     = "1"
-      secrets = ["${var.env}-database-url", "${var.env}-direct-url", "${var.env}-duffel-access-token", "${var.env}-duffel-webhook-secret", "${var.env}-travelport-client-id", "${var.env}-travelport-client-secret", "${var.env}-travelport-token-url", "${var.env}-travelport-api-base-url", "${var.env}-travelport-access-group"]
+      secrets = ["${var.env}-database-url", "${var.env}-direct-url", "${var.env}-duffel-access-token", "${var.env}-duffel-webhook-secret", "${var.env}-internal-events-token", "${var.env}-travelport-client-id", "${var.env}-travelport-client-secret", "${var.env}-travelport-token-url", "${var.env}-travelport-api-base-url", "${var.env}-travelport-access-group"]
       plain_env = {
         NODE_ENV             = "production"
         CLIENT_URL           = local.client_url

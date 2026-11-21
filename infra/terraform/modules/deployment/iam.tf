@@ -258,6 +258,30 @@ resource "google_cloud_run_v2_service_iam_member" "integration_invoker_billing" 
   member   = "serviceAccount:${google_service_account.services["integration-service"].email}"
 }
 
+resource "google_cloud_run_v2_service_iam_member" "flight_invoker_notification" {
+  # Emails the booking rep when an airline changes or cancels a flight.
+  project  = var.project_id
+  location = var.region
+  name     = module.notification_service.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.services["flight-service"].email}"
+}
+resource "google_cloud_run_v2_service_iam_member" "package_invoker_integration" {
+  # Each agency's own LiteAPI account for hotel search and booking.
+  project  = var.project_id
+  location = var.region
+  name     = module.integration_service.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.services["package-service"].email}"
+}
+resource "google_cloud_run_v2_service_iam_member" "flight_invoker_integration" {
+  # Each agency's own Duffel account for flight search, booking and webhooks.
+  project  = var.project_id
+  location = var.region
+  name     = module.integration_service.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.services["flight-service"].email}"
+}
 resource "google_cloud_run_v2_service_iam_member" "gateway_invoker_integration" {
   project  = var.project_id
   location = var.region
