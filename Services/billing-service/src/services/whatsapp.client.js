@@ -1,3 +1,5 @@
+import { cloudRunAuthHeader } from './cloudRunAuth.js';
+
 const NOTIFICATION_SERVICE_URL = process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:3008';
 const INTERNAL_EVENTS_TOKEN = process.env.INTERNAL_EVENTS_TOKEN || '';
 
@@ -10,7 +12,7 @@ export async function sendWhatsappTemplate({
 }) {
   const res = await fetchImpl(`${NOTIFICATION_SERVICE_URL}/api/v1/notifications/internal/whatsapp`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-internal-token': INTERNAL_EVENTS_TOKEN },
+    headers: { 'content-type': 'application/json', 'x-internal-token': INTERNAL_EVENTS_TOKEN, ...(await cloudRunAuthHeader(NOTIFICATION_SERVICE_URL)) },
     body: JSON.stringify({
       type: 'template',
       to,

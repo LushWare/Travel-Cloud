@@ -21,7 +21,20 @@
 # secrets/plain_env/allow_unauthenticated and drives the service accounts
 # (iam.tf).
 
+data "google_project" "this" {
+  project_id = var.project_id
+}
+
 locals {
+  # Cloud Run's deterministic address for each service
+  # (https://<name>-<project number>.<region>.run.app). It is known before the
+  # service exists, so it can be used where a module output would form a cycle;
+  # ID tokens minted for it are accepted like the hashed `uri`.
+  run_url = {
+    for key, svc in local.services :
+    key => "https://${svc.name}-${data.google_project.this.number}.${var.region}.run.app"
+  }
+
   secret_env_names = {
     for id in distinct(flatten([for svc in local.services : svc.secrets])) :
     id => upper(replace(trimprefix(id, "${var.env}-"), "-", "_"))
@@ -151,6 +164,9 @@ module "package_service" {
   ]
   plain_env = merge(local.services.package-service.plain_env, {
     USER_SERVICE_URL = module.user_service.uri
+    # Website trip-wizard enquiries become leads. lead-service already points at
+    # package-service, so a module output here would be a cycle.
+    LEAD_SERVICE_URL = local.run_url["lead-service"]
   })
   memory                = local.services.package-service.memory
   cpu                   = local.services.package-service.cpu
@@ -281,7 +297,10 @@ module "career_service" {
       env_var   = local.secret_env_names[id]
     }
   ]
-  plain_env             = local.services.career-service.plain_env
+  # Without this the application emails would go to localhost inside the container.
+  plain_env = merge(local.services.career-service.plain_env, {
+    NOTIFICATION_SERVICE_URL = module.notification_service.uri
+  })
   memory                = local.services.career-service.memory
   cpu                   = local.services.career-service.cpu
   allow_unauthenticated = local.services.career-service.allow_unauthenticated

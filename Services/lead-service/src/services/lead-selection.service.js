@@ -5,6 +5,7 @@ import { computePricing, toLineDescriptor } from './pricing.service.js';
 // zod v4, bundled inside @travel-crm/contracts — never .extend()/.merge() this
 // with a local (zod v3) validator schema, only .parse() it standalone.
 import { LeadSnapshotForQuotation } from '@travel-crm/contracts';
+import { cloudRunAuthHeader } from './cloudRunAuth.js';
 
 const BILLING_SERVICE_URL = process.env.BILLING_SERVICE_URL || 'http://localhost:3006';
 
@@ -412,6 +413,7 @@ export async function snapshotSelectionQuotation(selectionId, { createdById = nu
     headers: {
       'content-type': 'application/json',
       'x-internal-token': process.env.INTERNAL_EVENTS_TOKEN || '',
+      ...(await cloudRunAuthHeader(BILLING_SERVICE_URL)),
     },
     body: JSON.stringify(payload),
   });
@@ -435,6 +437,7 @@ export async function sendVoiceQuotation(quotationId, payload, requestId, fetchI
         'content-type': 'application/json',
         'x-internal-token': token,
         ...(requestId ? { 'x-request-id': requestId } : {}),
+        ...(await cloudRunAuthHeader(BILLING_SERVICE_URL)),
       },
       body: JSON.stringify(payload),
       signal: controller.signal,

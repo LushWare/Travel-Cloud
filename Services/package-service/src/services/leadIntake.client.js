@@ -1,3 +1,4 @@
+import { cloudRunAuthHeader } from './cloudRunAuth.js';
 import logger from '../config/logger.js';
 
 const LEAD_SERVICE_URL = process.env.LEAD_SERVICE_URL || 'http://localhost:3004';
@@ -25,6 +26,7 @@ export async function submitLeadIntake(payload, { fetchImpl = fetch } = {}) {
       headers: {
         'content-type': 'application/json',
         'x-internal-token': INTERNAL_EVENTS_TOKEN,
+        ...(await cloudRunAuthHeader(LEAD_SERVICE_URL)),
       },
       body: JSON.stringify(payload),
       signal: controller.signal,

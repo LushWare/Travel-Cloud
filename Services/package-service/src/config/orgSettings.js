@@ -1,3 +1,4 @@
+import { cloudRunAuthHeader } from '../services/cloudRunAuth.js';
 // Local, trimmed copy of billing-service's org-settings client
 // (Services/billing-service/src/config/orgSettings.js) — package-service only
 // needs the identity/branding fields the package PDF's header, footer and
@@ -30,7 +31,7 @@ let cache = null; // { value, expiresAt }
 
 async function fetchFromUserService(fetchImpl) {
   const res = await fetchImpl(`${USER_SERVICE_URL}/api/v1/admin/internal/organization-settings`, {
-    headers: { 'x-internal-token': INTERNAL_SERVICE_KEY },
+    headers: { 'x-internal-token': INTERNAL_SERVICE_KEY, ...(await cloudRunAuthHeader(USER_SERVICE_URL)) },
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`user-service returned ${res.status}`);
