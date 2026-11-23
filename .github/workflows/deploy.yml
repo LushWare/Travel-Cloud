@@ -53,6 +53,7 @@ jobs:
           - integration-service
           - assistant-service
           - voice-service
+          - platform-service
           - gateway
     steps:
       - uses: actions/checkout@v4
@@ -220,6 +221,7 @@ jobs:
           - integration-service
           - assistant-service
           - voice-service
+          - platform-service
           - gateway
     steps:
       - uses: actions/checkout@v4
@@ -289,6 +291,7 @@ jobs:
             Client/package-lock.json
             Management/package-lock.json
             Landing/package-lock.json
+            Console/package-lock.json
 
       # Client/Management depend on @travel-crm/contracts via a `file:`
       # link into Services/shared/contracts — npm ci in Client/Management
@@ -347,3 +350,15 @@ jobs:
 
       - name: Deploy to Firebase Hosting
         run: npx --yes firebase-tools@latest deploy --project ${{ vars.GCP_PROJECT_ID }} --only hosting:client-${{ env.TARGET_ENV }},hosting:management-${{ env.TARGET_ENV }},hosting:landing-${{ env.TARGET_ENV }}
+
+      # Lushware's staff Console. It only talks to /api/v1/platform/* on the gateway.
+      - name: Install and build Console
+        working-directory: Console
+        env:
+          VITE_API_URL: ${{ vars.GATEWAY_URL }}
+        run: npm ci && npm run build
+
+      # Separate from the step above so a Console problem (for example its
+      # hosting site not created yet) never blocks the customer-facing sites.
+      - name: Deploy Console to Firebase Hosting
+        run: npx --yes firebase-tools@latest deploy --project ${{ vars.GCP_PROJECT_ID }} --only hosting:console-${{ env.TARGET_ENV }}

@@ -17,10 +17,13 @@ export async function createRateLimitStores({
   log = logger,
 } = {}) {
   if (!redisUrl) {
+    // Without Redis each gateway instance counts on its own, so a limit is per instance
+    // rather than shared. That is weaker, but refusing to start would take the whole API down.
     if (env === 'production') {
-      throw new Error('REDIS_URL is required in production for shared rate limiting');
+      log.error('REDIS_URL is unset in production; gateway rate limits are per instance, not shared');
+    } else if (env !== 'test') {
+      log.warn('REDIS_URL is unset; gateway rate limits are process-local');
     }
-    if (env !== 'test') log.warn('REDIS_URL is unset; gateway rate limits are process-local');
     return null;
   }
 

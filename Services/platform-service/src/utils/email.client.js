@@ -1,4 +1,22 @@
+import { cloudRunAuthHeader } from './cloudRunAuth.js';
+
 const NOTIFICATION_SERVICE_URL = process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:3008';
+
+/** Posts one email to notification-service's internal relay; on Cloud Run it also carries an ID token. */
+async function relayEmail({ to, subject, html, text, internalToken, fetchImpl }) {
+  const url = `${NOTIFICATION_SERVICE_URL}/api/v1/notifications/internal/email`;
+  const response = await fetchImpl(url, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-internal-token': internalToken,
+      ...(await cloudRunAuthHeader(url)),
+    },
+    body: JSON.stringify({ to, subject, html, text }),
+  });
+  if (!response.ok) throw new Error(`Notification service returned ${response.status}.`);
+  return response.json();
+}
 
 const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (char) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -21,13 +39,7 @@ export async function sendPlatformSetupEmail({ user, token, purpose, fetchImpl =
   const text = `${intro}\n\nThis one-time link expires in 48 hours:\n${setupUrl}\n\nIf you did not expect this email, contact your Lushware administrator.`;
   const html = `<p>Hello ${name},</p><p>${escapeHtml(intro)}</p><p><a href="${link}">Continue setup</a></p><p>This one-time link expires in 48 hours.</p><p>If you did not expect this email, contact your Lushware administrator.</p>`;
 
-  const response = await fetchImpl(`${NOTIFICATION_SERVICE_URL}/api/v1/notifications/internal/email`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-internal-token': internalToken },
-    body: JSON.stringify({ to: user.email, subject, html, text }),
-  });
-  if (!response.ok) throw new Error(`Notification service returned ${response.status}.`);
-  return response.json();
+  return relayEmail({ to: user.email, subject, html, text, internalToken, fetchImpl });
 }
 /** Tells an agency owner the outcome of Lushware's review of their sign-up. */
 export async function sendSignupDecisionEmail({ owner, agencyName, approved, fetchImpl = fetch }) {
@@ -45,11 +57,5 @@ export async function sendSignupDecisionEmail({ owner, agencyName, approved, fet
     ? `<p>Hello ${name},</p><p>Your agency <strong>${agency}</strong> has been approved. Your 14-day free trial starts today.</p><p><a href="${escapeHtml(`${managementUrl}/login`)}">Sign in</a></p>`
     : `<p>Hello ${name},</p><p>Thank you for signing up. We are not able to open <strong>${agency}</strong> at this time.</p><p>If you think this is a mistake, reply to this email.</p>`;
 
-  const response = await fetchImpl(`${NOTIFICATION_SERVICE_URL}/api/v1/notifications/internal/email`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-internal-token': internalToken },
-    body: JSON.stringify({ to: owner.email, subject, html, text }),
-  });
-  if (!response.ok) throw new Error(`Notification service returned ${response.status}.`);
-  return response.json();
+  return relayEmail({ to: owner.email, subject, html, text, internalToken, fetchImpl });
 }

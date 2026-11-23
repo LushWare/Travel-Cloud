@@ -1,4 +1,4 @@
-# All 15 Cloud Run services, one per Services/* directory. `name` and the
+# All 16 Cloud Run services, one per Services/* directory. `name` and the
 # matching service-account id are env-prefixed ("<env>-<service>") because
 # Cloud Run service names and service-account ids are unique per project and
 # all three environments share one GCP project (longest resulting id,
@@ -16,6 +16,7 @@ locals {
   # client_url / management_url variables.
   client_url     = var.client_url != "" ? var.client_url : "https://lush-ware-client-${var.env}.web.app"
   management_url = var.management_url != "" ? var.management_url : "https://lush-ware-management-${var.env}.web.app"
+  console_url    = var.console_url != "" ? var.console_url : "https://lush-ware-console-${var.env}.web.app"
 
   services = {
     gateway = {
@@ -28,6 +29,8 @@ locals {
         NODE_ENV       = "production"
         CLIENT_URL     = local.client_url
         MANAGEMENT_URL = local.management_url
+        # The Console calls the API from its own site; without this CORS refuses it.
+        CONSOLE_URL = local.console_url
       }
       allow_unauthenticated = true
     }
@@ -45,7 +48,7 @@ locals {
       name                  = "${var.env}-user-service"
       memory                = "512Mi"
       cpu                   = "1"
-      secrets               = ["${var.env}-database-url", "${var.env}-direct-url", "${var.env}-internal-service-key"]
+      secrets               = ["${var.env}-app-database-url", "${var.env}-direct-url", "${var.env}-internal-service-key"]
       plain_env             = { NODE_ENV = "production" }
       allow_unauthenticated = false
     }
@@ -53,7 +56,7 @@ locals {
       name    = "${var.env}-package-service"
       memory  = "512Mi"
       cpu     = "1"
-      secrets = ["${var.env}-database-url", "${var.env}-direct-url", "${var.env}-internal-service-key", "${var.env}-cloudinary-api-key", "${var.env}-cloudinary-api-secret", "${var.env}-gemini-api-key", "${var.env}-liteapi-api-key", "${var.env}-internal-events-token"]
+      secrets = ["${var.env}-app-database-url", "${var.env}-direct-url", "${var.env}-internal-service-key", "${var.env}-cloudinary-api-key", "${var.env}-cloudinary-api-secret", "${var.env}-gemini-api-key", "${var.env}-liteapi-api-key", "${var.env}-internal-events-token"]
       plain_env = {
         NODE_ENV = "production"
         # The code default is a thinking model, and the customer Client aborts
@@ -76,7 +79,7 @@ locals {
       name                  = "${var.env}-lead-service"
       memory                = "512Mi"
       cpu                   = "1"
-      secrets               = ["${var.env}-database-url", "${var.env}-direct-url", "${var.env}-internal-events-token"]
+      secrets               = ["${var.env}-app-database-url", "${var.env}-direct-url", "${var.env}-internal-events-token"]
       plain_env             = { NODE_ENV = "production" }
       allow_unauthenticated = false
     }
@@ -84,7 +87,7 @@ locals {
       name    = "${var.env}-booking-service"
       memory  = "512Mi"
       cpu     = "1"
-      secrets = ["${var.env}-database-url", "${var.env}-direct-url", "${var.env}-internal-events-token"]
+      secrets = ["${var.env}-app-database-url", "${var.env}-direct-url", "${var.env}-internal-events-token"]
       plain_env = {
         NODE_ENV   = "production"
         CLIENT_URL = local.client_url
@@ -95,7 +98,7 @@ locals {
       name    = "${var.env}-billing-service"
       memory  = "512Mi"
       cpu     = "1"
-      secrets = ["${var.env}-database-url", "${var.env}-direct-url", "${var.env}-internal-service-key", "${var.env}-internal-events-token", "${var.env}-cloudinary-api-key", "${var.env}-cloudinary-api-secret"]
+      secrets = ["${var.env}-app-database-url", "${var.env}-direct-url", "${var.env}-internal-service-key", "${var.env}-internal-events-token", "${var.env}-cloudinary-api-key", "${var.env}-cloudinary-api-secret"]
       plain_env = {
         NODE_ENV                      = "production"
         CLOUDINARY_CLOUD_NAME         = var.cloudinary_cloud_name
@@ -141,7 +144,7 @@ locals {
       memory  = "512Mi"
       cpu     = "1"
       # internal-events-token: application emails go through notification-service, which checks it.
-      secrets = ["${var.env}-database-url", "${var.env}-direct-url", "${var.env}-cloudinary-api-key", "${var.env}-cloudinary-api-secret", "${var.env}-internal-events-token"]
+      secrets = ["${var.env}-app-database-url", "${var.env}-direct-url", "${var.env}-cloudinary-api-key", "${var.env}-cloudinary-api-secret", "${var.env}-internal-events-token"]
       plain_env = {
         NODE_ENV              = "production"
         CLOUDINARY_CLOUD_NAME = var.cloudinary_cloud_name
@@ -153,7 +156,7 @@ locals {
       name    = "${var.env}-flight-service"
       memory  = "512Mi"
       cpu     = "1"
-      secrets = ["${var.env}-database-url", "${var.env}-direct-url", "${var.env}-duffel-access-token", "${var.env}-duffel-webhook-secret", "${var.env}-internal-events-token", "${var.env}-travelport-client-id", "${var.env}-travelport-client-secret", "${var.env}-travelport-token-url", "${var.env}-travelport-api-base-url", "${var.env}-travelport-access-group"]
+      secrets = ["${var.env}-app-database-url", "${var.env}-direct-url", "${var.env}-duffel-access-token", "${var.env}-duffel-webhook-secret", "${var.env}-internal-events-token", "${var.env}-travelport-client-id", "${var.env}-travelport-client-secret", "${var.env}-travelport-token-url", "${var.env}-travelport-api-base-url", "${var.env}-travelport-access-group"]
       plain_env = {
         NODE_ENV             = "production"
         CLIENT_URL           = local.client_url
@@ -168,7 +171,7 @@ locals {
       name    = "${var.env}-analytics-service"
       memory  = "512Mi"
       cpu     = "1"
-      secrets = ["${var.env}-database-url", "${var.env}-direct-url"]
+      secrets = ["${var.env}-app-database-url", "${var.env}-direct-url"]
       plain_env = {
         NODE_ENV   = "production"
         CLIENT_URL = local.client_url
@@ -179,7 +182,7 @@ locals {
       name    = "${var.env}-recommendation-service"
       memory  = "512Mi"
       cpu     = "1"
-      secrets = ["${var.env}-database-url", "${var.env}-direct-url", "${var.env}-gemini-api-key"]
+      secrets = ["${var.env}-app-database-url", "${var.env}-direct-url", "${var.env}-gemini-api-key"]
       plain_env = {
         NODE_ENV     = "production"
         GEMINI_MODEL = "gemini-3.5-flash-lite"
@@ -190,7 +193,7 @@ locals {
       name    = "${var.env}-assistant-service"
       memory  = "512Mi"
       cpu     = "1"
-      secrets = ["${var.env}-database-url", "${var.env}-direct-url", "${var.env}-internal-service-key", "${var.env}-gemini-api-key"]
+      secrets = ["${var.env}-app-database-url", "${var.env}-direct-url", "${var.env}-internal-service-key", "${var.env}-gemini-api-key"]
       plain_env = {
         NODE_ENV                                  = "production"
         CLIENT_URL                                = local.client_url
@@ -241,7 +244,7 @@ locals {
       memory  = "512Mi"
       cpu     = "1"
       # direct-url (admin connection) is read only by the daily integration-health job, which checks every agency.
-      secrets = ["${var.env}-database-url", "${var.env}-direct-url", "${var.env}-internal-events-token", "${var.env}-facebook-app-secret", "${var.env}-facebook-verify-token"]
+      secrets = ["${var.env}-app-database-url", "${var.env}-direct-url", "${var.env}-internal-events-token", "${var.env}-facebook-app-secret", "${var.env}-facebook-verify-token"]
       plain_env = {
         NODE_ENV                 = "production"
         KMS_INTEGRATION_KEY_NAME = google_kms_crypto_key.integrations.id
@@ -255,7 +258,7 @@ locals {
       memory  = "512Mi"
       cpu     = "1"
       secrets = [
-        "${var.env}-database-url",
+        "${var.env}-app-database-url",
         "${var.env}-direct-url",
         "${var.env}-internal-service-key",
         "${var.env}-internal-events-token",
@@ -281,13 +284,30 @@ locals {
       }
       allow_unauthenticated = false
     }
+    # Lushware's own staff console (/api/v1/platform/*). It reads across agencies,
+    # so it keeps the admin connection (database-url), like auth-service.
+    platform-service = {
+      name                  = "${var.env}-platform-service"
+      memory                = "512Mi"
+      cpu                   = "1"
+      secrets               = ["${var.env}-database-url", "${var.env}-internal-events-token", "${var.env}-platform-totp-key", "${var.env}-platform-challenge-secret"]
+      plain_env             = { NODE_ENV = "production", PLATFORM_CONSOLE_URL = local.console_url, MANAGEMENT_URL = local.management_url }
+      allow_unauthenticated = false
+    }
   }
 
   # Flattened service -> secret bindings, used by iam.tf to scope each
   # service account's secretAccessor grant to its own secrets only.
+  #
+  # A service moved to app-database-url keeps its read grant on the old admin
+  # database-url secret. It no longer reads it, but dropping the grant is a delete,
+  # which the automatic prod deploy refuses. Remove these through terraform.yml later.
   service_secret_bindings = flatten([
     for service_key, svc in local.services : [
-      for secret_id in svc.secrets : {
+      for secret_id in concat(
+        svc.secrets,
+        contains(svc.secrets, "${var.env}-app-database-url") ? ["${var.env}-database-url"] : []
+      ) : {
         service_key = service_key
         secret_id   = secret_id
       }

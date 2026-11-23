@@ -76,6 +76,30 @@ variable "direct_url" {
   sensitive   = true
 }
 
+variable "app_database_url" {
+  description = "Pooled connection string for the crm_app role (row-level security enforced). DATABASE_URL for every service except auth-service and platform-service."
+  type        = string
+  sensitive   = true
+}
+
+variable "platform_totp_key" {
+  description = "platform-service PLATFORM_TOTP_KEY (base64 32 bytes). Never change it once Console staff have enrolled."
+  type        = string
+  sensitive   = true
+}
+
+variable "platform_challenge_secret" {
+  description = "platform-service PLATFORM_CHALLENGE_SECRET (random, at least 32 characters)."
+  type        = string
+  sensitive   = true
+}
+
+variable "console_url" {
+  description = "Public origin of the Lushware Console. Empty keeps the per-env default (https://lush-ware-console-<env>.web.app)."
+  type        = string
+  default     = ""
+}
+
 variable "jwt_secret" {
   description = "HS256 JWT secret shared by gateway and auth-service."
   type        = string

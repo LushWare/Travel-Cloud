@@ -21,10 +21,24 @@
 # secrets/plain_env/allow_unauthenticated and drives the service accounts
 # (iam.tf).
 
+data "google_project" "this" {
+  project_id = var.project_id
+}
+
 locals {
+  # Cloud Run's deterministic address for each service
+  # (https://<name>-<project number>.<region>.run.app). It is known before the
+  # service exists, so it can break a module-output cycle; ID tokens minted for it
+  # are accepted like the hashed `uri`.
+  run_url = {
+    for key, svc in local.services :
+    key => "https://${svc.name}-${data.google_project.this.number}.${var.region}.run.app"
+  }
+
   secret_env_names = {
     for id in distinct(flatten([for svc in local.services : svc.secrets])) :
-    id => upper(replace(trimprefix(id, "${var.env}-"), "-", "_"))
+    # app-database-url is the crm_app connection, which those services read as DATABASE_URL.
+    id => id == "${var.env}-app-database-url" ? "DATABASE_URL" : upper(replace(trimprefix(id, "${var.env}-"), "-", "_"))
   }
 }
 
@@ -57,6 +71,7 @@ module "gateway" {
     RECOMMENDATION_SERVICE_URL = module.recommendation_service.uri
     ASSISTANT_SERVICE_URL    = module.assistant_service.uri
     VOICE_SERVICE_URL        = module.voice_service.uri
+    PLATFORM_SERVICE_URL     = module.platform_service.uri
   })
   memory                = local.services.gateway.memory
   cpu                   = local.services.gateway.cpu
@@ -497,12 +512,15 @@ module "integration_service" {
       env_var   = local.secret_env_names[id]
     }
   ]
+  # lead and billing (through package and notification) already depend on this
+  # service's URL, so pointing back at their module outputs is a Terraform cycle.
+  # Their fixed Cloud Run addresses (local.run_url) need no output.
   plain_env = merge(local.services.integration-service.plain_env, {
-    PUBLIC_API_URL  = var.elevenlabs_public_base_url
-    MANAGEMENT_URL  = local.management_url
-    LEAD_SERVICE_URL = module.lead_service.uri
+    PUBLIC_API_URL   = var.elevenlabs_public_base_url
+    MANAGEMENT_URL   = local.management_url
+    LEAD_SERVICE_URL = var.integration_lead_service_url != "" ? var.integration_lead_service_url : local.run_url["lead-service"]
     # Stripe payments are recorded as receipts in billing.
-    BILLING_SERVICE_URL = module.billing_service.uri
+    BILLING_SERVICE_URL = var.integration_billing_service_url != "" ? var.integration_billing_service_url : local.run_url["billing-service"]
   })
   memory                = local.services.integration-service.memory
   cpu                   = local.services.integration-service.cpu
@@ -552,6 +570,38 @@ module "voice_service" {
   company_slug          = var.company_slug
   # Cloud Run validates secret access when the revision is created, so the
   # per-service secretAccessor grants must exist first, not just the secrets.
+  depends_on = [
+    google_secret_manager_secret_version.secrets,
+    google_secret_manager_secret_iam_member.service_secrets,
+  ]
+}
+
+# Lushware's staff console API. Only the gateway calls it (gateway_invoker_platform);
+# it calls notification-service for staff invites and sign-up decision emails.
+module "platform_service" {
+  source = "./modules/cloud-run-service"
+
+  name                  = local.services.platform-service.name
+  project_id            = var.project_id
+  region                = var.region
+  image                 = "${var.region}-docker.pkg.dev/${var.project_id}/travel-crm/platform-service:${var.env}-${var.image_tag}"
+  service_account_email = google_service_account.services["platform-service"].email
+  secrets = [
+    for id in local.services.platform-service.secrets : {
+      secret_id = id
+      env_var   = local.secret_env_names[id]
+    }
+  ]
+  plain_env = merge(local.services.platform-service.plain_env, {
+    NOTIFICATION_SERVICE_URL = module.notification_service.uri
+  })
+  memory                = local.services.platform-service.memory
+  cpu                   = local.services.platform-service.cpu
+  allow_unauthenticated = local.services.platform-service.allow_unauthenticated
+  min_instances         = 0
+  max_instances         = 3
+  env                   = var.env
+  company_slug          = var.company_slug
   depends_on = [
     google_secret_manager_secret_version.secrets,
     google_secret_manager_secret_iam_member.service_secrets,

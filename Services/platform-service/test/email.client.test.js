@@ -37,3 +37,34 @@ describe('platform staff setup email', () => {
     expect(payload.html).toContain('&lt;Alex&gt;');
   });
 });
+describe('platform email on Cloud Run', () => {
+  it('sends a Google ID token for notification-service when running on Cloud Run', async () => {
+    const { clearCloudRunAuthCache } = await import('../src/utils/cloudRunAuth.js');
+    const original = { token: process.env.INTERNAL_EVENTS_TOKEN, service: process.env.K_SERVICE };
+    process.env.INTERNAL_EVENTS_TOKEN = 'notification-token';
+    process.env.K_SERVICE = 'prod-platform-service';
+    clearCloudRunAuthCache();
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async () => ({ ok: true, text: async () => 'header.e30.signature' });
+    let request;
+    try {
+      const { sendSignupDecisionEmail } = await import('../src/utils/email.client.js');
+      await sendSignupDecisionEmail({
+        owner: { email: 'owner@example.test', name: 'Owner' }, agencyName: 'Acme', approved: false,
+        fetchImpl: async (url, init) => {
+          request = { url, init };
+          return { ok: true, json: async () => ({ messageId: 'message-2' }) };
+        },
+      });
+    } finally {
+      globalThis.fetch = realFetch;
+      clearCloudRunAuthCache();
+      if (original.token === undefined) delete process.env.INTERNAL_EVENTS_TOKEN;
+      else process.env.INTERNAL_EVENTS_TOKEN = original.token;
+      if (original.service === undefined) delete process.env.K_SERVICE;
+      else process.env.K_SERVICE = original.service;
+    }
+
+    expect(request.init.headers.Authorization).toBe('Bearer header.e30.signature');
+  });
+});

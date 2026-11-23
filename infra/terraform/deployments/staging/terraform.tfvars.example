@@ -27,6 +27,13 @@ whatsapp_business_account_id = "<whatsapp-business-account-id>"
 # --- Secret Manager secrets (all required, all sensitive) ---
 database_url               = "postgresql://postgres.<project-ref>:<password>@aws-0-ap-south-1.pooler.supabase.com:6543/postgres?pgbouncer=true"
 direct_url                 = "postgresql://postgres.<project-ref>:<password>@aws-0-ap-south-1.pooler.supabase.com:5432/postgres"
+# crm_app role (row-level security on); create it with `node Services/setup-db-roles.mjs --apply`.
+app_database_url           = "postgresql://crm_app.<project-ref>:<password>@aws-0-ap-south-1.pooler.supabase.com:6543/postgres?pgbouncer=true"
+# platform-service: copy both from Services/platform-service/.env (staff authenticators are encrypted with that TOTP key; a new key locks them out).
+platform_totp_key          = "<base64-32-byte-key>"
+platform_challenge_secret  = "<random-string-at-least-32-chars>"
+# The Console session cookie is SameSite=Strict, so prod must use a subdomain of the API's domain.
+console_url                = ""
 jwt_secret                 = "<jwt-secret>"
 internal_service_key       = "<internal-service-key>"
 internal_events_token      = "<internal-events-token>"

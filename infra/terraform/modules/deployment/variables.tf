@@ -89,6 +89,34 @@ variable "direct_url" {
   sensitive   = true
 }
 
+# Row-level security only holds if services connect as a role that cannot skip it.
+# database_url (the admin user) goes only to auth-service and platform-service;
+# every other service gets this one. Create the role with
+# `node Services/setup-db-roles.mjs --apply` against the target database first.
+variable "app_database_url" {
+  description = "Pooled connection string for the crm_app role (NOBYPASSRLS), port 6543, pgbouncer=true. Used as DATABASE_URL by every service except auth-service and platform-service."
+  type        = string
+  sensitive   = true
+}
+
+variable "platform_totp_key" {
+  description = "platform-service PLATFORM_TOTP_KEY: base64 32-byte key that encrypts Console staff authenticator secrets. Must never change once staff have enrolled (npm run init-env prints one)."
+  type        = string
+  sensitive   = true
+}
+
+variable "platform_challenge_secret" {
+  description = "platform-service PLATFORM_CHALLENGE_SECRET: random string of at least 32 characters that signs Console sign-in challenges."
+  type        = string
+  sensitive   = true
+}
+
+variable "console_url" {
+  description = "Public origin of the Lushware Console. Empty keeps the per-env default (https://lush-ware-console-<env>.web.app). The Console's session cookie is SameSite=Strict, so in prod this must be on the API's own domain (e.g. https://console.lushtravelcloud.com)."
+  type        = string
+  default     = ""
+}
+
 variable "jwt_secret" {
   description = "HS256 JWT secret shared by gateway and auth-service."
   type        = string
@@ -526,6 +554,18 @@ variable "ops_alert_email" {
 
 variable "package_lead_service_url" {
   description = "URL of this environment's lead-service Cloud Run instance, consumed by package-service (LEAD_SERVICE_URL). Cycle-breaker for the package<->lead (lead-service already consumes package-service's URL). Fill in after the first apply; empty leaves that feature off in package-service."
+  type        = string
+  default     = ""
+}
+
+variable "integration_lead_service_url" {
+  description = "Override for integration-service's LEAD_SERVICE_URL. Empty uses lead-service's deterministic Cloud Run address."
+  type        = string
+  default     = ""
+}
+
+variable "integration_billing_service_url" {
+  description = "Override for integration-service's BILLING_SERVICE_URL. Empty uses billing-service's deterministic Cloud Run address."
   type        = string
   default     = ""
 }

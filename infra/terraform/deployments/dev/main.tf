@@ -39,6 +39,10 @@ module "deployment" {
   # Secret Manager secrets (27 rows of the plan table)
   database_url               = var.database_url
   direct_url                 = var.direct_url
+  app_database_url           = var.app_database_url
+  platform_totp_key          = var.platform_totp_key
+  platform_challenge_secret  = var.platform_challenge_secret
+  console_url                = var.console_url
   jwt_secret                 = var.jwt_secret
   internal_service_key       = var.internal_service_key
   internal_events_token      = var.internal_events_token

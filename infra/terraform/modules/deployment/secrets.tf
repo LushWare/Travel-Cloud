@@ -13,6 +13,9 @@ locals {
   secrets = {
     database-url               = var.database_url
     direct-url                 = var.direct_url
+    app-database-url           = var.app_database_url
+    platform-totp-key          = var.platform_totp_key
+    platform-challenge-secret  = var.platform_challenge_secret
     jwt-secret                 = var.jwt_secret
     jwt-private-key            = tls_private_key.jwt.private_key_pem_pkcs8
     jwt-public-keys            = tls_private_key.jwt.public_key_pem

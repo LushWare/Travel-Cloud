@@ -25,6 +25,8 @@ on:
       - 'Services/recommendation-service/**'
       - 'Services/user-service/**'
       - 'Services/voice-service/**'
+      - 'Services/platform-service/**'
+      - 'Services/gateway/**'
       - 'Management/**'
       - '.github/workflows/microservices-ci.yml'
   push:
@@ -110,6 +112,7 @@ jobs:
           - { service: integration-service, contracts: false, lint: false }
           - { service: recommendation-service, contracts: false, lint: true }
           - { service: gateway,              contracts: false, lint: false }
+          - { service: platform-service,     contracts: false, lint: false }
     steps:
       - uses: actions/checkout@v4
 

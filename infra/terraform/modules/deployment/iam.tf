@@ -482,3 +482,22 @@ resource "google_cloud_run_v2_service_iam_member" "voice_invoker_notification" {
   role     = "roles/run.invoker"
   member   = "serviceAccount:${google_service_account.services["voice-service"].email}"
 }
+
+# ── Platform console (platform-service) ───────────────────────────────────
+# The gateway forwards /api/v1/platform/* here; nothing else may call it.
+resource "google_cloud_run_v2_service_iam_member" "gateway_invoker_platform" {
+  project  = var.project_id
+  location = var.region
+  name     = module.platform_service.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.services["gateway"].email}"
+}
+
+# Console staff invites and sign-up approval/rejection emails.
+resource "google_cloud_run_v2_service_iam_member" "platform_invoker_notification" {
+  project  = var.project_id
+  location = var.region
+  name     = module.notification_service.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.services["platform-service"].email}"
+}

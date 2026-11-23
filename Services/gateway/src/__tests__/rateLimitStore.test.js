@@ -31,9 +31,22 @@ describe('createRateLimitStores', () => {
     expect(mocks.createClient).not.toHaveBeenCalled();
   });
 
-  it('refuses production startup when Redis is not configured', async () => {
-    await expect(createRateLimitStores({ redisUrl: '', env: 'production' }))
-      .rejects.toThrow('REDIS_URL is required in production');
+  it('falls back to process-local stores in production when Redis is not configured', async () => {
+    const log = { warn: vi.fn(), error: vi.fn() };
+
+    await expect(createRateLimitStores({ redisUrl: '', env: 'production', log })).resolves.toBeNull();
+
+    expect(mocks.createClient).not.toHaveBeenCalled();
+  });
+
+  it('logs an error in production when Redis is not configured', async () => {
+    const log = { warn: vi.fn(), error: vi.fn() };
+
+    await createRateLimitStores({ redisUrl: undefined, env: 'production', log });
+
+    expect(log.error).toHaveBeenCalledWith(
+      'REDIS_URL is unset in production; gateway rate limits are per instance, not shared',
+    );
   });
 
   it('creates a connected Redis store with a separate namespace for each limiter', async () => {
