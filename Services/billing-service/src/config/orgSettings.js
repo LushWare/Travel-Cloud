@@ -1,3 +1,4 @@
+import { cloudRunAuthHeader } from '../services/cloudRunAuth.js';
 // Replaces the old env-var-only branding.js. Company identity, contact info,
 // quotation defaults, and bank details are now edited by admins through
 // Management (PUT /api/v1/admin/settings on user-service) instead of
@@ -78,7 +79,7 @@ let cache = null; // { value, expiresAt }
 
 async function fetchFromUserService(fetchImpl) {
   const res = await fetchImpl(`${USER_SERVICE_URL}/api/v1/admin/internal/organization-settings`, {
-    headers: { 'x-internal-token': INTERNAL_SERVICE_KEY },
+    headers: { 'x-internal-token': INTERNAL_SERVICE_KEY, ...(await cloudRunAuthHeader(USER_SERVICE_URL)) },
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`user-service returned ${res.status}`);

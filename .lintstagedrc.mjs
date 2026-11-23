@@ -1,10 +1,10 @@
-import path from 'node:path';
-
 // Each package installs its own eslint independently (no npm workspace —
 // see CLAUDE.md), so there's no hoisted binary to call from root. Route
 // staged files to the eslint installed in their own package directory.
-const cmd = (dir) => (files) =>
-  `bash -c "cd ${dir} && npx eslint ${files.map((f) => `'${path.relative(path.resolve(dir), f)}'`).join(' ')}"`;
+// Through node, not `bash -c`: GitHub Desktop on Windows resolves `bash` to WSL's.
+const cmd = (dir) => (files) => ['node', 'scripts/eslint-in-package.mjs', dir, ...files]
+  .map((part) => `"${part}"`)
+  .join(' ');
 
 export default {
   'Client/**/*.{js,jsx,ts,tsx}': cmd('Client'),

@@ -136,7 +136,7 @@ describe('fetchPackage', () => {
       json: async () => ({ success: true, data: { id: 'pkg-1', title: 'Sri Lanka Explorer' } }),
     });
     await expect(fetchPackage('pkg-1', fetchImpl)).resolves.toMatchObject({ id: 'pkg-1' });
-    expect(fetchImpl).toHaveBeenCalledWith(expect.stringContaining('/api/v1/packages/pkg-1'));
+    expect(fetchImpl).toHaveBeenCalledWith(expect.stringContaining('/api/v1/packages/pkg-1'), { headers: {} });
   });
 
   it('throws a 404-style error when the package is missing', async () => {

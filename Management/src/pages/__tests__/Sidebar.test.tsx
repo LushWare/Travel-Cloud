@@ -327,9 +327,19 @@ describe('Sidebar navigation', () => {
     for (const label of ['Dashboard', 'Packages', 'Flights', 'Hotels', 'Career', 'Settings']) {
       expect(await screen.findByTitle(label)).toBeInTheDocument();
     }
-    for (const label of ['Analytics', 'Leads', 'Billing', 'Users']) {
+    for (const label of ['Analytics', 'Billing', 'Users']) {
       expect(screen.queryByTitle(label)).not.toBeInTheDocument();
     }
+  });
+
+  it('shows the Leads tab to a super admin', async () => {
+    // lead-service already lets a super admin list leads; only the tab was missing.
+    setUser({ name: 'Root', role: 'superAdmin', isSuperAdmin: true });
+    setPermissions(() => false);
+
+    render(<Sidebar />);
+
+    expect(await screen.findByTitle('Leads')).toBeInTheDocument();
   });
 
   it('requires manage_packages for an admin to see Packages and any user permission for Users', async () => {

@@ -301,3 +301,114 @@ resource "google_cloud_run_v2_service_iam_member" "voice_invoker_notification" {
   role     = "roles/run.invoker"
   member   = "serviceAccount:${google_service_account.services["voice-service"].email}"
 }
+
+# ── Service-to-service calls ──────────────────────────────────────────────
+# Each caller sends a Google ID token (src/services/cloudRunAuth.js); without its
+# grant here Cloud Run refuses the call at its edge, in production only.
+resource "google_cloud_run_v2_service_iam_member" "auth_invoker_notification" {
+  # Sign-in codes and password-reset emails.
+  project  = var.project_id
+  location = var.region
+  name     = module.notification_service.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.services["auth-service"].email}"
+}
+
+resource "google_cloud_run_v2_service_iam_member" "billing_invoker_notification" {
+  # Quotation, invoice, receipt and voucher emails and WhatsApp.
+  project  = var.project_id
+  location = var.region
+  name     = module.notification_service.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.services["billing-service"].email}"
+}
+
+resource "google_cloud_run_v2_service_iam_member" "booking_invoker_notification" {
+  # Booking emails.
+  project  = var.project_id
+  location = var.region
+  name     = module.notification_service.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.services["booking-service"].email}"
+}
+
+resource "google_cloud_run_v2_service_iam_member" "career_invoker_notification" {
+  # Job application emails.
+  project  = var.project_id
+  location = var.region
+  name     = module.notification_service.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.services["career-service"].email}"
+}
+
+resource "google_cloud_run_v2_service_iam_member" "lead_invoker_notification" {
+  # WhatsApp replies from the lead screen.
+  project  = var.project_id
+  location = var.region
+  name     = module.notification_service.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.services["lead-service"].email}"
+}
+
+resource "google_cloud_run_v2_service_iam_member" "package_invoker_user" {
+  # Company branding for package PDFs and the trip wizard.
+  project  = var.project_id
+  location = var.region
+  name     = module.user_service.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.services["package-service"].email}"
+}
+
+resource "google_cloud_run_v2_service_iam_member" "package_invoker_lead" {
+  # Website trip-wizard enquiries become leads.
+  project  = var.project_id
+  location = var.region
+  name     = module.lead_service.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.services["package-service"].email}"
+}
+
+resource "google_cloud_run_v2_service_iam_member" "lead_invoker_package" {
+  # Copying a package itinerary into a lead.
+  project  = var.project_id
+  location = var.region
+  name     = module.package_service.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.services["lead-service"].email}"
+}
+
+resource "google_cloud_run_v2_service_iam_member" "lead_invoker_billing" {
+  # Creating a quotation from a lead.
+  project  = var.project_id
+  location = var.region
+  name     = module.billing_service.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.services["lead-service"].email}"
+}
+
+resource "google_cloud_run_v2_service_iam_member" "billing_invoker_user" {
+  # Branding and bank details on every quotation, invoice, receipt and voucher.
+  project  = var.project_id
+  location = var.region
+  name     = module.user_service.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.services["billing-service"].email}"
+}
+
+resource "google_cloud_run_v2_service_iam_member" "billing_invoker_lead" {
+  # Lead status events and timeline notes when documents are sent or paid.
+  project  = var.project_id
+  location = var.region
+  name     = module.lead_service.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.services["billing-service"].email}"
+}
+
+resource "google_cloud_run_v2_service_iam_member" "notification_invoker_lead" {
+  # Facebook/Google Ads leads and WhatsApp messages reach the lead timeline.
+  project  = var.project_id
+  location = var.region
+  name     = module.lead_service.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.services["notification-service"].email}"
+}

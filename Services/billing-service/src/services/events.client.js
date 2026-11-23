@@ -1,3 +1,5 @@
+import { cloudRunAuthHeader } from './cloudRunAuth.js';
+
 const LEAD_SERVICE_URL = process.env.LEAD_SERVICE_URL || 'http://localhost:3004';
 const INTERNAL_EVENTS_TOKEN = process.env.INTERNAL_EVENTS_TOKEN || '';
 
@@ -19,6 +21,7 @@ export async function emitLeadEvent({
     headers: {
       'content-type': 'application/json',
       'x-internal-token': INTERNAL_EVENTS_TOKEN,
+      ...(await cloudRunAuthHeader(LEAD_SERVICE_URL)),
     },
     body: JSON.stringify({
       event: { id: eventId, type, leadId, payload, occurredAt: occurredAt || new Date().toISOString() },
@@ -42,6 +45,7 @@ export async function logLeadCommunication({ leadId, type, notes, fetchImpl = fe
     headers: {
       'content-type': 'application/json',
       'x-internal-token': INTERNAL_EVENTS_TOKEN,
+      ...(await cloudRunAuthHeader(LEAD_SERVICE_URL)),
     },
     body: JSON.stringify({ leadId, type, notes }),
   });
