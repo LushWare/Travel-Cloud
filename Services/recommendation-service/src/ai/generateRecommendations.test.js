@@ -514,3 +514,42 @@ describe('generateRecommendations', () => {
     expect(mockGenerateContent).not.toHaveBeenCalled();
   });
 });
+describe('generateRecommendations — transient Gemini errors', () => {
+  const busy = () => Object.assign(new Error('This model is currently experiencing high demand.'), { status: 503 });
+
+  it('retries a 503 high-demand response and returns the recommendations', async () => {
+    vi.useFakeTimers();
+    mockGenerateContent.mockReset()
+      .mockRejectedValueOnce(busy())
+      .mockResolvedValueOnce({ text: JSON.stringify({ recommendations: [aiRecommendation()] }) });
+
+    const pending = generateRecommendations(source);
+    await vi.advanceTimersByTimeAsync(1_000);
+    const result = await pending;
+    vi.useRealTimers();
+
+    expect(mockGenerateContent).toHaveBeenCalledTimes(2);
+    expect(result.map(({ title }) => title)).toEqual(['Follow up on cold leads']);
+  });
+
+  it('gives up after the last retry when Gemini stays busy', async () => {
+    vi.useFakeTimers();
+    mockGenerateContent.mockReset().mockRejectedValue(busy());
+
+    const pending = generateRecommendations(source);
+    const assertion = expect(pending).rejects.toBeInstanceOf(AIRecommendationsUnavailableError);
+    await vi.advanceTimersByTimeAsync(4_000);
+    await assertion;
+    vi.useRealTimers();
+
+    expect(mockGenerateContent).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not retry a non-transient error such as a rejected API key', async () => {
+    mockGenerateContent.mockReset().mockRejectedValue(Object.assign(new Error('API key not valid'), { status: 400 }));
+
+    await expect(generateRecommendations(source)).rejects.toBeInstanceOf(AIRecommendationsUnavailableError);
+
+    expect(mockGenerateContent).toHaveBeenCalledTimes(1);
+  });
+});

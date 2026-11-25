@@ -8,6 +8,8 @@ const {
   mockRecommendationUpsert,
   mockRecommendationUpdateMany,
   mockRunUpsert,
+  mockTxRecommendationFindMany,
+  mockFeedbackDeleteMany,
 } = vi.hoisted(() => ({
   mockPrisma: {
     recommendationRun: { findUnique: vi.fn() },
@@ -20,6 +22,8 @@ const {
   mockRecommendationUpsert: vi.fn(),
   mockRecommendationUpdateMany: vi.fn(),
   mockRunUpsert: vi.fn(),
+  mockTxRecommendationFindMany: vi.fn(),
+  mockFeedbackDeleteMany: vi.fn(),
 }));
 
 vi.mock('./db/client.js', () => ({ default: mockPrisma }));
@@ -29,7 +33,12 @@ vi.mock('./recommendationEngine.js', () => ({
   buildRecommendations: mockBuildRecommendations,
 }));
 
-import { listRecommendations } from './recommendationService.js';
+import {
+  FAILURE_COOLDOWN_MS,
+  RECURRENCE_GAP_MS,
+  listRecommendations,
+  resetRefreshStateForTests,
+} from './recommendationService.js';
 
 const signalSource = { scope: 'org', asOf: '2026-10-12T00:00:00.000Z', signals: {} };
 const aiRecommendation = {
@@ -56,10 +65,18 @@ const ruleRecommendation = {
 };
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.useRealTimers();
+  resetRefreshStateForTests();
+  mockTxRecommendationFindMany.mockResolvedValue([]);
   mockPrisma.recommendationRun.findUnique.mockResolvedValue(null);
   mockPrisma.recommendation.findMany.mockResolvedValue([]);
   mockPrisma.$transaction.mockImplementation((callback) => callback({
-    recommendation: { updateMany: mockRecommendationUpdateMany, upsert: mockRecommendationUpsert },
+    recommendation: {
+      updateMany: mockRecommendationUpdateMany,
+      upsert: mockRecommendationUpsert,
+      findMany: mockTxRecommendationFindMany,
+    },
+    recommendationFeedback: { deleteMany: mockFeedbackDeleteMany },
     recommendationRun: { upsert: mockRunUpsert },
   }));
   mockFetchBusinessSignals.mockResolvedValue(signalSource);
@@ -88,7 +105,7 @@ describe('recommendation mode persistence', () => {
         priority: 'high',
       }),
     }));
-    expect(mockRecommendationUpdateMany).toHaveBeenCalledTimes(1);
+    expect(mockRecommendationUpdateMany).toHaveBeenCalledTimes(2);
     expect(mockRecommendationUpdateMany).toHaveBeenCalledWith({
       where: { scopeKey: 'v10:agency:rules', active: true, key: { notIn: ['verified.finding'] } },
       data: { active: false },
@@ -142,5 +159,105 @@ describe('recommendation mode persistence', () => {
 
     expect(mockBuildRecommendations).not.toHaveBeenCalled();
     expect(mockRecommendationUpsert).not.toHaveBeenCalled();
+  });
+});
+
+const admin = { id: 'admin-1', role: 'admin', isSuperAdmin: false };
+
+describe('AI snapshot replacement', () => {
+  it('deactivates AI recommendations missing from the latest run', async () => {
+    await listRecommendations({ actor: admin, mode: 'ai', requestId: 'request-1' });
+
+    expect(mockRecommendationUpdateMany).toHaveBeenCalledWith({
+      where: { scopeKey: 'v10:agency:ai', active: true, key: { notIn: ['ai.cross-tab-finding'] } },
+      data: { active: false },
+    });
+  });
+
+  it('deactivates every AI recommendation when the latest run returns none', async () => {
+    mockGenerateRecommendations.mockResolvedValueOnce([]);
+
+    await listRecommendations({ actor: admin, mode: 'ai', requestId: 'request-1' });
+
+    expect(mockRecommendationUpdateMany).toHaveBeenCalledWith({
+      where: { scopeKey: 'v10:agency:ai', active: true },
+      data: { active: false },
+    });
+  });
+});
+
+describe('failed refresh cooldown', () => {
+  it('rethrows the last failure without calling Gemini again inside the cooldown', async () => {
+    vi.useFakeTimers({ now: new Date('2026-11-25T10:00:00.000Z') });
+    mockGenerateRecommendations.mockRejectedValueOnce(new Error('AI unavailable'));
+    await expect(listRecommendations({ actor: admin, mode: 'ai' })).rejects.toThrow('AI unavailable');
+
+    vi.setSystemTime(new Date(Date.now() + FAILURE_COOLDOWN_MS - 1000));
+    await expect(listRecommendations({ actor: admin, mode: 'ai' })).rejects.toThrow('AI unavailable');
+
+    expect(mockGenerateRecommendations).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls Gemini again once the cooldown has passed', async () => {
+    vi.useFakeTimers({ now: new Date('2026-11-25T10:00:00.000Z') });
+    mockGenerateRecommendations.mockRejectedValueOnce(new Error('AI unavailable'));
+    await expect(listRecommendations({ actor: admin, mode: 'ai' })).rejects.toThrow('AI unavailable');
+
+    vi.setSystemTime(new Date(Date.now() + FAILURE_COOLDOWN_MS + 1000));
+    const result = await listRecommendations({ actor: admin, mode: 'ai' });
+
+    expect(mockGenerateRecommendations).toHaveBeenCalledTimes(2);
+    expect(result.mode).toBe('ai');
+  });
+
+  it('shares one Gemini call between simultaneous page loads', async () => {
+    await Promise.all([
+      listRecommendations({ actor: admin, mode: 'ai' }),
+      listRecommendations({ actor: admin, mode: 'ai' }),
+    ]);
+
+    expect(mockGenerateRecommendations).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('feedback on recurring findings', () => {
+  it('clears feedback for a finding that was gone for at least the recurrence gap', async () => {
+    vi.useFakeTimers({ now: new Date('2026-11-25T10:00:00.000Z') });
+    mockTxRecommendationFindMany.mockResolvedValueOnce([{ id: 'returning-id' }]);
+
+    await listRecommendations({ actor: admin, mode: 'rules' });
+
+    expect(mockTxRecommendationFindMany).toHaveBeenCalledWith({
+      where: {
+        scopeKey: 'v10:agency:rules',
+        key: { in: ['verified.finding'] },
+        active: false,
+        updatedAt: { lt: new Date(Date.parse('2026-11-25T10:00:00.000Z') - RECURRENCE_GAP_MS) },
+      },
+      select: { id: true },
+    });
+    expect(mockFeedbackDeleteMany).toHaveBeenCalledWith({ where: { recommendationId: { in: ['returning-id'] } } });
+  });
+
+  it('keeps feedback when no returning finding was gone long enough', async () => {
+    mockTxRecommendationFindMany.mockResolvedValueOnce([]);
+
+    await listRecommendations({ actor: admin, mode: 'rules' });
+
+    expect(mockFeedbackDeleteMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('viewer scope', () => {
+  it('scopes a sales rep flagged as super admin to their own recommendations', async () => {
+    mockFetchBusinessSignals.mockResolvedValueOnce({ ...signalSource, scope: 'own' });
+
+    const result = await listRecommendations({
+      actor: { id: 'rep-1', role: 'salesRep', isSuperAdmin: true },
+      mode: 'rules',
+    });
+
+    expect(result.scope).toBe('own');
+    expect(mockPrisma.recommendationRun.findUnique).toHaveBeenCalledWith({ where: { scopeKey: 'v10:rep:rep-1:rules' } });
   });
 });

@@ -45,9 +45,58 @@ import { createDefaultPackage } from '../types';
 
 // Sample data
 import { SAMPLE_PACKAGES } from './sampleData';
-import { apiErrorMessage } from '@/lib/apiErrorMessage';
+import { apiErrorMessage, apiFieldErrors } from '@/lib/apiErrorMessage';
+import { describeFieldError, escapeHtml } from '../utils/packageSaveErrors';
 import PageHeader from '../../../components/PageHeader';
 import RecommendationStrip from '@/features/recommendations/RecommendationStrip';
+
+function showSaveError(error: unknown) {
+  const fieldErrors = apiFieldErrors(error);
+  if (fieldErrors.length === 0) {
+    Swal.fire('Error', apiErrorMessage(error), 'error');
+    return;
+  }
+  const items = fieldErrors
+    .map(({ field, message }) => `<li><strong>${escapeHtml(describeFieldError(field))}:</strong> ${escapeHtml(message)}</li>`)
+    .join('');
+  Swal.fire({
+    icon: 'error',
+    title: 'Please fix these fields',
+    html: `<ul style="text-align:left;margin:0 auto;display:inline-block">${items}</ul>`,
+  });
+}
+
+function toEditorDays(apiDays: any[] = []) {
+  return (apiDays || []).map((apiDay: any) => ({
+    dayNumber: apiDay.dayNumber,
+    title: apiDay.title || '',
+    description: apiDay.description || '',
+    meals: {
+      breakfast: apiDay.breakfastCount > 0,
+      lunch: apiDay.lunchCount > 0,
+      dinner: apiDay.dinnerCount > 0,
+    },
+    breakfastCount: apiDay.breakfastCount ?? 0,
+    lunchCount: apiDay.lunchCount ?? 0,
+    dinnerCount: apiDay.dinnerCount ?? 0,
+    mealPriceOverride: apiDay.mealPriceOverride,
+    locations: (apiDay.places || []).map((p: any) => p.place?.name || p.customName).filter(Boolean),
+    activities: (apiDay.activities || []).map((a: any) => a.activity?.name || '').filter(Boolean),
+    places: (apiDay.places || []).map((p: any) => ({
+      name: p.place?.name || p.customName || '',
+      placeId: p.placeId,
+    })),
+    flights: apiDay.flights || [],
+    accommodation: apiDay.accommodation && Object.keys(apiDay.accommodation).length > 0 ? apiDay.accommodation : null,
+    _relational: {
+      places: apiDay.places || [],
+      activities: apiDay.activities || [],
+      transports: apiDay.transports || [],
+    },
+    images: apiDay.images || [],
+    notes: '',
+  }));
+}
 
 const ItineraryGenerationContainer = () => {
   const [, navigate] = useLocation();
@@ -206,8 +255,7 @@ const ItineraryGenerationContainer = () => {
     // flow into the edit path (PUT, same id) rather than the new-package create path —
     // routing it through "New Package" would create a second, itinerary-less duplicate.
     setPackages((prev: any[]) => [generatedPackageData, ...prev]);
-
-    const days = generatedPackageData.days || generatedPackageData.itinerary?.days || [];
+    const days = toEditorDays(generatedPackageData.itineraryDays);
     const formattedImages = (generatedPackageData.images || []).map((img: any) => {
       if (typeof img === 'object' && img.url) return img;
       if (typeof img === 'string') {
@@ -252,37 +300,7 @@ const ItineraryGenerationContainer = () => {
       }
 
       const fullPackage = response.data;
-
-      // Map API relational itineraryDays → editor-friendly days
-      const days = (fullPackage.itineraryDays || []).map((apiDay: any) => ({
-        dayNumber: apiDay.dayNumber,
-        title: apiDay.title || '',
-        description: apiDay.description || '',
-        meals: {
-          breakfast: apiDay.breakfastCount > 0,
-          lunch: apiDay.lunchCount > 0,
-          dinner: apiDay.dinnerCount > 0,
-        },
-        breakfastCount: apiDay.breakfastCount ?? 0,
-        lunchCount: apiDay.lunchCount ?? 0,
-        dinnerCount: apiDay.dinnerCount ?? 0,
-        mealPriceOverride: apiDay.mealPriceOverride,
-        locations: (apiDay.places || []).map((p: any) => p.place?.name || p.customName).filter(Boolean),
-        activities: (apiDay.activities || []).map((a: any) => a.activity?.name || '').filter(Boolean),
-        places: (apiDay.places || []).map((p: any) => ({
-          name: p.place?.name || p.customName || '',
-          placeId: p.placeId,
-        })),
-        flights: apiDay.flights || [],
-        accommodation: apiDay.accommodation && Object.keys(apiDay.accommodation).length > 0 ? apiDay.accommodation : null,
-        _relational: {
-          places: apiDay.places || [],
-          activities: apiDay.activities || [],
-          transports: apiDay.transports || [],
-        },
-        images: apiDay.images || [],
-        notes: '',
-      }));
+      const days = toEditorDays(fullPackage.itineraryDays);
 
       const formattedImages = (fullPackage.images || []).map((img: any) => {
         if (typeof img === 'object' && img.url) return img;
@@ -368,12 +386,7 @@ const ItineraryGenerationContainer = () => {
       }
     } catch (error: any) {
       console.error('Error creating package:', error);
-      if (error.errors && Array.isArray(error.errors) && error.errors.length > 0) {
-        const errorList = error.errors.map((err: any) => `• ${err.param || err.field}: ${err.msg}`).join('\n');
-        Swal.fire('Validation Error', `Please fix the following:\n\n${errorList}`, 'error');
-      } else {
-        Swal.fire('Error', apiErrorMessage(error), 'error');
-      }
+      showSaveError(error);
     }
   };
 
@@ -450,7 +463,7 @@ const ItineraryGenerationContainer = () => {
       }
     } catch (error) {
       console.error('Error updating package:', error);
-      Swal.fire('Error', (error as Error).message || 'Failed to update package', 'error');
+      showSaveError(error);
     }
   };
 

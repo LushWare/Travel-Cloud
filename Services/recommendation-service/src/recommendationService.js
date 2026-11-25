@@ -5,14 +5,23 @@ import prisma from './db/client.js';
 
 const priorityRank = { high: 0, medium: 1, low: 2 };
 const REFRESH_WINDOW_MS = 5 * 60_000;
+export const FAILURE_COOLDOWN_MS = 2 * 60_000;
+export const RECURRENCE_GAP_MS = 24 * 60 * 60_000;
 const CACHE_VERSION = 10;
+const inFlightRefreshes = new Map();
+const recentFailures = new Map();
 
 function baseScopeKey(actor) {
-  return actor.role === 'salesRep' && !actor.isSuperAdmin ? `rep:${actor.id}` : 'agency';
+  return actor.role === 'salesRep' ? `rep:${actor.id}` : 'agency';
 }
 
 function storageScopeKey(scopeKey, mode) {
   return `v${CACHE_VERSION}:${scopeKey}:${mode}`;
+}
+
+export function resetRefreshStateForTests() {
+  inFlightRefreshes.clear();
+  recentFailures.clear();
 }
 
 export async function refreshRecommendations(actor, requestId, mode = 'ai') {
@@ -23,6 +32,23 @@ export async function refreshRecommendations(actor, requestId, mode = 'ai') {
     return { scopeKey, sourceAsOf: cachedRun.sourceAsOf?.toISOString() ?? null };
   }
 
+  const failure = recentFailures.get(scopeKey);
+  if (failure && Date.now() - failure.at < FAILURE_COOLDOWN_MS) throw failure.error;
+  if (inFlightRefreshes.has(scopeKey)) return inFlightRefreshes.get(scopeKey);
+  const refresh = runRefresh(actor, requestId, mode, viewerScopeKey, scopeKey)
+    .then((result) => {
+      recentFailures.delete(scopeKey);
+      return result;
+    }, (error) => {
+      recentFailures.set(scopeKey, { at: Date.now(), error });
+      throw error;
+    })
+    .finally(() => inFlightRefreshes.delete(scopeKey));
+  inFlightRefreshes.set(scopeKey, refresh);
+  return refresh;
+}
+
+async function runRefresh(actor, requestId, mode, viewerScopeKey, scopeKey) {
   const source = await fetchBusinessSignals(actor, requestId);
   if ((source.scope === 'own') !== viewerScopeKey.startsWith('rep:')) throw new Error('Analytics signal scope did not match the requesting actor');
   const candidates = mode === 'ai'
@@ -31,14 +57,27 @@ export async function refreshRecommendations(actor, requestId, mode = 'ai') {
   const keys = candidates.map((item) => item.key);
 
   await prisma.$transaction(async (tx) => {
-    if (mode === 'rules') {
-      if (keys.length) {
-        await tx.recommendation.updateMany({
-          where: { scopeKey, active: true, key: { notIn: keys } },
-          data: { active: false },
+    // Both modes replace the whole snapshot: anything not in this run is no
+    // longer a current finding and must stop showing.
+    await tx.recommendation.updateMany({
+      where: { scopeKey, active: true, ...(keys.length ? { key: { notIn: keys } } : {}) },
+      data: { active: false },
+    });
+
+    if (keys.length) {
+      const recurring = await tx.recommendation.findMany({
+        where: {
+          scopeKey,
+          key: { in: keys },
+          active: false,
+          updatedAt: { lt: new Date(Date.now() - RECURRENCE_GAP_MS) },
+        },
+        select: { id: true },
+      });
+      if (recurring.length) {
+        await tx.recommendationFeedback.deleteMany({
+          where: { recommendationId: { in: recurring.map(({ id }) => id) } },
         });
-      } else {
-        await tx.recommendation.updateMany({ where: { scopeKey, active: true }, data: { active: false } });
       }
     }
 

@@ -100,11 +100,7 @@ const AIPackageDialog = ({ isOpen, onClose, onPackageGenerated }: AIPackageDialo
       );
 
       if (response.success && response.data) {
-        const packageDataWithCategory = {
-          ...response.data,
-          category: formData.category,
-        };
-        onPackageGenerated(packageDataWithCategory);
+        onPackageGenerated(response.data);
 
         Swal.fire({
           icon: 'success',
