@@ -27,9 +27,10 @@ const MIN_FALLBACK_BUDGET_MS = 5_000;
 const modules = ['dashboard', 'leads', 'packages', 'flights', 'hotels', 'billing', 'analytics', 'users', 'career'];
 const categories = ['sales', 'finance', 'packages', 'operations', 'performance'];
 const priorities = ['high', 'medium', 'low'];
-const recommendationSchema = z.object({
-  recommendations: z.array(z.object({
-    key: z.string().regex(/^[a-z0-9][a-z0-9._-]{0,79}$/),
+const KEY_PATTERN = '^[a-z0-9][a-z0-9._-]{0,79}$';
+const MAX_RECOMMENDATIONS = 30;
+const recommendationItemSchema = z.object({
+    key: z.string().regex(new RegExp(KEY_PATTERN)),
     module: z.enum(modules),
     category: z.enum(categories),
     priority: z.enum(priorities),
@@ -41,8 +42,27 @@ const recommendationSchema = z.object({
     }).strict()).min(1).max(5),
     actionLabel: z.string().trim().min(2).max(80),
     actionTab: z.enum(['quotation', 'invoice', 'receipt', 'voucher', 'bookings', 'website-users']).optional(),
-  }).strict()).max(30),
-}).strict();
+  }).strict();
+
+// One finding that breaks a rule (a sixth evidence pair, an over-long title)
+// used to reject the whole list — observed in prod on OpenAI's answers, with
+// the Gemini backup down at the same moment, so the strip showed nothing at
+// all. Each finding is now judged on its own; the list only counts as
+// malformed when it is not a list, or when not one finding in it survives.
+// The reported issues are field paths and Zod codes only, never values.
+function validateRecommendations(payload) {
+  const items = payload?.recommendations;
+  if (!Array.isArray(items)) return { ok: false, issues: ['recommendations: not an array'] };
+  const valid = [];
+  const issues = [];
+  items.forEach((item, index) => {
+    const result = recommendationItemSchema.safeParse(item);
+    if (result.success) valid.push(result.data);
+    else issues.push(...result.error.issues.map((issue) => `${index}.${issue.path.join('.')}: ${issue.code}`));
+  });
+  if (items.length > 0 && valid.length === 0) return { ok: false, issues };
+  return { ok: true, data: { recommendations: valid.slice(0, MAX_RECOMMENDATIONS) }, dropped: items.length - valid.length, issues };
+}
 
 const responseSchema = {
   type: 'OBJECT',
@@ -129,8 +149,25 @@ export class AIRecommendationsUnavailableError extends Error {
 }
 
 let client;
-// OpenAI's strict-mode form of `responseSchema`, built once.
-const openaiFormat = toOpenAIJsonSchema(responseSchema);
+// OpenAI's strict-mode form of `responseSchema`, built once, with the rules
+// recommendationItemSchema enforces spelled out so strict decoding can keep the
+// model inside them (pattern and item counts) or at least tell it (lengths,
+// which strict mode does not enforce). Gemini's schema is left as it was.
+const openaiFormat = toOpenAIJsonSchema((() => {
+  const schema = structuredClone(responseSchema);
+  const list = schema.properties.recommendations;
+  const item = list.items.properties;
+  list.maxItems = MAX_RECOMMENDATIONS;
+  item.key.pattern = KEY_PATTERN;
+  item.key.description = 'Stable lowercase id: a-z, 0-9, dot, underscore or hyphen; at most 80 characters.';
+  item.title.description = '5 to 120 characters.';
+  item.summary.description = '12 to 500 characters.';
+  item.actionLabel.description = '2 to 80 characters.';
+  item.evidence.minItems = 1;
+  item.evidence.maxItems = 5;
+  item.evidence.description = 'One to five signal/field pairs.';
+  return schema;
+})());
 
 // Gemini answers 503 "high demand" (and sometimes 429) in short bursts; a
 // retry a moment later usually succeeds. Only these transient statuses are
@@ -360,8 +397,10 @@ export async function generateRecommendations(source) {
       try {
         const payload = await candidate.request(prompt, hasBackup ? Math.min(PRIMARY_TIMEOUT_WITH_BACKUP_MS, remainingMs) : remainingMs);
         stage = 'response-validation';
-        parsed = recommendationSchema.safeParse(payload);
-        if (!parsed.success) throw new Error(`${candidate.name} returned malformed recommendations`);
+        parsed = validateRecommendations(payload);
+        if (!parsed.ok) {
+          throw new Error(`${candidate.name} returned malformed recommendations (${parsed.issues.slice(0, 5).join('; ')})`);
+        }
         break;
       } catch (error) {
         // A malformed or failed answer from the primary is the backup's cue; the
