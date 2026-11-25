@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { mockGenerateStructured } = vi.hoisted(() => ({ mockGenerateStructured: vi.fn() }));
-vi.mock('../geminiClient.js', () => ({ generateStructured: mockGenerateStructured }));
+vi.mock('../aiClient.js', () => ({ generateStructured: mockGenerateStructured }));
 
 const { classifyAssistantIntent, decideRouterCommit } = await import('../assistantRouter.js');
 
@@ -50,6 +50,22 @@ describe('classifyAssistantIntent', () => {
     expect(result.classification).toEqual(social);
     expect(mockGenerateStructured).toHaveBeenCalledWith(
       expect.objectContaining({ temperature: 0, timeoutMs: 1_500, maxAttempts: 1, maxOutputTokens: 256 }),
+    );
+  });
+
+  it('bounds the whole classification, backup provider included, by the 1.5-second budget', async () => {
+    mockGenerateStructured.mockResolvedValue(social);
+    await classifyAssistantIntent('Hello', 900);
+
+    expect(mockGenerateStructured).toHaveBeenCalledWith(expect.objectContaining({ timeoutMs: 900, deadlineMs: 900 }));
+  });
+
+  it('asks OpenAI for the no-reasoning fast model', async () => {
+    mockGenerateStructured.mockResolvedValue(social);
+    await classifyAssistantIntent('Hello', 10_000);
+
+    expect(mockGenerateStructured).toHaveBeenCalledWith(
+      expect.objectContaining({ openaiModel: 'gpt-6-luna', reasoningEffort: 'none' }),
     );
   });
 

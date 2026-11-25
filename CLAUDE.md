@@ -163,6 +163,7 @@ node seed-demo.mjs --audit          # row counts only, writes nothing
 
 ## Gotchas
 
+- **AI calls go through `src/ai/aiClient.js` (package, assistant) — never import `geminiClient.js` or `openaiClient.js` directly.** OpenAI (Responses API, plain `fetch` — the `openai` SDK needs Node 22, images run node:20) answers first; Gemini is the automatic backup on any OpenAI failure. Either key alone works. `model` is the Gemini model id, `openaiModel`/`reasoningEffort` the OpenAI side (defaults from `OPENAI_MODEL`/`OPENAI_REASONING_EFFORT`). OpenAI strict schemas need every property required, so optional properties go out nullable and `openaiSchema.js` strips the nulls back off — keep writing schemas the Gemini way. recommendation-service and grounded travel search (`groundedSearch.js`) carry their own copies of the same primary/backup order.
 - Gateway strips downstream CORS headers — if you add CORS to a microservice, it will be removed at the gateway
 - Gateway strips client-supplied `x-service-key` to prevent privilege escalation
 - Client depends on `@management` alias pointing to `../Management/src` at build time

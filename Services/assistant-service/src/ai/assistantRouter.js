@@ -1,6 +1,8 @@
-import { generateStructured } from './geminiClient.js';
+import { generateStructured } from './aiClient.js';
 import {
   ASSISTANT_ROUTER_MODEL,
+  ASSISTANT_ROUTER_OPENAI_MODEL,
+  ASSISTANT_ROUTER_REASONING_EFFORT,
   ASSISTANT_ROUTER_VERSION,
   assistantRouterResponseJsonSchema,
   assistantRouterResponseSchema,
@@ -45,9 +47,14 @@ export async function classifyAssistantIntent(message, remainingBudgetMs) {
     prompt: buildAssistantRouterPrompt(message),
     schema: assistantRouterResponseJsonSchema,
     model: ASSISTANT_ROUTER_MODEL,
+    openaiModel: ASSISTANT_ROUTER_OPENAI_MODEL,
+    reasoningEffort: ASSISTANT_ROUTER_REASONING_EFFORT,
     temperature: 0,
     maxOutputTokens: 256,
     timeoutMs: Math.min(ROUTER_TIMEOUT_MS, remainingBudgetMs),
+    // Bounds the OpenAI attempt and any Gemini fallback together, so a backup
+    // call can never stretch classification past the router's own budget.
+    deadlineMs: Math.min(ROUTER_TIMEOUT_MS, remainingBudgetMs),
     maxAttempts: 1,
   });
   const classification = assistantRouterResponseSchema.parse(raw);

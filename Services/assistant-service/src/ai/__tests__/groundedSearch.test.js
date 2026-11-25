@@ -146,3 +146,102 @@ describe('generateGrounded', () => {
     expect(mockGenerateContent).not.toHaveBeenCalled();
   });
 });
+
+const OPENAI_RESPONSE = {
+  status: 'completed',
+  output: [
+    { type: 'web_search_call', status: 'completed' },
+    {
+      type: 'message',
+      content: [
+        {
+          type: 'output_text',
+          text: 'Ella is cooler than the coast, best from January to April.',
+          annotations: [
+            { type: 'url_citation', url: 'https://www.example.net/ella', title: 'Ella guide' },
+            { type: 'url_citation', url: 'https://www.example.net/ella', title: 'Ella guide' },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
+const openaiReply = (body, status = 200) => ({ ok: status < 400, status, json: async () => body });
+
+describe('generateGrounded with OpenAI as the primary provider', () => {
+  let mockFetch;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.OPENAI_API_KEY = 'sk-test';
+    process.env.GEMINI_API_KEY = 'test-key';
+    mockFetch = vi.fn();
+    vi.stubGlobal('fetch', mockFetch);
+  });
+
+  afterEach(() => {
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.GEMINI_API_KEY;
+    vi.unstubAllGlobals();
+  });
+
+  it('reads the answer and deduped sources from the OpenAI output shape', async () => {
+    mockFetch.mockResolvedValue(openaiReply(OPENAI_RESPONSE));
+
+    const result = await generateGrounded({ prompt: 'best time to visit Ella' });
+
+    expect(result).toEqual({
+      text: 'Ella is cooler than the coast, best from January to April.',
+      citations: [{ title: 'Ella guide', uri: 'https://www.example.net/ella' }],
+    });
+    expect(mockGenerateContent).not.toHaveBeenCalled();
+  });
+
+  it('forces a web search on every call', async () => {
+    mockFetch.mockResolvedValue(openaiReply(OPENAI_RESPONSE));
+
+    await generateGrounded({ prompt: 'best time to visit Ella' });
+
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(body.tools).toEqual([{ type: 'web_search' }]);
+    expect(body.tool_choice).toBe('required');
+  });
+
+  it('falls back to Gemini grounding when OpenAI fails', async () => {
+    mockFetch.mockResolvedValue(openaiReply({ error: { message: 'overloaded' } }, 503));
+    mockGenerateContent.mockResolvedValue(CHUNK_RESPONSE);
+
+    const result = await generateGrounded({ prompt: 'best time to visit Sri Lanka' });
+
+    expect(result.text).toContain('December and March');
+  });
+
+  it('falls back to Gemini when OpenAI answers without a source', async () => {
+    mockFetch.mockResolvedValue(openaiReply({ output: [{ type: 'message', content: [{ type: 'output_text', text: 'June.' }] }] }));
+    mockGenerateContent.mockResolvedValue(CHUNK_RESPONSE);
+
+    const result = await generateGrounded({ prompt: 'best time to visit Sri Lanka' });
+
+    expect(result.citations).toHaveLength(2);
+  });
+
+  it('reports the OpenAI failure when no Gemini key is set', async () => {
+    delete process.env.GEMINI_API_KEY;
+    mockFetch.mockResolvedValue(openaiReply({ error: { message: 'bad request' } }, 400));
+
+    await expect(generateGrounded({ prompt: 'best time to visit Kandy' })).rejects.toMatchObject({
+      statusCode: 502,
+      aiFailureCategory: 'provider',
+    });
+  });
+
+  it('skips the backup when the budget is too small to use', async () => {
+    mockFetch.mockResolvedValue(openaiReply({ error: { message: 'overloaded' } }, 503));
+
+    await expect(generateGrounded({ prompt: 'best time to visit Kandy', timeoutMs: 1_500 })).rejects.toMatchObject({
+      statusCode: 502,
+    });
+    expect(mockGenerateContent).not.toHaveBeenCalled();
+  });
+});

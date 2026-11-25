@@ -50,12 +50,15 @@ locals {
       name    = "${var.env}-package-service"
       memory  = "512Mi"
       cpu     = "1"
-      secrets = ["${var.env}-database-url", "${var.env}-direct-url", "${var.env}-internal-service-key", "${var.env}-cloudinary-api-key", "${var.env}-cloudinary-api-secret", "${var.env}-gemini-api-key", "${var.env}-liteapi-api-key"]
+      secrets = ["${var.env}-database-url", "${var.env}-direct-url", "${var.env}-internal-service-key", "${var.env}-cloudinary-api-key", "${var.env}-cloudinary-api-secret", "${var.env}-gemini-api-key", "${var.env}-openai-api-key", "${var.env}-liteapi-api-key"]
       plain_env = {
         NODE_ENV = "production"
-        # The code default is a thinking model, and the customer Client aborts
-        # these AI routes at 15s, so the lite tier is what can actually finish
-        # inside that window.
+        # OpenAI answers first, Gemini is the backup (src/ai/aiClient.js). The
+        # customer Client aborts these AI routes at 15s: measured live, a 2-day
+        # itinerary preview took 13-20s at effort `low` and 8-10s at `none`, so
+        # Terra runs with reasoning off (as the Gemini backup's lite tier does).
+        OPENAI_MODEL             = "gpt-6.1-terra"
+        OPENAI_REASONING_EFFORT  = "none"
         GEMINI_MODEL             = "gemini-3.5-flash-lite"
         CLOUDINARY_CLOUD_NAME    = var.cloudinary_cloud_name
         COMPANY_NAME             = var.company_name
@@ -175,10 +178,12 @@ locals {
       name    = "${var.env}-recommendation-service"
       memory  = "512Mi"
       cpu     = "1"
-      secrets = ["${var.env}-database-url", "${var.env}-direct-url", "${var.env}-gemini-api-key"]
+      secrets = ["${var.env}-database-url", "${var.env}-direct-url", "${var.env}-gemini-api-key", "${var.env}-openai-api-key"]
       plain_env = {
-        NODE_ENV     = "production"
-        GEMINI_MODEL = "gemini-3.5-flash-lite"
+        NODE_ENV                = "production"
+        OPENAI_MODEL            = "gpt-6-luna"
+        OPENAI_REASONING_EFFORT = "low"
+        GEMINI_MODEL            = "gemini-3.5-flash-lite"
       }
       allow_unauthenticated = false
     }
@@ -186,7 +191,7 @@ locals {
       name    = "${var.env}-assistant-service"
       memory  = "512Mi"
       cpu     = "1"
-      secrets = ["${var.env}-database-url", "${var.env}-direct-url", "${var.env}-internal-service-key", "${var.env}-gemini-api-key"]
+      secrets = ["${var.env}-database-url", "${var.env}-direct-url", "${var.env}-internal-service-key", "${var.env}-gemini-api-key", "${var.env}-openai-api-key"]
       plain_env = {
         NODE_ENV                                  = "production"
         CLIENT_URL                                = local.client_url
@@ -200,9 +205,21 @@ locals {
         # and reached operators as "I could not generate an answer just now".
         # The lite tier does no thinking and returns the same structured answer.
         GEMINI_MODEL = "gemini-3.5-flash-lite"
+        # OpenAI is tried first (src/ai/aiClient.js); the Gemini models above
+        # are the backup. Measured live with reasoning off: a chat turn took
+        # 2.5-3.2s on Luna and 8-15s on Terra, so turns run on Luna. Grounded
+        # search stays on Terra (~6.5s, 3 sources vs Luna's 1) — at effort
+        # `low` it took 25s, past the 12s search budget.
+        OPENAI_MODEL                   = "gpt-6-luna"
+        OPENAI_REASONING_EFFORT        = "none"
+        OPENAI_SEARCH_MODEL            = "gpt-6.1-terra"
+        OPENAI_SEARCH_REASONING_EFFORT = "none"
         # Classified inside a 1.5s budget (assistantRouter.js), which the
-        # thinking default can never meet.
+        # thinking default can never meet. Luna lands at ~1.4s and often misses
+        # it; a miss only drops the router hint, and the turn carries on.
         GEMINI_ROUTER_MODEL                  = "gemini-3.5-flash-lite"
+        OPENAI_ROUTER_MODEL                  = "gpt-6-luna"
+        OPENAI_ROUTER_REASONING_EFFORT       = "none"
         ASSISTANT_ROUTER_SOCIAL_ENABLED      = "false"
         ASSISTANT_ROUTER_OFF_TOPIC_ENABLED   = "false"
         ASSISTANT_ROUTER_SOCIAL_THRESHOLD    = "0.95"

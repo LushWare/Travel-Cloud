@@ -12,6 +12,7 @@ locals {
     cloudinary-api-key         = var.cloudinary_api_key
     cloudinary-api-secret      = var.cloudinary_api_secret
     gemini-api-key             = var.gemini_api_key
+    openai-api-key             = var.openai_api_key
     email-user                 = var.email_user
     email-password             = var.email_password
     whatsapp-access-token      = var.whatsapp_access_token

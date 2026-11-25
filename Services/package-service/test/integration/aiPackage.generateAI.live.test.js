@@ -18,7 +18,7 @@ import { describe, it, expect } from 'vitest';
 
 config({ path: resolve(dirname(fileURLToPath(import.meta.url)), '../../.env') });
 
-const { generateStructured } = await import('../../src/ai/geminiClient.js');
+const { generateStructured } = await import('../../src/ai/aiClient.js');
 const { buildGeneratePackagePrompt, generatePackageResponseSchema } = await import('../../src/ai/prompts/generatePackage.v1.js');
 
 describe.skipIf(!process.env.GEMINI_API_KEY)('generate-ai — live Gemini call', () => {

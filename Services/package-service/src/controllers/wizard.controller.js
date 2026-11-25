@@ -1,7 +1,7 @@
 import prisma from '../db/client.js';
 import AppError from '../utils/appError.js';
 import asyncHandler from '../utils/asyncHandler.js';
-import { generateStructured } from '../ai/geminiClient.js';
+import { generateStructured } from '../ai/aiClient.js';
 import { buildWizardTurnPrompt, wizardTurnResponseSchema } from '../ai/prompts/wizardTurn.v1.js';
 import { sanitizeSlots } from './aiPackage.controller.js';
 import { assembleWhere, buildInclude, serializePackage, serializePackageList } from '../services/package.service.js';

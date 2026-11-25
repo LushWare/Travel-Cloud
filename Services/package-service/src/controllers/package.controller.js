@@ -1,6 +1,7 @@
 import prisma from '../db/client.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import AppError from '../utils/appError.js';
+import { isAIConfigured } from '../ai/aiClient.js';
 import { computeMargin } from '../../../shared/pricing-engine/src/index.js';
 import {
   serializePackage,
@@ -251,12 +252,12 @@ export const updatePackageRating = asyncHandler(async (req, res) => {
 });
 
 export const getAIStatus = asyncHandler(async (req, res) => {
-  // Real Gemini keys don't follow one reliable prefix (observed keys vary),
-  // and the only way to truly validate a key is to call the API with it — too
-  // expensive to do on every status check. So "configured" (present or not)
-  // is the only thing this endpoint can honestly report; actual invalid-key
-  // failures surface at generation time via geminiClient's own error handling.
-  const configured = Boolean(process.env.GEMINI_API_KEY);
+  // Provider keys don't follow one reliable prefix, and the only way to truly
+  // validate a key is to call the API with it — too expensive to do on every
+  // status check. So "configured" (an OpenAI or Gemini key present) is the only
+  // thing this endpoint can honestly report; actual invalid-key failures
+  // surface at generation time via aiClient's own error handling.
+  const configured = isAIConfigured();
   res.json({ success: true, configured, keyFormat: configured ? 'valid' : 'missing' });
 });
 

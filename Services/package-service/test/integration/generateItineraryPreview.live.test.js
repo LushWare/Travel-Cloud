@@ -17,7 +17,7 @@ import { describe, it, expect } from 'vitest';
 
 config({ path: resolve(dirname(fileURLToPath(import.meta.url)), '../../.env') });
 
-const { generateStructured } = await import('../../src/ai/geminiClient.js');
+const { generateStructured } = await import('../../src/ai/aiClient.js');
 const { buildGenerateItineraryPreviewPrompt, generateItineraryPreviewResponseSchema } = await import(
   '../../src/ai/prompts/generateItineraryPreview.v1.js'
 );

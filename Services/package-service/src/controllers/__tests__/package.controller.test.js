@@ -97,8 +97,17 @@ describe('getAIStatus', () => {
     expect(res.json).toHaveBeenCalledWith({ success: true, configured: true, keyFormat: 'valid' });
   });
 
+  it('reports configured when only an OpenAI key is set', async () => {
+    process.env = { ...ORIGINAL_ENV, GEMINI_API_KEY: '', OPENAI_API_KEY: 'sk-test' };
+    const res = makeRes();
+
+    await getAIStatus({}, res);
+
+    expect(res.json).toHaveBeenCalledWith({ success: true, configured: true, keyFormat: 'valid' });
+  });
+
   it('reports not configured when no key is set', async () => {
-    process.env = { ...ORIGINAL_ENV, GEMINI_API_KEY: '' };
+    process.env = { ...ORIGINAL_ENV, GEMINI_API_KEY: '', OPENAI_API_KEY: '' };
     const res = makeRes();
 
     await getAIStatus({}, res);

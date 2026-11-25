@@ -155,7 +155,7 @@ const BasicPackageInfo = ({ formData, onChange }: BasicPackageInfoProps) => {
       if (error.status === 503 || error.statusCode === 503) {
         const errorMessage = error.data?.error || error.data?.message || error.message;
         if (errorMessage.includes('model not found') || errorMessage.includes('not available')) {
-          toast.error('AI models not available. Your API key doesn\'t have access to Gemini models. Please check the API key configuration.', {
+          toast.error('AI models not available. The configured AI provider key was rejected. Please check the API key configuration.', {
             duration: 6000,
           });
           setAiConfigured(false);
@@ -241,7 +241,7 @@ const BasicPackageInfo = ({ formData, onChange }: BasicPackageInfoProps) => {
               variant="outline"
               title={
                 aiConfigured === false
-                  ? "AI not configured. Add GEMINI_API_KEY to Services/package-service/.env and restart the service."
+                  ? "AI not configured. Add OPENAI_API_KEY (or GEMINI_API_KEY) to Services/package-service/.env and restart the service."
                   : "Generate description, highlights, inclusions, and exclusions using AI"
               }
             >
@@ -261,19 +261,11 @@ const BasicPackageInfo = ({ formData, onChange }: BasicPackageInfoProps) => {
                   <div className="space-y-2">
                     <p className="font-semibold text-destructive text-sm">AI Generation Not Available</p>
                     <p className="text-muted-foreground text-xs">
-                      Your API key doesn't have access to Gemini models. All models return 404 (not found).
+                      No AI provider key is configured for the package service.
                     </p>
                     <div className="pt-2 border-t border-destructive/20 mt-2 space-y-1">
                       <p className="text-xs text-muted-foreground">
-                        <strong>Quick Fix:</strong> Get a NEW API key from{' '}
-                        <a
-                          href="https://makersuite.google.com/app/apikey"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-primary underline font-medium"
-                        >
-                          AI Studio (makersuite.google.com)
-                        </a>
+                        <strong>Quick Fix:</strong> Set <code>OPENAI_API_KEY</code> (primary) or <code>GEMINI_API_KEY</code> (backup) for the package service.
                       </p>
                       <p className="text-xs text-muted-foreground italic">
                         💡 You can still create packages manually — AI generation is optional.

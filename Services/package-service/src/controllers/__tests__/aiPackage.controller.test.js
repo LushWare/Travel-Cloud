@@ -9,7 +9,7 @@ const { mockGenerateStructured, mockPrisma } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('../../ai/geminiClient.js', () => ({
+vi.mock('../../ai/aiClient.js', () => ({
   generateStructured: mockGenerateStructured,
   isAIConfigured: vi.fn(() => true),
 }));
