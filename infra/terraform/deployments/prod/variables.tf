@@ -107,7 +107,13 @@ variable "cloudinary_api_secret" {
 }
 
 variable "gemini_api_key" {
-  description = "Google Gemini API key (package)."
+  description = "Google Gemini API key — backup AI provider (package, assistant, recommendation)."
+  type        = string
+  sensitive   = true
+}
+
+variable "openai_api_key" {
+  description = "OpenAI API key — primary AI provider (package, assistant, recommendation)."
   type        = string
   sensitive   = true
 }

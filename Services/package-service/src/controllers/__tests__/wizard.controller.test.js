@@ -11,7 +11,7 @@ const { mockGenerateStructured, mockPrisma, mockFetchPolicyDocuments, mockGetOrg
   mockSubmitLeadIntake: vi.fn(),
 }));
 
-vi.mock('../../ai/geminiClient.js', () => ({
+vi.mock('../../ai/aiClient.js', () => ({
   generateStructured: mockGenerateStructured,
   isAIConfigured: vi.fn(() => true),
 }));

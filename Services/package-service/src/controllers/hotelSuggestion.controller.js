@@ -1,6 +1,6 @@
 import asyncHandler from '../utils/asyncHandler.js';
 import AppError from '../utils/appError.js';
-import { generateStructured, isAIConfigured } from '../ai/geminiClient.js';
+import { generateStructured, isAIConfigured } from '../ai/aiClient.js';
 import { buildHotelSuggestionPrompt, hotelSuggestionResponseSchema } from '../ai/prompts/hotelSuggestion.v1.js';
 
 export const suggestHotels = asyncHandler(async (req, res) => {

@@ -1,5 +1,6 @@
 import { GoogleGenAI } from '@google/genai';
 import AppError from '../utils/appError.js';
+import logger from '../config/logger.js';
 import { BAD_GATEWAY, SERVICE_UNAVAILABLE } from '../constants/httpStatus.js';
 
 // ─── Grounded travel search ───────────────────────────────────────────────
@@ -10,11 +11,13 @@ import { BAD_GATEWAY, SERVICE_UNAVAILABLE } from '../constants/httpStatus.js';
 // Keeping the structured and grounded calls apart also means nothing here
 // depends on how Gemini combines `tools` with `responseSchema`.
 //
-// The provider's grounded response has two shapes in the wild — the
-// `groundingMetadata.groundingChunks` shape `models.generateContent` returns,
-// and the `steps[].content[].annotations[].url_citation` shape of the newer
-// interactions surface. Both are parsed here so the exported contract
-// (`{ text, citations }`) never changes if the SDK surface moves underneath it.
+// OpenAI's Responses API `web_search` tool answers first; Gemini's Google Search
+// grounding is the backup (see aiClient.js for why OpenAI is now primary). The
+// grounded responses come in three shapes — Gemini's
+// `groundingMetadata.groundingChunks`, the `steps[].content[].annotations[]`
+// shape of Gemini's newer interactions surface, and OpenAI's
+// `output[].content[].annotations[]` — and all are parsed here so the exported
+// contract (`{ text, citations }`) never depends on which provider answered.
 
 // Its own client and its own timeout, rather than reaching into geminiClient.js
 // for either. The structured seam exports one function on purpose — every
@@ -25,10 +28,22 @@ import { BAD_GATEWAY, SERVICE_UNAVAILABLE } from '../constants/httpStatus.js';
 const DEFAULT_MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
 export const GROUNDING_TIMEOUT_MS = 12_000;
 
+const OPENAI_API_URL = 'https://api.openai.com/v1/responses';
+const OPENAI_MODEL = process.env.OPENAI_SEARCH_MODEL || process.env.OPENAI_MODEL || 'gpt-6.1-terra';
+const OPENAI_REASONING_EFFORT = process.env.OPENAI_SEARCH_REASONING_EFFORT || process.env.OPENAI_REASONING_EFFORT || 'low';
+// OpenAI counts reasoning tokens against max_output_tokens; the 1024 sized for
+// Gemini's prose answer would leave a reasoning model nothing to answer with.
+const OPENAI_MIN_OUTPUT_TOKENS = 4096;
+// Smallest slice of the caller's budget worth handing to the Gemini backup.
+const MIN_FALLBACK_BUDGET_MS = 2_000;
+
 const MAX_CITATIONS = 5;
 const DEFAULT_TIMEOUT_MS = GROUNDING_TIMEOUT_MS;
 const DEFAULT_MAX_OUTPUT_TOKENS = 1024;
 const HTTP_SCHEME = /^https?:\/\//i;
+
+const isOpenAIConfigured = () => Boolean(process.env.OPENAI_API_KEY);
+const isGeminiConfigured = () => Boolean(process.env.GEMINI_API_KEY);
 
 const providerError = (message, category) =>
   Object.assign(new AppError(message, BAD_GATEWAY), { aiFailureCategory: category });
@@ -83,9 +98,15 @@ export function extractCitations(response) {
     for (const chunk of groundings) collected.push(toCitation(chunk?.web));
   }
 
-  const steps = response?.steps;
-  if (Array.isArray(steps)) {
-    for (const step of steps) {
+  // Gemini's `steps[]` and OpenAI's `output[]` both hold content parts carrying
+  // `url_citation` annotations; OpenAI's other output items (the search call
+  // itself, reasoning) have no content array and are skipped.
+  const containers = [
+    ...(Array.isArray(response?.steps) ? response.steps : []),
+    ...(Array.isArray(response?.output) ? response.output : []),
+  ];
+  if (containers.length) {
+    for (const step of containers) {
       const contents = Array.isArray(step?.content) ? step.content : [];
       for (const content of contents) {
         const annotations = Array.isArray(content?.annotations) ? content.annotations : [];
@@ -122,6 +143,17 @@ export function extractText(response) {
     if (joined) return joined;
   }
 
+  const output = response?.output;
+  if (Array.isArray(output)) {
+    const joined = output
+      .filter((item) => item?.type === 'message')
+      .flatMap((item) => (Array.isArray(item.content) ? item.content : []))
+      .map((content) => (content?.type === 'output_text' && typeof content.text === 'string' ? content.text : ''))
+      .join('')
+      .trim();
+    if (joined) return joined;
+  }
+
   const steps = response?.steps;
   if (Array.isArray(steps)) {
     const joined = steps
@@ -136,9 +168,11 @@ export function extractText(response) {
 }
 
 /**
- * One grounded answer. Single attempt, no retry: the caller shares the turn's
- * deadline with the resolver call that chose this tool, and a search that fails
- * degrades to server-owned copy rather than to a slow turn.
+ * One grounded answer, from OpenAI with Gemini as the backup. One attempt per
+ * provider, no retry: the caller shares the turn's deadline with the resolver
+ * call that chose this tool, and a search that fails degrades to server-owned
+ * copy rather than to a slow turn. `timeoutMs` bounds both providers together;
+ * the backup only runs on what OpenAI left of it.
  *
  * Throws an AppError when the provider fails or when the answer came back
  * without a single usable source — an uncited answer to a question about the
@@ -151,6 +185,74 @@ export async function generateGrounded({
   maxOutputTokens = DEFAULT_MAX_OUTPUT_TOKENS,
   model = DEFAULT_MODEL,
 }) {
+  if (!isOpenAIConfigured()) return generateGroundedGemini({ prompt, timeoutMs, maxOutputTokens, model });
+
+  const startedAt = Date.now();
+  try {
+    return await generateGroundedOpenAI({ prompt, timeoutMs, maxOutputTokens });
+  } catch (err) {
+    const remainingMs = timeoutMs - (Date.now() - startedAt);
+    if (!isGeminiConfigured() || remainingMs < MIN_FALLBACK_BUDGET_MS) throw err;
+    logger.warn({ aiFailureCategory: err?.aiFailureCategory }, 'OpenAI web search failed; falling back to Gemini grounding');
+    return generateGroundedGemini({ prompt, timeoutMs: remainingMs, maxOutputTokens, model });
+  }
+}
+
+/** The answer and its sources, or the same typed failures Gemini's path throws. */
+function toGroundedResult(response) {
+  const text = extractText(response);
+  if (!text) throw providerError('AI returned an empty search response', 'provider');
+
+  const citations = extractCitations(response);
+  if (citations.length === 0) {
+    // Its own marker, because it is a different failure from a provider error:
+    // the call succeeded and the model simply answered without searching. On
+    // Gemini that is a model decision with no force-search setting to override
+    // it — `googleSearchRetrieval`'s MODE_ALWAYS is rejected outright on this
+    // model ("Please use google_search tool instead"), and plain `googleSearch`
+    // leaves the choice to the model. Measured on a question the model believes
+    // it knows ("the good locations of Afghanistan these days"), one call in five
+    // searched; on ordinary travel questions most do. The caller retries this
+    // one, and only this one, because asking again is what changes it.
+    throw Object.assign(providerError('AI returned no grounding sources', 'provider'), { groundingMissing: true });
+  }
+  return { text, citations };
+}
+
+async function generateGroundedOpenAI({ prompt, timeoutMs, maxOutputTokens }) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let response;
+  try {
+    const res = await fetch(OPENAI_API_URL, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: OPENAI_MODEL,
+        input: prompt,
+        tools: [{ type: 'web_search' }],
+        // Unlike Gemini's googleSearch, which leaves searching to the model (one
+        // call in five searched on a question it thought it knew), OpenAI can be
+        // told to search every time — which is the whole point of this tool.
+        tool_choice: 'required',
+        reasoning: { effort: OPENAI_REASONING_EFFORT },
+        max_output_tokens: Math.max(maxOutputTokens, OPENAI_MIN_OUTPUT_TOKENS),
+        store: false,
+      }),
+      signal: controller.signal,
+    });
+    response = await res.json().catch(() => null);
+    if (!res.ok) throw Object.assign(new Error(response?.error?.message || `OpenAI responded ${res.status}`), { status: res.status });
+  } catch (err) {
+    const timedOut = err?.name === 'AbortError';
+    throw providerError(timedOut ? 'AI search timed out' : 'AI search failed', timedOut ? 'timeout' : 'provider');
+  } finally {
+    clearTimeout(timer);
+  }
+  return toGroundedResult(response);
+}
+
+async function generateGroundedGemini({ prompt, timeoutMs, maxOutputTokens, model }) {
   const ai = getClient();
 
   let response;
@@ -181,22 +283,5 @@ export async function generateGrounded({
     );
   }
 
-  const text = extractText(response);
-  if (!text) throw providerError('AI returned an empty search response', 'provider');
-
-  const citations = extractCitations(response);
-  if (citations.length === 0) {
-    // Its own marker, because it is a different failure from a provider error:
-    // the call succeeded and the model simply answered without searching. That is
-    // a model decision with no force-search setting to override it —
-    // `googleSearchRetrieval`'s MODE_ALWAYS is rejected outright on this model
-    // ("Please use google_search tool instead"), and plain `googleSearch` leaves
-    // the choice to the model. Measured on a question the model believes it knows
-    // ("the good locations of Afghanistan these days"), one call in five searched;
-    // on ordinary travel questions most do. The caller retries this one, and only
-    // this one, because asking again is what changes it.
-    throw Object.assign(providerError('AI returned no grounding sources', 'provider'), { groundingMissing: true });
-  }
-
-  return { text, citations };
+  return toGroundedResult(response);
 }

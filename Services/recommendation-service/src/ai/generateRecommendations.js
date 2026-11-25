@@ -1,9 +1,22 @@
 import { createHash } from 'node:crypto';
 import { GoogleGenAI } from '@google/genai';
 import { z } from 'zod';
+import { stripOptionalNulls, toOpenAIJsonSchema } from './openaiSchema.js';
 
+// OpenAI answers first and Gemini is the backup — Gemini's repeated 503 "high
+// demand" bursts were taking AI recommendations down. Either key alone works.
 const modelId = () => process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
+const openaiModelId = () => process.env.OPENAI_MODEL || 'gpt-6-luna';
+const openaiReasoningEffort = () => process.env.OPENAI_REASONING_EFFORT || 'low';
+const OPENAI_API_URL = 'https://api.openai.com/v1/responses';
+// Reasoning tokens count against OpenAI's output budget, so it gets more room
+// than the 5000 Gemini's non-thinking lite tier needs for the same list.
+const OPENAI_MAX_OUTPUT_TOKENS = 16_000;
 const GENERATION_TIMEOUT_MS = 30_000;
+// With a backup configured OpenAI gets this much of the overall window, so a
+// hung primary still leaves the backup time to answer.
+const PRIMARY_TIMEOUT_WITH_BACKUP_MS = 20_000;
+const MIN_FALLBACK_BUDGET_MS = 5_000;
 const modules = ['dashboard', 'leads', 'packages', 'flights', 'hotels', 'billing', 'analytics', 'users', 'career'];
 const categories = ['sales', 'finance', 'packages', 'operations', 'performance'];
 const priorities = ['high', 'medium', 'low'];
@@ -109,6 +122,8 @@ export class AIRecommendationsUnavailableError extends Error {
 }
 
 let client;
+// OpenAI's strict-mode form of `responseSchema`, built once.
+const openaiFormat = toOpenAIJsonSchema(responseSchema);
 
 // Gemini answers 503 "high demand" (and sometimes 429) in short bursts; a
 // retry a moment later usually succeeds. Only these transient statuses are
@@ -118,6 +133,8 @@ export const RETRY_DELAYS_MS = [1_000, 3_000];
 
 function isRetryable(error) {
   const status = error?.status ?? error?.statusCode;
+  // OpenAI reports an exhausted balance as a 429; waiting never fixes it.
+  if (error?.code === 'insufficient_quota') return false;
   return RETRYABLE_STATUSES.has(status);
 }
 
@@ -214,50 +231,134 @@ function stableAiKey(item) {
   return `ai.${item.module}.${fingerprint}`;
 }
 
+function buildPrompt(source) {
+  return [
+    'Act as the AI analyst for a travel CRM. Analyze the full supplied cross-module signal set together; independently identify the most useful evidence-backed risks, missed revenue, operational bottlenecks, growth opportunities, and trends.',
+    'This is AI mode: do not copy a rules-based recommendation list; none is supplied. Generate original recommendations from the supplied analytics, including meaningful cross-tab comparisons. Cover different modules when the evidence supports it; do not force a recommendation for a module with no finding.',
+    'For hotels, distinguish pending, failed, confirmed, and cancelled reservations, and use the supplied upcoming check-in share to prioritize operational risk. For users, interpret verification and active-account rates as aggregate workload signals, never as evidence of fraud. For analytics, compare supplied periods, rates, and denominators before recommending action; avoid merely restating totals.',
+    'Look for relative underperformance as well as urgent exceptions. For package and other benchmark signals, compare the measured cohort with its supplied benchmark and distinguish funnel stages (views, inquiries, confirmed leads, recorded bookings, ratings, and reviews). When any package-specific signal has a nonzero count, include actionable package findings and cite those signals. Recommend a practical next investigation or improvement, but never claim a cause the measurements cannot prove.',
+    'Return up to 30 concise, non-duplicate recommendations, ordered most important first. Return an empty list only when the data supports no actionable finding. Use a stable lowercase key for recurring findings.',
+    'Every recommendation must cite one or more exact signal and scalar field pairs as evidence. Use only the supplied data and stated signal definitions; do not invent counts, dates, amounts, identities, causes, or outcomes. Numbers in a finding must be supported by its cited measurements or cited signal definitions. Never mention names, emails, phone numbers, internal IDs, or free-text notes.',
+    'Choose module and action where staff can investigate the finding. Use only modules: dashboard, leads, packages, flights, hotels, billing, analytics, users, career. For billing actionTab may be quotation, invoice, receipt, or voucher. For flights/hotels it may be bookings. Flight statuses are pending, confirmed, failed, and cancelled; confirmed means provider-confirmed. A metric is not proof of a cause.',
+    'For recommendations in the users module, only use the unverifiedCustomerAccounts signal and set actionTab to website-users so staff can review the matching customer records.',
+    JSON.stringify({
+      asOf: source?.asOf ?? null,
+      scope: source?.scope ?? null,
+      currency: source?.currency ?? null,
+      signalDefinitions: SIGNAL_DEFINITIONS,
+      signals: scalarSignals(source?.signals),
+    }),
+  ].join('\n\n');
+}
+
+function withTimeout(promise, ms, provider) {
+  let timeoutId;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error(`${provider} recommendation generation timed out`)), ms);
+    }),
+  ]).finally(() => clearTimeout(timeoutId));
+}
+
+// Each provider resolves to the parsed recommendation payload (not yet
+// validated), so both go through the same Zod and evidence checks below.
+async function requestGemini(prompt, timeoutMs) {
+  client ??= new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  const deadline = Date.now() + timeoutMs;
+  const response = await withTimeout(
+    withRetries(() => client.models.generateContent({
+      model: modelId(),
+      contents: prompt,
+      config: { responseMimeType: 'application/json', responseSchema, temperature: 0.2, maxOutputTokens: 5000 },
+    }), deadline),
+    timeoutMs,
+    'Gemini',
+  );
+  return JSON.parse(response.text || '{}');
+}
+
+// Plain fetch rather than the `openai` SDK: the SDK needs Node 22 and this
+// image is node:20-slim. No `temperature` — the default models reason, and the
+// model pages do not list it as supported.
+async function requestOpenAI(prompt, timeoutMs) {
+  const controller = new AbortController();
+  const deadline = Date.now() + timeoutMs;
+  const call = async () => {
+    const res = await fetch(OPENAI_API_URL, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: openaiModelId(),
+        input: prompt,
+        reasoning: { effort: openaiReasoningEffort() },
+        max_output_tokens: OPENAI_MAX_OUTPUT_TOKENS,
+        store: false,
+        text: { format: { type: 'json_schema', name: 'recommendations', schema: openaiFormat.schema, strict: openaiFormat.strict } },
+      }),
+      signal: controller.signal,
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok) {
+      throw Object.assign(new Error(body?.error?.message || `OpenAI responded ${res.status}`), { status: res.status, code: body?.error?.code });
+    }
+    return body;
+  };
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let body;
+  try {
+    body = await withRetries(call, deadline);
+  } catch (error) {
+    if (error?.name === 'AbortError') throw new Error('OpenAI recommendation generation timed out');
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+  if (body?.status === 'incomplete') throw new Error(`OpenAI response incomplete: ${body?.incomplete_details?.reason ?? 'unknown'}`);
+  const text = (body?.output ?? [])
+    .filter((item) => item?.type === 'message')
+    .flatMap((item) => item.content ?? [])
+    .map((part) => (part?.type === 'output_text' ? part.text : ''))
+    .join('');
+  const parsed = JSON.parse(text || '{}');
+  return openaiFormat.strict ? stripOptionalNulls(parsed, responseSchema) : parsed;
+}
+
+const redact = (message) => [process.env.OPENAI_API_KEY, process.env.GEMINI_API_KEY]
+  .filter(Boolean)
+  .reduce((text, key) => text.replaceAll(key, '[redacted]'), message)
+  .slice(0, 240);
+
 export async function generateRecommendations(source) {
-  if (!process.env.GEMINI_API_KEY) throw new AIRecommendationsUnavailableError({ stage: 'configuration' });
+  const providers = [
+    ...(process.env.OPENAI_API_KEY ? [{ name: 'openai', request: requestOpenAI }] : []),
+    ...(process.env.GEMINI_API_KEY ? [{ name: 'gemini', request: requestGemini }] : []),
+  ];
+  if (!providers.length) throw new AIRecommendationsUnavailableError({ stage: 'configuration' });
 
   let stage = 'provider-request';
+  let provider = providers[0].name;
   try {
-    client ??= new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-    const signals = scalarSignals(source?.signals);
-    let timeoutId;
-    let response;
-    const deadline = Date.now() + GENERATION_TIMEOUT_MS;
-    try {
-      response = await Promise.race([
-        withRetries(() => client.models.generateContent({
-          model: modelId(),
-          contents: [
-            'Act as the AI analyst for a travel CRM. Analyze the full supplied cross-module signal set together; independently identify the most useful evidence-backed risks, missed revenue, operational bottlenecks, growth opportunities, and trends.',
-            'This is AI mode: do not copy a rules-based recommendation list; none is supplied. Generate original recommendations from the supplied analytics, including meaningful cross-tab comparisons. Cover different modules when the evidence supports it; do not force a recommendation for a module with no finding.',
-            'For hotels, distinguish pending, failed, confirmed, and cancelled reservations, and use the supplied upcoming check-in share to prioritize operational risk. For users, interpret verification and active-account rates as aggregate workload signals, never as evidence of fraud. For analytics, compare supplied periods, rates, and denominators before recommending action; avoid merely restating totals.',
-            'Look for relative underperformance as well as urgent exceptions. For package and other benchmark signals, compare the measured cohort with its supplied benchmark and distinguish funnel stages (views, inquiries, confirmed leads, recorded bookings, ratings, and reviews). When any package-specific signal has a nonzero count, include actionable package findings and cite those signals. Recommend a practical next investigation or improvement, but never claim a cause the measurements cannot prove.',
-            'Return up to 30 concise, non-duplicate recommendations, ordered most important first. Return an empty list only when the data supports no actionable finding. Use a stable lowercase key for recurring findings.',
-            'Every recommendation must cite one or more exact signal and scalar field pairs as evidence. Use only the supplied data and stated signal definitions; do not invent counts, dates, amounts, identities, causes, or outcomes. Numbers in a finding must be supported by its cited measurements or cited signal definitions. Never mention names, emails, phone numbers, internal IDs, or free-text notes.',
-            'Choose module and action where staff can investigate the finding. Use only modules: dashboard, leads, packages, flights, hotels, billing, analytics, users, career. For billing actionTab may be quotation, invoice, receipt, or voucher. For flights/hotels it may be bookings. Flight statuses are pending, confirmed, failed, and cancelled; confirmed means provider-confirmed. A metric is not proof of a cause.',
-            'For recommendations in the users module, only use the unverifiedCustomerAccounts signal and set actionTab to website-users so staff can review the matching customer records.',
-            JSON.stringify({
-              asOf: source?.asOf ?? null,
-              scope: source?.scope ?? null,
-              currency: source?.currency ?? null,
-              signalDefinitions: SIGNAL_DEFINITIONS,
-              signals,
-            }),
-          ].join('\n\n'),
-          config: { responseMimeType: 'application/json', responseSchema, temperature: 0.2, maxOutputTokens: 5000 },
-        }), deadline),
-        new Promise((_, reject) => {
-          timeoutId = setTimeout(() => reject(new Error('Gemini recommendation generation timed out')), GENERATION_TIMEOUT_MS);
-        }),
-      ]);
-    } finally {
-      clearTimeout(timeoutId);
+    const prompt = buildPrompt(source);
+    const startedAt = Date.now();
+    let parsed;
+    for (const [index, candidate] of providers.entries()) {
+      provider = candidate.name;
+      stage = 'provider-request';
+      const remainingMs = GENERATION_TIMEOUT_MS - (Date.now() - startedAt);
+      const hasBackup = index < providers.length - 1;
+      try {
+        const payload = await candidate.request(prompt, hasBackup ? Math.min(PRIMARY_TIMEOUT_WITH_BACKUP_MS, remainingMs) : remainingMs);
+        stage = 'response-validation';
+        parsed = recommendationSchema.safeParse(payload);
+        if (!parsed.success) throw new Error(`${candidate.name} returned malformed recommendations`);
+        break;
+      } catch (error) {
+        // A malformed or failed answer from the primary is the backup's cue; the
+        // last provider's failure is the one reported.
+        if (!hasBackup || GENERATION_TIMEOUT_MS - (Date.now() - startedAt) < MIN_FALLBACK_BUDGET_MS) throw error;
+      }
     }
-
-    stage = 'response-validation';
-    const parsed = recommendationSchema.safeParse(JSON.parse(response.text || '{}'));
-    if (!parsed.success) throw new Error('Gemini returned malformed recommendations');
     stage = 'evidence-validation';
     const recommendations = resolveRecommendations(parsed.data, source);
     const stableRecommendations = new Map(recommendations.map((item) => {
@@ -270,9 +371,10 @@ export async function generateRecommendations(source) {
     const message = error instanceof Error ? error.message : 'Unknown AI generation error';
     throw new AIRecommendationsUnavailableError({
       stage,
+      provider,
       errorName: error instanceof Error ? error.name : 'UnknownError',
       statusCode: error?.status ?? error?.statusCode ?? null,
-      message: process.env.GEMINI_API_KEY ? message.replaceAll(process.env.GEMINI_API_KEY, '[redacted]').slice(0, 240) : message.slice(0, 240),
+      message: redact(message),
     });
   }
 }

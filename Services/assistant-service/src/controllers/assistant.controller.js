@@ -1,7 +1,7 @@
 import AppError from '../utils/appError.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import logger from '../config/logger.js';
-import { generateStructured, isAIConfigured } from '../ai/geminiClient.js';
+import { generateStructured, isAIConfigured } from '../ai/aiClient.js';
 import {
   buildAssistantTurnPrompt,
   buildAssistantTurnResponseJsonSchema,
@@ -478,7 +478,7 @@ export const assistantTurn = asyncHandler(async (req, res) => {
       // One tool call, and the arguments of one tool: 1024 was enough for the
       // seven-tool vocabulary, but the model occasionally enumerates synonyms
       // across the wider flat argument space, and a truncated response is a
-      // failed turn rather than a partial action (see geminiClient's MAX_TOKENS
+      // failed turn rather than a partial action (see the AI clients' truncation
       // policy). The extra room covers the verbose case without changing what a
       // well-behaved turn costs.
       maxOutputTokens: 2048,

@@ -5,7 +5,7 @@ import asyncHandler from '../utils/asyncHandler.js';
 import AppError from '../utils/appError.js';
 import logger from '../config/logger.js';
 import { serializePackage, resolveActivityCatalogIds, buildItineraryDaysData, buildInclude } from '../services/package.service.js';
-import { generateStructured } from '../ai/geminiClient.js';
+import { generateStructured } from '../ai/aiClient.js';
 import { buildGeneratePackagePrompt, generatePackageResponseSchema } from '../ai/prompts/generatePackage.v1.js';
 import { buildGenerateFromTitlePrompt, generateFromTitleResponseSchema } from '../ai/prompts/generateFromTitle.v1.js';
 import { buildPackageMarketingContentPrompt, packageMarketingContentResponseSchema } from '../ai/prompts/packageMarketingContent.v1.js';
@@ -75,7 +75,7 @@ async function buildAIContent(pkg) {
 // Scale the token budget with duration/day-count instead of a fixed cap (a
 // long itinerary's full JSON can exceed a small fixed cap and get silently
 // truncated by Gemini's constrained decoder), capped under the model's real
-// ceiling; geminiClient escalates further on its own if this still isn't
+// ceiling; the AI client escalates further on its own if this still isn't
 // enough. Shared by generateDaysArray (full-trip/head-anchored generation)
 // and generateDaysRangePreview (sub-range generation) so the 700-tokens-
 // per-day slope and 60000 ceiling live in exactly one place.

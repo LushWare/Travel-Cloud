@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { mockGenerateContent } = vi.hoisted(() => ({ mockGenerateContent: vi.fn() }));
 
@@ -551,5 +551,89 @@ describe('generateRecommendations — transient Gemini errors', () => {
     await expect(generateRecommendations(source)).rejects.toBeInstanceOf(AIRecommendationsUnavailableError);
 
     expect(mockGenerateContent).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('generateRecommendations — OpenAI primary with Gemini backup', () => {
+  const openaiReply = (payload, extra = {}) => ({
+    ok: true,
+    status: 200,
+    json: async () => ({ status: 'completed', output: [{ type: 'message', content: [{ type: 'output_text', text: JSON.stringify(payload) }] }], ...extra }),
+  });
+  let mockFetch;
+
+  beforeEach(() => {
+    process.env.OPENAI_API_KEY = 'sk-test';
+    mockFetch = vi.fn();
+    vi.stubGlobal('fetch', mockFetch);
+  });
+
+  afterEach(() => {
+    delete process.env.OPENAI_API_KEY;
+    vi.unstubAllGlobals();
+  });
+
+  it('answers from OpenAI without calling Gemini', async () => {
+    mockFetch.mockResolvedValueOnce(openaiReply({ recommendations: [aiRecommendation({ actionTab: null })] }));
+
+    const [result] = await generateRecommendations(source);
+
+    expect(result.title).toBe('Follow up on cold leads');
+    expect(mockGenerateContent).not.toHaveBeenCalled();
+  });
+
+  it('removes the null strict mode puts in an unused optional field', async () => {
+    mockFetch.mockResolvedValueOnce(openaiReply({ recommendations: [aiRecommendation({ actionTab: null })] }));
+
+    const [result] = await generateRecommendations(source);
+
+    expect(result.action).toEqual({ label: 'Review leads', module: 'leads' });
+  });
+
+  it('sends the prompt without private identifiers', async () => {
+    mockFetch.mockResolvedValueOnce(openaiReply({ recommendations: [] }));
+
+    await generateRecommendations(source);
+
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(body.input).toContain('coldLeads');
+    expect(body.input).not.toContain('private-lead-1');
+    expect(body.text.format.strict).toBe(true);
+  });
+
+  it('falls back to Gemini when OpenAI rejects the request', async () => {
+    mockFetch.mockResolvedValueOnce({ ok: false, status: 400, json: async () => ({ error: { message: 'bad' } }) });
+
+    const [result] = await generateRecommendations(source);
+
+    expect(result.title).toBe('Follow up on cold leads');
+    expect(mockGenerateContent).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls straight back to Gemini when the OpenAI balance is exhausted', async () => {
+    mockFetch.mockResolvedValueOnce({ ok: false, status: 429, json: async () => ({ error: { message: 'no credits', code: 'insufficient_quota' } }) });
+
+    const [result] = await generateRecommendations(source);
+
+    expect(result.title).toBe('Follow up on cold leads');
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to Gemini when OpenAI returns malformed recommendations', async () => {
+    mockFetch.mockResolvedValueOnce(openaiReply({ recommendations: [{ key: 'x' }] }));
+
+    const [result] = await generateRecommendations(source);
+
+    expect(result.title).toBe('Follow up on cold leads');
+  });
+
+  it('reports the OpenAI failure when no Gemini key is set', async () => {
+    delete process.env.GEMINI_API_KEY;
+    mockFetch.mockResolvedValueOnce({ ok: false, status: 400, json: async () => ({ error: { message: 'bad sk-test' } }) });
+
+    const error = await generateRecommendations(source).catch((err) => err);
+
+    expect(error).toBeInstanceOf(AIRecommendationsUnavailableError);
+    expect(error.diagnostic).toMatchObject({ provider: 'openai', statusCode: 400, message: 'bad [redacted]' });
   });
 });

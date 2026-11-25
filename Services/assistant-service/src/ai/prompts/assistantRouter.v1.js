@@ -2,6 +2,11 @@ import { z } from 'zod';
 
 export const ASSISTANT_ROUTER_VERSION = 'assistant-router.v1';
 export const ASSISTANT_ROUTER_MODEL = process.env.GEMINI_ROUTER_MODEL || 'gemini-3.5-flash';
+// The OpenAI side of the same classifier (aiClient.js tries it first). Luna at
+// effort `none` is the tier that can answer inside the 1.5s budget; the
+// generation default (Terra at `low`) reasons and cannot.
+export const ASSISTANT_ROUTER_OPENAI_MODEL = process.env.OPENAI_ROUTER_MODEL || 'gpt-6-luna';
+export const ASSISTANT_ROUTER_REASONING_EFFORT = process.env.OPENAI_ROUTER_REASONING_EFFORT || 'none';
 
 export const ASSISTANT_ROUTER_INTENTS = [
   'social',

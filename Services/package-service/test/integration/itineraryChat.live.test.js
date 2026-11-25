@@ -17,7 +17,7 @@ import { describe, it, expect } from 'vitest';
 
 config({ path: resolve(dirname(fileURLToPath(import.meta.url)), '../../.env') });
 
-const { generateStructured } = await import('../../src/ai/geminiClient.js');
+const { generateStructured } = await import('../../src/ai/aiClient.js');
 const { buildItineraryChatPrompt, itineraryChatResponseSchema } = await import('../../src/ai/prompts/itineraryChat.v1.js');
 
 describe.skipIf(!process.env.GEMINI_API_KEY)('itinerary-chat — live Gemini call', () => {

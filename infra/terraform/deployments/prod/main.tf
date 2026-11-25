@@ -29,6 +29,7 @@ module "deployment" {
   cloudinary_api_key         = var.cloudinary_api_key
   cloudinary_api_secret      = var.cloudinary_api_secret
   gemini_api_key             = var.gemini_api_key
+  openai_api_key             = var.openai_api_key
   email_user                 = var.email_user
   email_password             = var.email_password
   whatsapp_access_token      = var.whatsapp_access_token
