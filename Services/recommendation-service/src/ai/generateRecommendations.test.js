@@ -627,6 +627,18 @@ describe('generateRecommendations — OpenAI primary with Gemini backup', () => 
     expect(result.title).toBe('Follow up on cold leads');
   });
 
+  it('records why OpenAI failed when the Gemini backup fails too', async () => {
+    mockFetch.mockResolvedValueOnce({ ok: false, status: 400, json: async () => ({ error: { message: 'bad schema' } }) });
+    mockGenerateContent.mockReset().mockRejectedValue(Object.assign(new Error('API key not valid'), { status: 400 }));
+
+    const error = await generateRecommendations(source).catch((err) => err);
+
+    expect(error.diagnostic).toMatchObject({
+      provider: 'gemini',
+      fallbackFrom: { provider: 'openai', stage: 'provider-request', statusCode: 400, message: 'bad schema' },
+    });
+  });
+
   it('reports the OpenAI failure when no Gemini key is set', async () => {
     delete process.env.GEMINI_API_KEY;
     mockFetch.mockResolvedValueOnce({ ok: false, status: 400, json: async () => ({ error: { message: 'bad sk-test' } }) });
