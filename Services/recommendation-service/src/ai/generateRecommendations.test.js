@@ -619,6 +619,39 @@ describe('generateRecommendations — OpenAI primary with Gemini backup', () => 
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps the valid findings when one OpenAI finding breaks a rule', async () => {
+    const tooMuchEvidence = Array.from({ length: 6 }, () => ({ signal: 'coldLeads', field: 'count' }));
+    mockFetch.mockResolvedValueOnce(openaiReply({
+      recommendations: [aiRecommendation(), aiRecommendation({ key: 'leads.second', title: 'Too much evidence here', evidence: tooMuchEvidence })],
+    }));
+
+    const result = await generateRecommendations(source);
+
+    expect(result.map(({ title }) => title)).toEqual(['Follow up on cold leads']);
+    expect(mockGenerateContent).not.toHaveBeenCalled();
+  });
+
+  it('reports which rule an all-invalid OpenAI answer broke, without its values', async () => {
+    delete process.env.GEMINI_API_KEY;
+    mockFetch.mockResolvedValueOnce(openaiReply({ recommendations: [aiRecommendation({ key: 'Bad Key', title: 'secret title' })] }));
+
+    const error = await generateRecommendations(source).catch((err) => err);
+
+    expect(error.diagnostic.message).toBe('openai returned malformed recommendations (0.key: invalid_format)');
+  });
+
+  it('tells OpenAI the key format and evidence limits through the schema', async () => {
+    mockFetch.mockResolvedValueOnce(openaiReply({ recommendations: [] }));
+
+    await generateRecommendations(source);
+
+    const { schema } = JSON.parse(mockFetch.mock.calls[0][1].body).text.format;
+    const item = schema.properties.recommendations.items;
+    expect(schema.properties.recommendations.maxItems).toBe(30);
+    expect(item.properties.key.pattern).toBe('^[a-z0-9][a-z0-9._-]{0,79}$');
+    expect(item.properties.evidence).toMatchObject({ minItems: 1, maxItems: 5 });
+  });
+
   it('falls back to Gemini when OpenAI returns malformed recommendations', async () => {
     mockFetch.mockResolvedValueOnce(openaiReply({ recommendations: [{ key: 'x' }] }));
 
