@@ -95,7 +95,7 @@ class ApiService {
       defaultMarginType: packageData.defaultMarginType || 'PERCENTAGE',
       defaultMarginInput: packageData.defaultMarginInput ?? 20,
       currency: packageData.currency || 'USD',
-      isActive: packageData.isActive ?? (packageData.status === 'published'),
+      isActive: isActiveFor(packageData),
       isFeatured: packageData.isFeatured ?? false,
       images: (packageData.images || []).map((img: any) => ({
         url: img.url || img,
@@ -128,6 +128,8 @@ class ApiService {
     delete cleanData.createdAt;
     delete cleanData.createdBy;
     delete cleanData.slug;
+    if (packageData.status !== undefined) cleanData.isActive = isActiveFor(packageData);
+    delete cleanData.status;
 
     // The editor submits editor-shaped `days` (meals booleans, locations,
     // transport mode). Convert them to the relational `itineraryDays` shape the
@@ -241,6 +243,12 @@ class ApiService {
   static async createActivity(data: any) {
     return makeRequest('/activities', { method: 'POST', body: JSON.stringify(data) });
   }
+}
+
+export function isActiveFor(packageData: any): boolean {
+  if (packageData.status === 'published') return true;
+  if (packageData.status === 'draft') return false;
+  return packageData.isActive ?? false;
 }
 
 /**

@@ -110,6 +110,29 @@ export class AIRecommendationsUnavailableError extends Error {
 
 let client;
 
+// Gemini answers 503 "high demand" (and sometimes 429) in short bursts; a
+// retry a moment later usually succeeds. Only these transient statuses are
+// retried — a bad key or malformed request fails straight away.
+const RETRYABLE_STATUSES = new Set([429, 500, 503]);
+export const RETRY_DELAYS_MS = [1_000, 3_000];
+
+function isRetryable(error) {
+  const status = error?.status ?? error?.statusCode;
+  return RETRYABLE_STATUSES.has(status);
+}
+
+async function withRetries(call, deadline) {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await call();
+    } catch (error) {
+      const delay = RETRY_DELAYS_MS[attempt];
+      if (delay === undefined || !isRetryable(error) || Date.now() + delay >= deadline) throw error;
+      await new Promise((resolve) => { setTimeout(resolve, delay); });
+    }
+  }
+}
+
 function scalarSignals(signals = {}) {
   return Object.fromEntries(Object.entries(signals).map(([name, signal]) => [
     name,
@@ -200,9 +223,10 @@ export async function generateRecommendations(source) {
     const signals = scalarSignals(source?.signals);
     let timeoutId;
     let response;
+    const deadline = Date.now() + GENERATION_TIMEOUT_MS;
     try {
       response = await Promise.race([
-        client.models.generateContent({
+        withRetries(() => client.models.generateContent({
           model: modelId(),
           contents: [
             'Act as the AI analyst for a travel CRM. Analyze the full supplied cross-module signal set together; independently identify the most useful evidence-backed risks, missed revenue, operational bottlenecks, growth opportunities, and trends.',
@@ -222,7 +246,7 @@ export async function generateRecommendations(source) {
             }),
           ].join('\n\n'),
           config: { responseMimeType: 'application/json', responseSchema, temperature: 0.2, maxOutputTokens: 5000 },
-        }),
+        }), deadline),
         new Promise((_, reject) => {
           timeoutId = setTimeout(() => reject(new Error('Gemini recommendation generation timed out')), GENERATION_TIMEOUT_MS);
         }),
