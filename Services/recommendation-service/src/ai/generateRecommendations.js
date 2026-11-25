@@ -12,10 +12,17 @@ const OPENAI_API_URL = 'https://api.openai.com/v1/responses';
 // Reasoning tokens count against OpenAI's output budget, so it gets more room
 // than the 5000 Gemini's non-thinking lite tier needs for the same list.
 const OPENAI_MAX_OUTPUT_TOKENS = 16_000;
-const GENERATION_TIMEOUT_MS = 30_000;
+// Generation time is bound by output length, not reasoning: measured live, a
+// full list (~24 findings, ~3k output tokens) took 17-22s on gpt-6-luna at
+// effort `low` and ~28s on gpt-6.1-terra; at `none` Luna returned an empty
+// list. In prod a 20s primary window cut real runs off mid-answer. Nothing
+// upstream bounds this route tighter (the Management strip only aborts on
+// unmount, the gateway proxy sets no timeout), and a result is cached for 5
+// minutes per viewer, so the budget is sized for the measured answer.
+const GENERATION_TIMEOUT_MS = 50_000;
 // With a backup configured OpenAI gets this much of the overall window, so a
 // hung primary still leaves the backup time to answer.
-const PRIMARY_TIMEOUT_WITH_BACKUP_MS = 20_000;
+const PRIMARY_TIMEOUT_WITH_BACKUP_MS = 35_000;
 const MIN_FALLBACK_BUDGET_MS = 5_000;
 const modules = ['dashboard', 'leads', 'packages', 'flights', 'hotels', 'billing', 'analytics', 'users', 'career'];
 const categories = ['sales', 'finance', 'packages', 'operations', 'performance'];
@@ -338,6 +345,9 @@ export async function generateRecommendations(source) {
 
   let stage = 'provider-request';
   let provider = providers[0].name;
+  // Why the primary failed when the backup then failed too — otherwise only
+  // the backup's error reaches the diagnostic and the real cause is lost.
+  let fallbackFrom;
   try {
     const prompt = buildPrompt(source);
     const startedAt = Date.now();
@@ -357,6 +367,12 @@ export async function generateRecommendations(source) {
         // A malformed or failed answer from the primary is the backup's cue; the
         // last provider's failure is the one reported.
         if (!hasBackup || GENERATION_TIMEOUT_MS - (Date.now() - startedAt) < MIN_FALLBACK_BUDGET_MS) throw error;
+        fallbackFrom = {
+          provider: candidate.name,
+          stage,
+          statusCode: error?.status ?? error?.statusCode ?? null,
+          message: redact(error instanceof Error ? error.message : 'Unknown AI generation error'),
+        };
       }
     }
     stage = 'evidence-validation';
@@ -372,6 +388,7 @@ export async function generateRecommendations(source) {
     throw new AIRecommendationsUnavailableError({
       stage,
       provider,
+      ...(fallbackFrom ? { fallbackFrom } : {}),
       errorName: error instanceof Error ? error.name : 'UnknownError',
       statusCode: error?.status ?? error?.statusCode ?? null,
       message: redact(message),
