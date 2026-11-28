@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import {
   Mail, Phone, Save, Loader2, Edit, Calendar, MessageSquare, MessageCircle, Plus,
   User, MapPin, Plane, Users, Globe, Package, ChevronDown, ChevronUp,
-  Trash2, Check, Lock, RefreshCw, XCircle, Wallet, Sparkles, FileText,
+  Trash2, Check, RefreshCw, XCircle, Wallet, Sparkles, FileText, Eye, Calculator,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import toast from '@/lib/toast';
@@ -19,8 +19,8 @@ import LeadFlightBookingsSection from './LeadFlightBookingsSection';
 import LeadHotelBookingsSection from './LeadHotelBookingsSection';
 import LeadStatusBadge from './LeadStatusBadge';
 import PricingSection from './PricingSection';
+import LeadPricingView from './LeadPricingView';
 import { toEditorDays } from '../utils/toEditorDays';
-import { isLeadFieldLocked } from '../utils/leadLocks';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
@@ -30,6 +30,7 @@ import { FormDialogHeader, FormDialogBody, FormDialogSection, FormDialogFooter }
 import { apiErrorMessage } from '@/lib/apiErrorMessage';
 import LeadAiCallsTab from './LeadAiCallsTab';
 import { isAiHandled } from './AiLeadBadges';
+import { checkQuoteAgainstBudget, formatMoney } from '../utils/quoteBudget';
 import { COUNTRY_BY_CODE } from '@/data/countries';
 import { formatPhoneToE164 } from '@/features/user-management/utils/phoneUtils';
 
@@ -53,11 +54,17 @@ function mapSelection(raw: any) {
       marginType: raw.pricing?.marginType || null,
       marginValue: raw.pricing?.marginValue ?? 0,
       depositType: raw.pricing?.depositType || 'PERCENTAGE',
-      depositValue: raw.pricing?.depositValue ?? 30,
+      depositValue: raw.pricing?.depositValue ?? 0,
+      // Null = the Settings default tax rate.
+      taxRate: raw.pricing?.taxRate ?? null,
       discountType: raw.pricing?.discountType || 'none',
       discountValue: raw.pricing?.discountValue ?? 0,
       serviceChargeRate: raw.pricing?.serviceChargeRate ?? 0,
     },
+    // As last saved — the Pricing tab's breakdown reads these.
+    costLines: raw.costLines || [],
+    pricing: raw.pricing || null,
+    derivationError: Boolean(raw.derivationError),
     dirty: false,
   };
 }
@@ -85,24 +92,17 @@ interface EditInputFieldProps {
   label: string;
   required?: boolean;
   icon?: LucideIcon;
-  locked?: boolean;
   children: React.ReactNode;
   testId?: string;
 }
 
-function EditInputField({ label, required, icon: Icon, locked, children, testId }: EditInputFieldProps) {
+function EditInputField({ label, required, icon: Icon, children, testId }: EditInputFieldProps) {
   return (
     <div className="space-y-2" data-testid={testId}>
       <label className="flex items-center gap-2 text-sm font-medium text-foreground">
         {Icon && <Icon className="w-4 h-4 text-muted-foreground" />}
         {label}
         {required && <span className="text-destructive">*</span>}
-        {locked && (
-          <span className="flex items-center gap-1 text-xs text-warning font-normal" title="Locked after QUOTED — move the lead back to DRAFTING to edit">
-            <Lock className="w-3 h-3" />
-            Locked
-          </span>
-        )}
       </label>
       {children}
     </div>
@@ -123,7 +123,20 @@ const emptyFormData = {
   travelDate: '',
   endDate: '',
   lifecycleStatus: 'NEW',
+  budget: '',
 };
+
+type EditorSection = 'personal' | 'travel' | 'package' | 'pricing' | 'operations' | 'remarks';
+type OperationsTab = 'flights' | 'hotels';
+
+const EDITOR_SECTIONS: { id: EditorSection; label: string; icon: LucideIcon }[] = [
+  { id: 'personal', label: 'Contact', icon: User },
+  { id: 'travel', label: 'Travel', icon: Calendar },
+  { id: 'package', label: 'Packages', icon: Package },
+  { id: 'operations', label: 'Operations', icon: Plane },
+  { id: 'pricing', label: 'Pricing', icon: Calculator },
+  { id: 'remarks', label: 'Remarks', icon: MessageSquare },
+];
 
 interface EditLeadDialogProps {
   isOpen: boolean;
@@ -132,13 +145,18 @@ interface EditLeadDialogProps {
   salesReps: any[];
   onSuccess?: () => void;
   initialSelectionId?: string;
+  onRequestStatusChange?: (lead: any, onStatusChanged: (status: string) => void) => void;
+  /** Swap to the read-only View Details popup for this lead. */
+  onViewDetails?: (lead: any) => void;
 }
 
-const EditLeadDialog = ({ isOpen, onClose, lead, salesReps, onSuccess, initialSelectionId }: EditLeadDialogProps) => {
+const EditLeadDialog = ({ isOpen, onClose, lead, salesReps, onSuccess, initialSelectionId, onRequestStatusChange, onViewDetails }: EditLeadDialogProps) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [packages, setPackages] = useState<any[]>([]);
   const [loadingPackages, setLoadingPackages] = useState(false);
-  const [showItineraryEditor, setShowItineraryEditor] = useState(false);
+  const [loadingSelections, setLoadingSelections] = useState(true);
+  const [selectionLoadFailed, setSelectionLoadFailed] = useState(false);
+  const [showItineraryEditor, setShowItineraryEditor] = useState(true);
   // One entry per attached package (plus the manual slot, if any) — see
   // mapSelection() for the shape. `dirty` marks a tab whose itinerary/pricing
   // has been edited locally and needs saving.
@@ -147,6 +165,7 @@ const EditLeadDialog = ({ isOpen, onClose, lead, salesReps, onSuccess, initialSe
   const [selectionLeadId, setSelectionLeadId] = useState<string | null>(null);
   const selectionLoadRequestRef = useRef(0);
   const [addingPackage, setAddingPackage] = useState(false);
+  const [queuedPackageValue, setQueuedPackageValue] = useState('');
   const [refreshingSelectionId, setRefreshingSelectionId] = useState<string | null>(null);
   // Bumped whenever a transfer flight is added/edited/removed — those persist
   // straight to the DB and never touch itineraryDays/pricingSettings, so the
@@ -157,18 +176,13 @@ const EditLeadDialog = ({ isOpen, onClose, lead, salesReps, onSuccess, initialSe
   const [editRemarkText, setEditRemarkText] = useState('');
   const [newRemarkText, setNewRemarkText] = useState('');
   const [showAddRemark, setShowAddRemark] = useState(false);
-  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
-    personal: true,
-    travel: true,
-    package: true,
-    remarks: false,
-  });
+  const [activeSection, setActiveSection] = useState<EditorSection>('personal');
+  const [activeOperationsTab, setActiveOperationsTab] = useState<OperationsTab>('flights');
   const [formData, setFormData] = useState(emptyFormData);
   const [whatsappSameAsPhone, setWhatsappSameAsPhone] = useState(true);
   const [activeView, setActiveView] = useState<'overview' | 'ai'>('overview');
   const snapshotRef = useRef<any>(null);
 
-  const isLocked = isLeadFieldLocked(lead?.lifecycleStatus);
   const currentLeadId = lead ? String(lead._id || lead.id || '') : '';
   const activeSelection = selectionLeadId === currentLeadId
     ? selections.find((s) => s.id === activeSelectionId) || null
@@ -184,9 +198,7 @@ const EditLeadDialog = ({ isOpen, onClose, lead, salesReps, onSuccess, initialSe
     transports: reconcileFlightsForSave({ flights: day.flights || [], transports: day.transports || [] }),
   }));
 
-  const toggleSection = (section: string) => {
-    setExpandedSections((prev) => ({ ...prev, [section]: !prev[section] }));
-  };
+  const selectSection = (section: string) => setActiveSection(section as EditorSection);
 
   useEffect(() => {
     if (isOpen) {
@@ -201,7 +213,7 @@ const EditLeadDialog = ({ isOpen, onClose, lead, salesReps, onSuccess, initialSe
   const fetchPackages = async () => {
     try {
       setLoadingPackages(true);
-      const response = await packageAPI.getAll();
+      const response = await packageAPI.getOptions();
 
       if (response && response.success === true && response.data) {
         const packagesList = (Array.isArray(response.data) ? response.data : [])
@@ -223,6 +235,11 @@ const EditLeadDialog = ({ isOpen, onClose, lead, salesReps, onSuccess, initialSe
     setSelections([]);
     setActiveSelectionId(null);
     setSelectionLeadId(null);
+    setLoadingSelections(Boolean(lead));
+    setSelectionLoadFailed(false);
+    setQueuedPackageValue('');
+    setActiveSection(initialSelectionId ? 'package' : 'personal');
+    setActiveOperationsTab('flights');
 
     if (lead) void loadLeadIntoForm(requestId);
 
@@ -234,7 +251,10 @@ const EditLeadDialog = ({ isOpen, onClose, lead, salesReps, onSuccess, initialSe
 
   const loadLeadIntoForm = async (requestId: number) => {
     const leadId = lead._id || lead.id;
-    const assignedToId = lead.assignedTo?._id || lead.assignedTo || lead.assignedTo?.id || '';
+    const assignedTo = lead.assignedTo;
+    const assignedToId = typeof assignedTo === 'object' && assignedTo !== null
+      ? assignedTo._id || assignedTo.id || lead.assignedToId || ''
+      : assignedTo || lead.assignedToId || '';
     const salesRepName = lead.salesRep || lead.adviser || '';
 
     const nextFormData = {
@@ -253,6 +273,7 @@ const EditLeadDialog = ({ isOpen, onClose, lead, salesReps, onSuccess, initialSe
       travelDate: lead.travelDate ? new Date(lead.travelDate).toISOString().split('T')[0] : '',
       endDate: lead.endDate ? new Date(lead.endDate).toISOString().split('T')[0] : '',
       lifecycleStatus: lead.lifecycleStatus || 'NEW',
+      budget: lead.budget || '',
     };
     setFormData(nextFormData);
     setWhatsappSameAsPhone(!lead.whatsapp || lead.whatsapp === lead.phone);
@@ -262,6 +283,7 @@ const EditLeadDialog = ({ isOpen, onClose, lead, salesReps, onSuccess, initialSe
       setSelections([]);
       setActiveSelectionId(null);
       setSelectionLeadId(null);
+      setLoadingSelections(false);
       snapshotRef.current = { formData: nextFormData, remarks: lead.remarks || [], selections: [] };
       return;
     }
@@ -277,6 +299,7 @@ const EditLeadDialog = ({ isOpen, onClose, lead, salesReps, onSuccess, initialSe
       setSelections(nextSelections);
       setActiveSelectionId(preferredSelectionId);
       setSelectionLeadId(String(leadId));
+      setLoadingSelections(false);
 
       snapshotRef.current = {
         formData: nextFormData,
@@ -290,11 +313,13 @@ const EditLeadDialog = ({ isOpen, onClose, lead, salesReps, onSuccess, initialSe
       setSelections([]);
       setActiveSelectionId(null);
       setSelectionLeadId(String(leadId));
+      setLoadingSelections(false);
+      setSelectionLoadFailed(true);
       snapshotRef.current = { formData: nextFormData, remarks: lead.remarks || [], selections: [] };
     }
   };
 
-  const handleCancel = () => {
+  const revertToSnapshot = () => {
     const snapshot = snapshotRef.current;
     if (snapshot) {
       setFormData(snapshot.formData);
@@ -302,7 +327,30 @@ const EditLeadDialog = ({ isOpen, onClose, lead, salesReps, onSuccess, initialSe
       setSelections(snapshot.selections || []);
       setActiveSelectionId(snapshot.activeSelectionId ?? (snapshot.selections?.[0]?.id ?? null));
     }
+  };
+
+  const handleCancel = () => {
+    revertToSnapshot();
     onClose();
+  };
+
+  // True when anything differs from what was loaded: contact/travel fields,
+  // remarks, or a package tab whose itinerary/pricing was edited locally.
+  const hasUnsavedChanges = () => {
+    const snapshot = snapshotRef.current;
+    if (!snapshot) return false;
+    return JSON.stringify(formData) !== JSON.stringify(snapshot.formData)
+      || JSON.stringify(remarks) !== JSON.stringify(snapshot.remarks)
+      || selections.some((s) => s.dirty);
+  };
+
+  const handleViewDetails = () => {
+    if (!onViewDetails || !lead) return;
+    if (hasUnsavedChanges() && !window.confirm('You have unsaved changes. Discard them and view details?')) return;
+    // Not handleCancel(): onClose may resume a quotation/voucher flow, and the
+    // parent's onViewDetails closes this dialog itself.
+    revertToSnapshot();
+    onViewDetails(lead);
   };
 
   const updateActiveSelection = (patch: any) => {
@@ -312,7 +360,12 @@ const EditLeadDialog = ({ isOpen, onClose, lead, salesReps, onSuccess, initialSe
   };
 
   const handleAddPackage = async (value: string) => {
-    if (!lead || !value) return;
+    if (!lead || !value || selectionLoadFailed) return;
+    if (loadingSelections) {
+      setQueuedPackageValue(value);
+      setAddingPackage(false);
+      return;
+    }
     const leadId = lead._id || lead.id;
     const isManual = value === MANUAL_ITINERARY_VALUE;
 
@@ -331,6 +384,15 @@ const EditLeadDialog = ({ isOpen, onClose, lead, salesReps, onSuccess, initialSe
       toast.error(apiErrorMessage(err));
     }
   };
+
+  useEffect(() => {
+    if (loadingSelections || !queuedPackageValue) return;
+    const value = queuedPackageValue;
+    setQueuedPackageValue('');
+    void handleAddPackage(value);
+    // handleAddPackage reads the current lead and selection state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadingSelections, queuedPackageValue]);
 
   const handleRemoveSelection = async (selection: any) => {
     if (!lead || !selection) return;
@@ -425,6 +487,8 @@ const EditLeadDialog = ({ isOpen, onClose, lead, salesReps, onSuccess, initialSe
         endDate: formData.endDate || undefined,
         whatsapp: formData.whatsapp || undefined,
         lifecycleStatus: formData.lifecycleStatus || 'NEW',
+        // The customer's own figure; sent as-is so it can also be cleared.
+        budget: formData.budget?.trim() ? formData.budget.trim() : null,
         remarks: remarks.length > 0 ? remarks : (lead?.remarks?.length ? [] : undefined),
       };
       if (formData.assignedTo && formData.assignedTo !== '' && formData.assignedTo !== '__name_only') {
@@ -451,7 +515,7 @@ const EditLeadDialog = ({ isOpen, onClose, lead, salesReps, onSuccess, initialSe
   return (
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open) handleCancel(); }}>
       <DialogContent
-        className="sm:max-w-4xl max-h-[95vh] p-0 gap-0 overflow-hidden flex flex-col"
+        className="h-dvh w-screen max-w-none max-h-none rounded-none p-0 gap-0 overflow-hidden flex flex-col sm:h-[92vh] sm:w-[96vw] sm:max-w-[1440px] sm:max-h-[1000px] sm:rounded-xl"
         closeClassName="text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground dark:hover:bg-primary-foreground/20 dark:hover:text-primary-foreground"
       >
         <FormDialogHeader
@@ -464,6 +528,17 @@ const EditLeadDialog = ({ isOpen, onClose, lead, salesReps, onSuccess, initialSe
           ] : undefined}
           activeTab={activeView}
           onTabChange={(key) => setActiveView(key as 'overview' | 'ai')}
+          actions={onViewDetails ? (
+            <Button
+              type="button"
+              aria-label="View Details"
+              onClick={handleViewDetails}
+              className="bg-primary-foreground/15 text-primary-foreground ring-1 ring-primary-foreground/40 hover:bg-primary-foreground/25 sm:min-w-32"
+            >
+              <Eye className="w-4 h-4" />
+              <span className="hidden sm:inline">View Details</span>
+            </Button>
+          ) : undefined}
         />
 
         {activeView === 'ai' ? (
@@ -471,7 +546,7 @@ const EditLeadDialog = ({ isOpen, onClose, lead, salesReps, onSuccess, initialSe
             <FormDialogBody>
               <LeadAiCallsTab lead={lead} onVerified={onSuccess} />
             </FormDialogBody>
-            <FormDialogFooter>
+            <FormDialogFooter className="mt-auto">
               <Button type="button" variant="outline" onClick={handleCancel} className="flex-1">
                 Close
               </Button>
@@ -479,16 +554,67 @@ const EditLeadDialog = ({ isOpen, onClose, lead, salesReps, onSuccess, initialSe
           </>
         ) : (
         <>
-        <FormDialogBody>
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden sm:flex-row">
+          <div
+            role="tablist"
+            aria-label="Edit lead sections"
+            className="flex shrink-0 gap-1 overflow-x-auto border-b border-border p-2 sm:w-48 sm:flex-col sm:overflow-y-auto sm:overflow-x-hidden sm:border-b-0 sm:border-r sm:p-3"
+          >
+            {EDITOR_SECTIONS.map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                id={`${id}-tab`}
+                type="button"
+                role="tab"
+                aria-selected={activeSection === id}
+                aria-controls={`${id}-panel`}
+                onClick={() => setActiveSection(id)}
+                className={`flex min-w-max items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors sm:w-full sm:justify-start ${
+                  activeSection === id
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
+              >
+                <Icon className="size-4 shrink-0" />
+                <span>{label}</span>
+              </button>
+            ))}
+          </div>
+          <div
+            id={`${activeSection}-panel`}
+            role="tabpanel"
+            aria-labelledby={`${activeSection}-tab`}
+            className="flex min-h-0 min-w-0 flex-1 flex-col"
+          >
+        <FormDialogBody className="min-h-0 overscroll-y-contain [scrollbar-gutter:stable] [scroll-behavior:auto] [-webkit-overflow-scrolling:touch]">
+          {activeSection === 'personal' && (
           <FormDialogSection
             id="personal"
-            expanded={expandedSections.personal}
-            onToggle={toggleSection}
+            expanded
+            onToggle={selectSection}
             icon={User}
             title="Personal Information"
             subtitle="Contact details of the lead"
           >
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                {(lead?._id || lead?.id) && (
+                  <div className="md:col-span-2 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-muted/30 p-4">
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-medium text-foreground">Lead Status</span>
+                      <LeadStatusBadge status={formData.lifecycleStatus} />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onRequestStatusChange?.(lead, (status) => {
+                        setFormData((previous) => ({ ...previous, lifecycleStatus: status }));
+                      })}
+                    >
+                      Change Status
+                    </Button>
+                  </div>
+                )}
                 <EditInputField label="Full Name" required icon={User} testId="edit-lead-name">
                   <Input
                     type="text"
@@ -562,11 +688,13 @@ const EditLeadDialog = ({ isOpen, onClose, lead, salesReps, onSuccess, initialSe
                 </div>
               </div>
           </FormDialogSection>
+          )}
 
+          {activeSection === 'travel' && (
           <FormDialogSection
             id="travel"
-            expanded={expandedSections.travel}
-            onToggle={toggleSection}
+            expanded
+            onToggle={selectSection}
             icon={Plane}
             title="Travel Details"
             subtitle="Trip information and dates"
@@ -590,28 +718,26 @@ const EditLeadDialog = ({ isOpen, onClose, lead, salesReps, onSuccess, initialSe
                   />
                 </EditInputField>
 
-                <EditInputField label="Travel Date (Start)" icon={Calendar} locked={isLocked}>
+                <EditInputField label="Travel Date (Start)" icon={Calendar}>
                   <Input
                     type="date"
                     aria-label="Travel Date (Start)"
                     value={formData.travelDate}
                     onChange={(e) => setFormData({ ...formData, travelDate: e.target.value })}
-                    disabled={isLocked}
                   />
                 </EditInputField>
 
-                <EditInputField label="End Date" icon={Calendar} locked={isLocked}>
+                <EditInputField label="End Date" icon={Calendar}>
                   <Input
                     type="date"
                     aria-label="End Date"
                     value={formData.endDate}
                     onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
                     min={formData.travelDate || undefined}
-                    disabled={isLocked}
                   />
                 </EditInputField>
 
-                <EditInputField label="Number of Travelers" icon={Users} locked={isLocked}>
+                <EditInputField label="Number of Travelers" icon={Users}>
                   <Input
                     type="number"
                     min="1"
@@ -624,21 +750,30 @@ const EditLeadDialog = ({ isOpen, onClose, lead, salesReps, onSuccess, initialSe
                         numberOfTravelers: value === '' ? '' : Math.max(1, Number(value)),
                       });
                     }}
-                    disabled={isLocked}
                     placeholder="e.g., 2"
                   />
                 </EditInputField>
 
-                <EditInputField label="Budget" icon={Wallet}>
+                <EditInputField label="Customer Budget" icon={Wallet}>
                   <Input
                     type="text"
-                    readOnly
-                    aria-label="Budget"
-                    value={lead?.budget || '—'}
-                    title="Auto-filled from the primary package's quoted total"
-                    className="bg-muted text-muted-foreground cursor-not-allowed"
+                    aria-label="Customer Budget"
+                    value={formData.budget}
+                    onChange={(e) => setFormData({ ...formData, budget: e.target.value })}
+                    placeholder="What the customer wants to spend, e.g. USD 3,000"
                   />
-                  <p className="mt-1 text-xs text-muted-foreground">Auto-filled from the primary package total</p>
+                  {(() => {
+                    const check = checkQuoteAgainstBudget({ budget: formData.budget, quoteTotal: lead?.quoteTotal });
+                    if (!check.quote) {
+                      return <p className="mt-1 text-xs text-muted-foreground">No package priced yet</p>;
+                    }
+                    return (
+                      <p className={`mt-1 text-xs ${check.overBudget ? 'text-warning font-medium' : 'text-muted-foreground'}`}>
+                        Quote total: {formatMoney(check.quote.amount, check.quote.currency)}
+                        {check.overBudget && ` — ${formatMoney(check.overBy, check.quote.currency)} over budget`}
+                      </p>
+                    );
+                  })()}
                 </EditInputField>
 
                 <EditInputField label="Lead Source" icon={Globe}>
@@ -658,11 +793,13 @@ const EditLeadDialog = ({ isOpen, onClose, lead, salesReps, onSuccess, initialSe
                 </EditInputField>
               </div>
           </FormDialogSection>
+          )}
 
+          {activeSection === 'package' && (
           <FormDialogSection
             id="package"
-            expanded={expandedSections.package}
-            onToggle={toggleSection}
+            expanded
+            onToggle={selectSection}
             icon={Package}
             title="Package & Assignment"
             subtitle="Select package and sales representative"
@@ -752,7 +889,7 @@ const EditLeadDialog = ({ isOpen, onClose, lead, salesReps, onSuccess, initialSe
                         <button
                           type="button"
                           onClick={() => setAddingPackage(true)}
-                          disabled={loadingPackages}
+                          disabled={selectionLoadFailed}
                           className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium border-2 border-dashed border-primary/30 text-primary hover:bg-primary/5 disabled:opacity-50"
                         >
                           <Plus className="w-4 h-4" />
@@ -770,7 +907,7 @@ const EditLeadDialog = ({ isOpen, onClose, lead, salesReps, onSuccess, initialSe
                           value=""
                           onChange={(e) => handleAddPackage(e.target.value)}
                           onBlur={() => setAddingPackage(false)}
-                          disabled={loadingPackages}
+                          disabled={selectionLoadFailed}
                           className="h-8 px-3 bg-transparent border-2 border-primary/30 rounded-xl text-sm focus:outline-none focus-visible:border-primary"
                         >
                           <option value="">{loadingPackages ? 'Loading packages...' : 'Select a package…'}</option>
@@ -788,10 +925,22 @@ const EditLeadDialog = ({ isOpen, onClose, lead, salesReps, onSuccess, initialSe
                             })}
                         </select>
                       )}
+                      {selectionLoadFailed && (
+                        <p role="alert" className="basis-full text-xs text-destructive">
+                          Could not load attached packages. Close and reopen this lead to retry.
+                        </p>
+                      )}
+                      {queuedPackageValue && (
+                        <p role="status" className="basis-full text-xs text-muted-foreground">
+                          Waiting for attached package details before adding…
+                        </p>
+                      )}
                     </div>
-                    {selections.length === 0 && (
+                    {loadingSelections ? (
+                      <p role="status" className="text-xs text-muted-foreground mt-2">Loading attached packages…</p>
+                    ) : selections.length === 0 ? (
                       <p className="text-xs text-muted-foreground mt-2">No packages attached yet — add one to start building an itinerary and quotation.</p>
-                    )}
+                    ) : null}
                   </div>
                 </div>
 
@@ -841,12 +990,16 @@ const EditLeadDialog = ({ isOpen, onClose, lead, salesReps, onSuccess, initialSe
                         )}
                         <ItineraryEditor
                           days={activeSelection.itineraryDays}
+                          compactDayNavigation
+                          travelers={Number(formData.numberOfTravelers) || 1}
                           onDayChange={(dayNumber: number, dayData: any) => {
-                            updateActiveSelection({
-                              itineraryDays: (activeSelection.itineraryDays || []).filter(Boolean).map((day: any) =>
+                            setSelections((prev) => prev.map((s) => (s.id === activeSelectionId ? {
+                              ...s,
+                              dirty: true,
+                              itineraryDays: (s.itineraryDays || []).filter(Boolean).map((day: any) =>
                                 day.dayNumber === dayNumber ? { ...day, ...dayData } : day
                               ),
-                            });
+                            } : s)));
                           }}
                           onAddDay={() => {
                             const newDayNumber = activeSelection.itineraryDays.length + 1;
@@ -865,13 +1018,15 @@ const EditLeadDialog = ({ isOpen, onClose, lead, salesReps, onSuccess, initialSe
                   </div>
                 )}
           </FormDialogSection>
+          )}
 
+          {activeSection === 'remarks' && (
           <FormDialogSection
             id="remarks"
-            expanded={expandedSections.remarks}
-            onToggle={toggleSection}
+            expanded
+            onToggle={selectSection}
             icon={MessageSquare}
-            title="Remarks & Notes"
+            title="Remarks"
             subtitle="Add comments about this lead"
             count={remarks.length}
           >
@@ -1040,36 +1195,128 @@ const EditLeadDialog = ({ isOpen, onClose, lead, salesReps, onSuccess, initialSe
                 </div>
               </div>
           </FormDialogSection>
+          )}
 
-          {/* Lifecycle Status, Flight Bookings, then Pricing — existing leads only */}
-          {(lead?._id || lead?.id) && (
-            <div className="space-y-4">
-              <div className="bg-card rounded-xl border border-border p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-semibold text-foreground">Lifecycle Status</h3>
-                  <LeadStatusBadge status={lead.lifecycleStatus} />
+          {activeSection === 'pricing' && (
+          <FormDialogSection
+            id="pricing"
+            expanded
+            onToggle={selectSection}
+            icon={Calculator}
+            title="Pricing"
+            subtitle={`Margin, discount, tax and deposit/advance, and what each package costs for ${Number(formData.numberOfTravelers) || 1} traveller${(Number(formData.numberOfTravelers) || 1) === 1 ? '' : 's'}`}
+          >
+            {activeSelection ? (
+              <div className="space-y-4">
+                {selections.length > 1 && (
+                  <div role="tablist" aria-label="Package to price" className="flex flex-wrap gap-2">
+                    {selections.map((s) => (
+                      <button
+                        key={s.id}
+                        type="button"
+                        role="tab"
+                        aria-selected={s.id === activeSelection.id}
+                        onClick={() => setActiveSelectionId(s.id)}
+                        className={`rounded-full border px-3 py-1 text-sm font-medium transition-colors ${
+                          s.id === activeSelection.id
+                            ? 'border-primary bg-primary text-primary-foreground'
+                            : 'border-border text-muted-foreground hover:bg-muted'
+                        }`}
+                      >
+                        {s.isManual ? 'Manual Itinerary' : (s.packageName || 'Package')}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                <div className="bg-card rounded-xl border border-border p-4">
+                  <h3 className="text-sm font-semibold text-foreground mb-3">
+                    Pricing settings — {activeSelection.isManual ? 'Manual Itinerary' : (activeSelection.packageName || 'Package')}
+                  </h3>
+                  <PricingSection
+                    key={activeSelection.id}
+                    leadId={lead._id || lead.id}
+                    selectionId={activeSelection.id}
+                    days={reconcileDays(activeSelection.itineraryDays)}
+                    travelers={Number(formData.numberOfTravelers) || 1}
+                    pricing={activeSelection.pricingSettings}
+                    refreshToken={pricingRefreshToken}
+                    onSettingsChange={(settings: any) => updateActiveSelection({ pricingSettings: settings })}
+                  />
                 </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    // Trigger the parent's status change dialog
-                    const event = new CustomEvent('open-status-change', { detail: lead });
-                    window.dispatchEvent(event);
-                  }}
-                >
-                  Change Status
-                </Button>
+
+                <div className="space-y-2">
+                  <h3 className="text-sm font-semibold text-foreground">Breakdown</h3>
+                  {(activeSelection.dirty || (Number(formData.numberOfTravelers) || 1) !== (Number(lead.numberOfTravelers) || 1)) && (
+                    <p role="status" className="rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-xs font-medium text-warning">
+                      This breakdown shows the last saved prices. Save changes to update it.
+                    </p>
+                  )}
+                  <LeadPricingView
+                    key={activeSelection.id}
+                    selections={[activeSelection]}
+                    travelers={Number(lead.numberOfTravelers) || 1}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-6 text-muted-foreground bg-card rounded-xl border-2 border-dashed border-border">
+                <Package className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                <p className="text-sm">Add a package in Packages to see its pricing</p>
+              </div>
+            )}
+          </FormDialogSection>
+          )}
+
+          {activeSection === 'operations' && (
+          <FormDialogSection
+            id="operations"
+            expanded
+            onToggle={selectSection}
+            icon={Plane}
+            title="Operations"
+            subtitle="Flight bookings and hotel bookings"
+          >
+            {(lead?._id || lead?.id) && (
+              <div className="space-y-4">
+              <div role="tablist" aria-label="Operations details" className="flex flex-wrap gap-2">
+                {([
+                  ['flights', 'Flight Bookings'],
+                  ['hotels', 'Hotel Bookings'],
+                ] as const).map(([tab, label]) => (
+                  <button
+                    key={tab}
+                    type="button"
+                    role="tab"
+                    id={`operations-${tab}-tab`}
+                    aria-selected={activeOperationsTab === tab}
+                    aria-controls={`operations-${tab}-panel`}
+                    onClick={() => setActiveOperationsTab(tab)}
+                    className={`shrink-0 rounded-xl border-2 px-4 py-2.5 text-sm font-medium transition-colors ${
+                      activeOperationsTab === tab
+                        ? 'border-primary bg-primary text-primary-foreground shadow-sm'
+                        : 'border-border bg-card text-foreground hover:border-primary/40'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
               </div>
 
+              <div
+                role="tabpanel"
+                id={`operations-${activeOperationsTab}-panel`}
+                aria-labelledby={`operations-${activeOperationsTab}-tab`}
+                className="min-h-48"
+              >
               {activeSelection ? (
                 <>
+                  {activeOperationsTab === 'flights' && (
                   <LeadFlightBookingsSection
                     leadId={lead._id || lead.id}
                     packageId={activeSelection.packageId || undefined}
                     selectionId={activeSelection.id}
-                    leadStatus={lead.lifecycleStatus}
+                    leadStatus={formData.lifecycleStatus}
                     origin={formData.city || ''}
                     destination={activeSelection.destinationOverride || formData.destination || lead.destination || ''}
                     originCountry={lead.fromCountry || ''}
@@ -1087,48 +1334,48 @@ const EditLeadDialog = ({ isOpen, onClose, lead, salesReps, onSuccess, initialSe
                     }}
                     onFlightsChanged={() => setPricingRefreshToken((t) => t + 1)}
                   />
+                  )}
 
+                  {activeOperationsTab === 'hotels' && (
                   <LeadHotelBookingsSection
                     leadId={lead._id || lead.id}
                     packageId={activeSelection.packageId || undefined}
-                    leadStatus={lead.lifecycleStatus}
+                    leadStatus={formData.lifecycleStatus}
                     itineraryDays={activeSelection.itineraryDays}
                     travelDate={formData.travelDate}
                     destination={activeSelection.destinationOverride || lead.destination || ''}
                     country={lead.country || ''}
                     travelers={Number(formData.numberOfTravelers) || 1}
+                    onUpdateDays={(updates) => updateActiveSelection({
+                      itineraryDays: (activeSelection.itineraryDays || []).map((day: any) => {
+                        const update = updates.find((item) => item.dayNumber === day.dayNumber);
+                        return update ? { ...day, accommodation: update.accommodation } : day;
+                      }),
+                    })}
                   />
+                  )}
 
-                  <div className="bg-card rounded-xl border border-border p-4">
-                    <h3 className="text-sm font-semibold text-foreground mb-3">
-                      Pricing — {activeSelection.isManual ? 'Manual Itinerary' : (activeSelection.packageName || 'Package')}
-                    </h3>
-                    <PricingSection
-                      leadId={lead._id || lead.id}
-                      selectionId={activeSelection.id}
-                      days={reconcileDays(activeSelection.itineraryDays)}
-                      travelers={Number(formData.numberOfTravelers) || 1}
-                      pricing={activeSelection.pricingSettings}
-                      refreshToken={pricingRefreshToken}
-                      onSettingsChange={(settings: any) => updateActiveSelection({ pricingSettings: settings })}
-                    />
-                  </div>
                 </>
               ) : (
                 <div className="text-center py-6 text-muted-foreground bg-card rounded-xl border-2 border-dashed border-border">
                   <Package className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                  <p className="text-sm">Add a package above to manage its itinerary and pricing</p>
+                  <p className="text-sm">Add a package in Packages to manage its bookings</p>
                 </div>
               )}
-            </div>
+              </div>
+              </div>
+            )}
+          </FormDialogSection>
           )}
         </FormDialogBody>
+          </div>
+        </div>
 
-        <FormDialogFooter>
-          <Button type="button" variant="outline" onClick={handleCancel} className="flex-1">
+        <FormDialogFooter className="mt-auto">
+          <Button type="button" variant="outline" onClick={handleCancel} className="flex-1 sm:flex-none">
             Cancel
           </Button>
-          <Button type="button" onClick={handleSave} disabled={isSubmitting} className="flex-1">
+          <Button type="button" onClick={handleSave} disabled={isSubmitting} className="flex-1 sm:min-w-36 sm:flex-none">
             {isSubmitting ? (
               <>
                 <Loader2 className="w-5 h-5 animate-spin" />

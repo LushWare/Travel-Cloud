@@ -1,4 +1,4 @@
-import { calculateMealCosts } from './meals.js';
+import { calculateMealCosts, resolveMealPrices, dayMealPrices, dayMealCostPerPerson, MEALS } from './meals.js';
 import { calculateAccommodationCosts } from './accommodation.js';
 import { calculateTransportCosts } from './transport.js';
 import { calculateActivityCosts } from './activities.js';
@@ -12,7 +12,7 @@ import { DEFAULTS } from './config.js';
  * @param {Array} params.transports — [{pricingModel, unitCost, distanceKm?}]
  * @param {Array} params.accommodation — per-day amounts (number or { totalAmount })
  * @param {number} [params.groupSize] — defaults to 1
- * @param {number} [params.mealCostPerPerson] — defaults to 15
+ * @param {number} [params.mealCostPerPerson] — one price for every meal (no default)
  * @param {'PERCENTAGE'|'FIXED'} [params.marginType] — if omitted, margin not computed
  * @param {number} [params.marginValue]
  * @returns {{ basePrice: number, breakdown: { meals, activities, transports, margin? } }}
@@ -24,12 +24,14 @@ export function calculateBasePrice({
   accommodation = [],
   groupSize,
   mealCostPerPerson,
+  mealPrices,
   marginType,
   marginValue,
 } = {}) {
   const config = {
     groupSize: groupSize ?? DEFAULTS.defaultGroupSize,
-    mealCostPerPerson: mealCostPerPerson ?? DEFAULTS.mealCostPerPerson,
+    mealCostPerPerson,
+    mealPrices,
   };
 
   const meals = calculateMealCosts(days, config);
@@ -59,11 +61,20 @@ export function calculateBasePrice({
   return result;
 }
 
+export { calculatePackagePrice, STANDARD_OCCUPANCY, PEOPLE_PER_ROOM } from './package-price.js';
+export { mealsIncludedByBoard, chargeableMealDays } from './board.js';
+export { packagePriceFromDays } from './itinerary-price.js';
+
 export {
   calculateMealCosts,
+  resolveMealPrices,
+  dayMealPrices,
+  dayMealCostPerPerson,
+  MEALS,
   calculateAccommodationCosts,
   calculateTransportCosts,
   calculateActivityCosts,
   computeMargin,
   DEFAULTS,
 };
+export { singleSupplementFromDays } from './single-supplement.js';

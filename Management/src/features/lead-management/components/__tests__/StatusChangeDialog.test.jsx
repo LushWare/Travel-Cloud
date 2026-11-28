@@ -15,8 +15,8 @@ function renderDialog(props = {}) {
   );
 }
 
-describe('StatusChangeDialog — PENDING_VERIFICATION', () => {
-  it('shows the requested categories and explains unavailable transitions', () => {
+describe('StatusChangeDialog — free status changes', () => {
+  it('shows every lifecycle status and only disables the current status', () => {
     renderDialog();
     expect(screen.getByText('New')).toBeInTheDocument();
     expect(screen.getByText('Needs Rep Attention')).toBeInTheDocument();
@@ -28,10 +28,13 @@ describe('StatusChangeDialog — PENDING_VERIFICATION', () => {
     expect(screen.getByText('Confirmed')).toBeInTheDocument();
     expect(screen.getByText('Lost')).toBeInTheDocument();
     expect(screen.queryByText('Booking Failed')).not.toBeInTheDocument();
-    expect(screen.queryByText('Cancelled')).not.toBeInTheDocument();
+    expect(screen.getByText('Cancelled')).toBeInTheDocument();
     expect(screen.getByText('New').closest('button')).toBeEnabled();
-    expect(screen.getByText('Drafting').closest('button')).toBeDisabled();
-    expect(screen.getByText('Cannot move from Needs Rep Attention to Drafting directly.')).toBeInTheDocument();
+    expect(screen.getByText('Drafting').closest('button')).toBeEnabled();
+    expect(screen.getByText('Confirmed').closest('button')).toBeEnabled();
+    expect(screen.getByText('Needs Rep Attention').closest('button')).toBeDisabled();
+    expect(screen.getByText('Current')).toBeInTheDocument();
+    expect(screen.queryByText(/does not create a quote, payment, or booking/i)).not.toBeInTheDocument();
     expect(screen.queryByText('Fresh lead, not yet drafted')).not.toBeInTheDocument();
   });
 
@@ -56,7 +59,7 @@ describe('StatusChangeDialog — PENDING_VERIFICATION', () => {
     );
   });
 
-  it('explains why a drafted lead cannot return to New and shows quote prerequisites', async () => {
+  it('allows a drafted lead to move directly to any status', async () => {
     const user = userEvent.setup();
     const onStatusChange = vi.fn();
     renderDialog({
@@ -65,13 +68,17 @@ describe('StatusChangeDialog — PENDING_VERIFICATION', () => {
     });
 
     const newStatus = screen.getByText('New').closest('button');
-    expect(newStatus).toBeDisabled();
-    expect(screen.getByText('Cannot move from Drafting to New directly.')).toBeInTheDocument();
-    expect(screen.getByText('Quoted').closest('button')).toBeEnabled();
-    expect(screen.getByText('Requires a selling price greater than zero.')).toBeInTheDocument();
+    expect(newStatus).toBeEnabled();
+    expect(screen.getByText('Confirmed').closest('button')).toBeEnabled();
 
     await user.click(newStatus);
     expect(onStatusChange).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Confirm' }));
+    expect(onStatusChange).toHaveBeenCalledWith(
+      expect.objectContaining({ lifecycleStatus: 'DRAFTING' }),
+      'NEW',
+      undefined,
+    );
   });
 
   it('claims the lead only after confirming the New status', async () => {

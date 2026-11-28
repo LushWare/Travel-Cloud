@@ -41,8 +41,8 @@ vi.mock('../../features/lead-management/components/FilterDialog', () => ({ defau
 vi.mock('../../features/lead-management/components/SettingsDialog', () => ({ default: () => null }));
 vi.mock('../../features/lead-management/components/StatusChangeDialog', () => ({ default: () => null }));
 vi.mock('../../features/lead-management/components/ActiveSalesRepsDialog', () => ({ default: () => null }));
-vi.mock('../../features/lead-management/components/LeadDetailPane', () => ({
-  default: ({ lead }) => <div data-testid="lead-detail">{lead?.id || lead?._id || 'empty'}</div>,
+vi.mock('../../features/lead-management/components/LeadDetailsDialog', () => ({
+  default: ({ lead }) => (lead ? <div data-testid="lead-detail">{lead.id || lead._id}</div> : null),
 }));
 vi.mock('../../features/lead-management/components/LeadSectionView', () => ({ default: () => null }));
 vi.mock('../../features/lead-management/components/quotation/QuotationModal', () => ({ default: () => null }));

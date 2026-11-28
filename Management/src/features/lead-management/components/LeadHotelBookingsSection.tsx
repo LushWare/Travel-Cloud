@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Building2, Loader2, AlertCircle, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
+import { Building2, Loader2, AlertCircle, ChevronDown, ChevronUp, ExternalLink, Search } from 'lucide-react';
 import { getCountryCodeFromDestination, getMappedCityFromDestination } from '@/features/itinerary/utils/destinationMapping';
+import HotelSelectionModal from '../../shared/components/HotelSelectionModal';
 import HotelService from '../../../services/hotel.service';
 import { deriveItemState, ITEM_STATE_LABELS, ITEM_STATE_COLORS } from '../utils/bookingState';
 import { Button } from '@/components/ui/button';
@@ -61,6 +62,7 @@ interface LeadHotelBookingsSectionProps {
   destination?: string;
   country?: string;
   travelers?: number;
+  onUpdateDays?: (updates: Array<{ dayNumber: number; accommodation: any }>) => void;
 }
 
 export default function LeadHotelBookingsSection({
@@ -72,12 +74,14 @@ export default function LeadHotelBookingsSection({
   destination = '',
   country = '',
   travelers = 1,
+  onUpdateDays,
 }: LeadHotelBookingsSectionProps) {
   const [bookings, setBookings] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [expanded, setExpanded] = useState(true);
+  const [hotelSelectionTarget, setHotelSelectionTarget] = useState<{ startDay: any; endDay: any } | null>(null);
 
   const fetchBookings = async () => {
     if (!leadId) return;
@@ -139,14 +143,48 @@ export default function LeadHotelBookingsSection({
     `/hotels?tab=bookings&ids=${encodeURIComponent(bookingId)}&bookingId=${encodeURIComponent(bookingId)}&focus=recommendation`;
 
   const hotelStays = groupHotelStays(itineraryDays);
+  const hotelFreeDays = itineraryDays.filter((day) => !day?.accommodation?.name);
+  const countryHint = [country, destination].filter(Boolean).join(', ');
+  const countryCode = /^[A-Z]{2}$/i.test(country)
+    ? country.toUpperCase()
+    : getCountryCodeFromDestination(countryHint) || '';
+  const dateAtDay = (dayNumber: number) => {
+    if (!travelDate) return '';
+    const date = new Date(`${travelDate.slice(0, 10)}T00:00:00.000Z`);
+    date.setUTCDate(date.getUTCDate() + dayNumber - 1);
+    return date.toISOString().slice(0, 10);
+  };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-8 text-muted-foreground">
-        <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading hotel bookings...
-      </div>
-    );
-  }
+  const selectHotelForStay = (target: { startDay: any; endDay: any }, hotel: any) => {
+    const rate = hotel.cheapestRate || {};
+    const rateTotal = Number(rate.totalAmount ?? hotel.totalAmount);
+    const nights = Math.max(1, target.endDay.dayNumber - target.startDay.dayNumber + 1);
+    const accommodationForDay = (day: any) => ({
+      ...(day.accommodation || {}),
+      name: hotel.name,
+      address: hotel.address || '',
+      contactNumber: hotel.contactNumber || '',
+      rating: hotel.starRating ?? hotel.rating ?? day.accommodation?.rating ?? '',
+      type: day.accommodation?.type || 'hotel',
+      hotelId: hotel.hotelId || hotel.id || null,
+      hotelImage: hotel.images?.[0] || hotel.hotelImage || null,
+      roomType: rate.roomType || hotel.roomType || null,
+      boardType: rate.boardType || hotel.boardType || null,
+      totalAmount: Number.isFinite(rateTotal) && rateTotal > 0 ? rateTotal / nights : null,
+      currency: rate.currency || hotel.currency || null,
+      refundable: rate.refundable ?? hotel.refundable ?? null,
+      // The rate was searched for this whole party (all its rooms), so the
+      // quote charges it once — never again per traveller or per room.
+      priceCovers: 'PARTY',
+      guests: Math.max(1, travelers),
+    });
+
+    const updates = itineraryDays
+      .filter((day) => day.dayNumber >= target.startDay.dayNumber && day.dayNumber <= target.endDay.dayNumber)
+      .map((day) => ({ dayNumber: day.dayNumber, accommodation: accommodationForDay(day) }));
+    onUpdateDays?.(updates);
+    setHotelSelectionTarget(null);
+  };
 
   return (
     <div className="space-y-4">
@@ -172,6 +210,11 @@ export default function LeadHotelBookingsSection({
               <AlertCircle className="w-4 h-4" />
               {error}
               <button onClick={fetchBookings} className="ml-auto text-destructive font-medium hover:underline">Retry</button>
+            </div>
+          )}
+          {loading && (
+            <div role="status" className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" /> Loading saved booking details...
             </div>
           )}
 
@@ -202,10 +245,20 @@ export default function LeadHotelBookingsSection({
                         <span className={`px-1.5 py-0.5 text-xs rounded-full border ${stateColor}`}>
                           {stateLabel}
                         </span>
+                        {(() => {
+                          // A whole-party rate is only right for the party it was searched for.
+                          const guests = Number(stay.startDay.accommodation?.guests);
+                          const party = Math.max(1, travelers);
+                          return Number.isFinite(guests) && guests > 0 && guests !== party ? (
+                            <span className="px-1.5 py-0.5 text-xs rounded-full border border-warning/40 bg-warning/10 text-warning">
+                              Priced for {guests} guest{guests === 1 ? '' : 's'} — change hotel to re-price for {party}
+                            </span>
+                          ) : null;
+                        })()}
                       </div>
                       {itemState === 'PENDING' ? (
-                        <Button type="button" disabled variant="secondary" size="sm">
-                          <Building2 className="w-3.5 h-3.5" /> Select Hotel
+                        <Button type="button" variant="outline" size="sm" onClick={() => setHotelSelectionTarget(stay)}>
+                          <Search className="w-3.5 h-3.5" /> Change Hotel
                         </Button>
                       ) : itemState === 'READY_TO_BOOK' ? (
                         <a
@@ -283,12 +336,37 @@ export default function LeadHotelBookingsSection({
             <div className="text-center py-6 text-muted-foreground">
               <Building2 className="w-8 h-8 mx-auto mb-2 opacity-50" />
               <p className="text-sm">No hotels in this itinerary</p>
-              <p className="text-xs mt-1">Add hotel details to the itinerary to start a booking</p>
+            </div>
+          )}
+          {hotelFreeDays.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2">
+              {hotelFreeDays.map((day) => (
+                <Button
+                  key={day.dayNumber}
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setHotelSelectionTarget({ startDay: day, endDay: day })}
+                >
+                  <Search className="w-3.5 h-3.5" /> Add hotel to Day {day.dayNumber}
+                </Button>
+              ))}
             </div>
           )}
         </div>
       )}
 
+      <HotelSelectionModal
+        isOpen={Boolean(hotelSelectionTarget)}
+        onClose={() => setHotelSelectionTarget(null)}
+        mode="suggest"
+        destination={destination}
+        country={countryCode}
+        travelers={Math.max(1, Number(travelers) || 1)}
+        initialCheckin={hotelSelectionTarget?.startDay.accommodation?.checkin || dateAtDay(hotelSelectionTarget?.startDay.dayNumber || 1)}
+        initialCheckout={hotelSelectionTarget?.endDay.accommodation?.checkout || dateAtDay((hotelSelectionTarget?.endDay.dayNumber || 1) + 1)}
+        onSelectHotel={(hotel) => hotelSelectionTarget && selectHotelForStay(hotelSelectionTarget, hotel)}
+      />
     </div>
   );
 }

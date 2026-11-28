@@ -1,5 +1,6 @@
+// No built-in prices: meal prices, margins and transport rates come from the
+// agency's Settings (OrganizationSettings.pricingDefaults) or the day itself.
 export const DEFAULTS = {
-  mealCostPerPerson: 15,
   defaultGroupSize: 1,
 };
 

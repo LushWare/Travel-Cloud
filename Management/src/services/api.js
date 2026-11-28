@@ -518,6 +518,14 @@ export const adminAPI = {
     const api = new ApiService();
     return api.put("/admin/settings", data);
   },
+  getPricingDefaults: async () => {
+    const api = new ApiService();
+    return api.get("/admin/pricing-defaults");
+  },
+  repricePackages: async (commit) => {
+    const api = new ApiService();
+    return api.post("/packages/reprice", { commit });
+  },
   getSalesReps: async () => {
     const api = new ApiService();
     // fetch active sales reps, large limit to avoid pagination in UI (backend caps at 100)
@@ -887,6 +895,10 @@ export const hotelAPI = {
 
 // Package API Methods
 export const packageAPI = {
+  getOptions: async () => {
+    const api = new ApiService();
+    return api.get("/packages/options");
+  },
   // Get all packages
   getAll: async (params = {}) => {
     const api = new ApiService();

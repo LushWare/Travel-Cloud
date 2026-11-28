@@ -153,6 +153,46 @@ describe('computeQuote', () => {
     expect(result.sellSubtotal).toBe(270);
   });
 
+  it('adds a lead fixed margin once per traveller, not once per line', () => {
+    const result = computeQuote({
+      lines: [
+        { basis: 'PER_PERSON', estimatedUnit: 330, description: 'Meals' },
+        { basis: 'PER_VEHICLE', estimatedUnit: 65, quantity: 1, description: 'Car' },
+        { basis: 'PER_ROOM', estimatedUnit: 220, quantity: 1, description: 'Room' },
+      ],
+      travelers: 2,
+      marginType: 'FIXED',
+      marginValue: 480,
+    });
+    // cost 660 + 65 + 220 = 945; margin 480 x 2 = 960
+    expect(result.estimatedTotal).toBe(945);
+    expect(result.sellSubtotal).toBe(1905);
+  });
+
+  it('keeps quotation items adding up to the subtotal with a fixed margin', () => {
+    const result = computeQuote({
+      lines: [
+        { basis: 'PER_PERSON', estimatedUnit: 330, description: 'Meals' },
+        { basis: 'PER_ROOM', estimatedUnit: 220, quantity: 1, description: 'Room' },
+      ],
+      travelers: 2,
+      marginType: 'FIXED',
+      marginValue: 100,
+    });
+    const items = result.lines.reduce((sum, l) => sum + l.quotedUnitPrice * l.quantity, 0);
+    expect(items).toBeCloseTo(result.sellSubtotal, 2);
+  });
+
+  it('leaves a line with its own margin alone when the lead margin is fixed', () => {
+    const result = computeQuote({
+      lines: [{ basis: 'FIXED', estimatedUnit: 100, quantity: 1, marginType: 'FIXED', marginValue: 10, description: 'Visa' }],
+      travelers: 2,
+      marginType: 'FIXED',
+      marginValue: 480,
+    });
+    expect(result.sellSubtotal).toBe(110);
+  });
+
   it('uses zero tax when taxRate is omitted', () => {
     const result = computeQuote({
       lines: [{ basis: 'FIXED', estimatedUnit: 100, quantity: 1, description: 'X' }],
@@ -184,6 +224,41 @@ describe('computeQuote', () => {
 });
 
 describe('buildItineraryCostLines', () => {
+  it('charges for as many cars as the Settings seats need', () => {
+    const lines = buildItineraryCostLines({
+      transports: [{ transportMode: 'CAR', pricingModel: 'PER_VEHICLE', unitCost: 50 }],
+      travelers: 5,
+      vehicleSeats: { CAR: 4 },
+    });
+    expect(lines[0]).toMatchObject({ quantity: 2, description: 'Transport 1 (2 vehicles)' });
+  });
+
+  it('fits a group in one car when Settings gives it enough seats', () => {
+    const lines = buildItineraryCostLines({
+      transports: [{ transportMode: 'CAR', pricingModel: 'PER_VEHICLE', unitCost: 50 }],
+      travelers: 4,
+      vehicleSeats: { CAR: 4 },
+    });
+    expect(lines[0].quantity).toBe(1);
+  });
+
+  it('counts rooms with the Settings people per room', () => {
+    const lines = buildItineraryCostLines({ days: [{ accommodation: { totalAmount: 100 } }], travelers: 6, peoplePerRoom: 3 });
+    expect(lines[0].quantity).toBe(2);
+  });
+
+  it('prices the meals line at the separate breakfast, lunch and dinner prices', () => {
+    const lines = buildItineraryCostLines({
+      days: [
+        { breakfastCount: 1, lunchCount: 1, dinnerCount: 1 },
+        { breakfastCount: 1, dinnerCount: 1, dinnerPriceOverride: 40 },
+      ],
+      mealPrices: { breakfast: 8, lunch: 15, dinner: 20 },
+    });
+
+    expect(lines.find((l) => l.category === 'food').estimatedUnit).toBe(91);
+  });
+
   it('maps days, activities, transports and accommodation into AUTO cost lines', () => {
     const lines = buildItineraryCostLines({
       days: [
@@ -196,6 +271,7 @@ describe('buildItineraryCostLines', () => {
       ],
       activities: [{ defaultCost: 50, costOverride: null }],
       transports: [{ pricingModel: 'PER_VEHICLE', unitCost: 300 }],
+      mealPrices: { breakfast: 15, lunch: 15, dinner: 15 },
     });
 
     const food = lines.find((l) => l.category === 'food');
@@ -206,7 +282,8 @@ describe('buildItineraryCostLines', () => {
     expect(food).toMatchObject({ basis: 'PER_PERSON', estimatedUnit: 60, source: 'AUTO' });
     expect(activity).toMatchObject({ basis: 'PER_PERSON', estimatedUnit: 50, source: 'AUTO' });
     expect(transport).toMatchObject({ basis: 'PER_VEHICLE', estimatedUnit: 300, quantity: 1, source: 'AUTO' });
-    expect(accommodation).toMatchObject({ basis: 'PER_PERSON', estimatedUnit: 100, source: 'AUTO' });
+    // One traveller → one room; the room price is never multiplied per person.
+    expect(accommodation).toMatchObject({ basis: 'PER_ROOM', estimatedUnit: 100, quantity: 1, source: 'AUTO' });
     expect(lines.every((l) => l.source === 'AUTO')).toBe(true);
   });
 
@@ -236,6 +313,7 @@ describe('buildItineraryCostLines', () => {
         { breakfastCount: 1, lunchCount: 0, dinnerCount: 1, mealPriceOverride: 50 }, // 2 × 50 = 100
         { breakfastCount: 1, lunchCount: 1, dinnerCount: 1, mealPriceOverride: null }, // 3 × 15 = 45
       ],
+      mealPrices: { breakfast: 15, lunch: 15, dinner: 15 },
     });
     const food = lines.find((l) => l.category === 'food');
     expect(food.estimatedUnit).toBe(145);

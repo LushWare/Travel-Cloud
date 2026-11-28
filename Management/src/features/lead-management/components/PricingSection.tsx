@@ -15,6 +15,8 @@ interface PricingSettings {
   discountType: string;
   discountValue: number;
   serviceChargeRate: number;
+  /** This package's own tax %; '' = use the Settings default rate. */
+  taxRate: number | '';
 }
 
 interface PricingSectionProps {
@@ -29,6 +31,10 @@ interface PricingSectionProps {
 
 const MARGIN_TYPE_LABELS: Record<string, string> = { PERCENTAGE: 'Percentage', FIXED: 'Fixed' };
 const DISCOUNT_TYPE_LABELS: Record<string, string> = { none: 'None', percentage: '%', fixed: 'Fixed' };
+/** A saved tax rate as the input shows it: '' when the package follows Settings. */
+const toTaxInput = (value: unknown): number | '' =>
+  value === null || value === undefined || value === '' || !Number.isFinite(Number(value)) ? '' : Number(value);
+
 const DEPOSIT_TYPE_LABELS: Record<string, string> = { PERCENTAGE: '%', FIXED: 'Fixed' };
 
 /**
@@ -43,10 +49,11 @@ export default function PricingSection({ leadId, selectionId, days = [], travele
     marginType: pricing.marginType || null,
     marginValue: Number(pricing.marginValue) || 0,
     depositType: pricing.depositType || 'PERCENTAGE',
-    depositValue: Number(pricing.depositValue) || 30,
+    depositValue: Number(pricing.depositValue) || 0,
     discountType: pricing.discountType || 'none',
     discountValue: Number(pricing.discountValue) || 0,
     serviceChargeRate: Number(pricing.serviceChargeRate) || 0,
+    taxRate: toTaxInput(pricing.taxRate),
   });
   const [computed, setComputed] = useState<Record<string, any> | null>(null);
   const [loading, setLoading] = useState(false);
@@ -59,10 +66,11 @@ export default function PricingSection({ leadId, selectionId, days = [], travele
         marginType: pricing.marginType || null,
         marginValue: Number(pricing.marginValue) || 0,
         depositType: pricing.depositType || 'PERCENTAGE',
-        depositValue: Number(pricing.depositValue) || 30,
+        depositValue: Number(pricing.depositValue) || 0,
         discountType: pricing.discountType || 'none',
         discountValue: Number(pricing.discountValue) || 0,
         serviceChargeRate: Number(pricing.serviceChargeRate) || 0,
+        taxRate: toTaxInput(pricing.taxRate),
       });
     }
   }, [pricing]);
@@ -93,6 +101,7 @@ export default function PricingSection({ leadId, selectionId, days = [], travele
           serviceChargeRate: Number(settings.serviceChargeRate) || 0,
           depositType: settings.depositType,
           depositValue: Number(settings.depositValue) || 0,
+          taxRate: settings.taxRate === '' ? null : Number(settings.taxRate),
         };
         const res = leadId && selectionId
           ? await leadAPI.calculateSelectionPricing(leadId, selectionId, payload)
@@ -150,12 +159,18 @@ export default function PricingSection({ leadId, selectionId, days = [], travele
           </div>
         </div>
         <div>
+          <label className={labelCls} htmlFor="pricing-tax-rate">Tax %</label>
+          <Input id="pricing-tax-rate" type="number" min="0" max="100" step="0.01" value={settings.taxRate}
+            placeholder={computed ? `Settings: ${Number(computed.taxRate) || 0}%` : 'Settings rate'}
+            onChange={(e) => updateSettings({ taxRate: e.target.value === '' ? '' : Number(e.target.value) })} />
+        </div>
+        <div>
           <label className={labelCls}>Service charge %</label>
           <Input type="number" min="0" step="0.01" value={settings.serviceChargeRate}
             onChange={(e) => updateSettings({ serviceChargeRate: Number(e.target.value) })} />
         </div>
         <div>
-          <label className={labelCls}>Deposit</label>
+          <label className={labelCls}>Deposit/Advance</label>
           <div className="flex gap-1">
             <Select value={settings.depositType} onValueChange={(value) => updateSettings({ depositType: String(value) })}>
               <SelectTrigger className="w-full">
@@ -185,7 +200,7 @@ export default function PricingSection({ leadId, selectionId, days = [], travele
           {Number(computed.discountAmount) > 0 && (
             <div className="flex justify-between"><span className="text-muted-foreground">Discount:</span><span className="font-medium text-destructive">−{money(computed.discountAmount)}</span></div>
           )}
-          <div className="flex justify-between"><span className="text-muted-foreground">Tax (18%):</span><span className="font-medium">{money(computed.taxAmount)}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Tax ({Number(computed.taxRate) || 0}%):</span><span className="font-medium">{money(computed.taxAmount)}</span></div>
           {Number(computed.serviceChargeAmount) > 0 && (
             <div className="flex justify-between"><span className="text-muted-foreground">Service charge:</span><span className="font-medium">{money(computed.serviceChargeAmount)}</span></div>
           )}
@@ -193,7 +208,7 @@ export default function PricingSection({ leadId, selectionId, days = [], travele
             <span className="text-foreground font-semibold">Total:</span>
             <span className="font-semibold text-primary">{money(computed.totalAmount)}</span>
           </div>
-          <div className="flex justify-between"><span className="text-muted-foreground">Deposit plan:</span><span className="font-medium text-warning">{money(computed.depositAmount)}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Deposit/Advance:</span><span className="font-medium text-warning">{money(computed.depositAmount)}</span></div>
           {computed.paidAmount != null && (
             <div className="flex justify-between"><span className="text-muted-foreground">Paid / Balance:</span><span className="font-medium">{money(computed.paidAmount)} / {money(computed.balanceDue)}</span></div>
           )}

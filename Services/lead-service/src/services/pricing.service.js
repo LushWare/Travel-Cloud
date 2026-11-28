@@ -35,7 +35,7 @@ export function computePricing({
   discountValue = 0,
   serviceChargeRate = 0,
   verifiedPaymentTotal = 0,
-  taxRate = PRICING.TAX_RATE,
+  taxRate = 0,
 } = {}) {
   const quote = computeQuote({
     lines,
@@ -61,6 +61,8 @@ export function computePricing({
 
   return {
     ...quote,
+    // The rate the tax line was computed at, so labels show the real figure.
+    taxRate: Number(taxRate) || 0,
     depositAmount,
     paidAmount,
     balanceDue,

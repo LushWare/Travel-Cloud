@@ -5,13 +5,12 @@ import { createLeadSchema, updateLeadSchema, logCommunicationSchema, whatsappRep
 import { sendWhatsappText } from '../services/notification.client.js';
 import {
   validateTransition,
-  validateTravelerUpdate,
-  validateTravelDatesUpdate,
 } from '../services/state-machine.service.js';
 import { gatekeeperInputs, loadPrimarySelection } from '../services/gatekeeper.service.js';
 import { normalizePhone, phoneMatchWhere } from '../utils/phone.js';
 import { handleLeadEvent } from '../services/lead-events.service.js';
-import { serializeLeadDays } from '../services/lead-itinerary.service.js';
+import { serializeLeadDays, repriceSelectionsForTravelers } from '../services/lead-itinerary.service.js';
+import { withQuoteTotals } from '../services/lead-selection.service.js';
 
 // ─── Auto-assignment helper ────────────────────────────────────
 // Must run inside the same transaction as the lead create it feeds, so the
@@ -221,7 +220,7 @@ export const getLeads = asyncHandler(async (req, res) => {
     prisma.lead.count({ where }),
   ]);
 
-  res.json({ success: true, data: leads, pagination: { total, page: parseInt(page), limit: parseInt(limit), pages: Math.ceil(total / parseInt(limit)) } });
+  res.json({ success: true, data: await withQuoteTotals(leads), pagination: { total, page: parseInt(page), limit: parseInt(limit), pages: Math.ceil(total / parseInt(limit)) } });
 });
 
 export const getLead = asyncHandler(async (req, res) => {
@@ -268,7 +267,8 @@ export const getLead = asyncHandler(async (req, res) => {
     isMaterialized: selection.itineraryDays.length > 0 || Boolean(selection.pricing),
   }));
 
-  res.json({ success: true, data: { ...lead, packageSelections } });
+  const [withTotal] = await withQuoteTotals([lead]);
+  res.json({ success: true, data: { ...lead, packageSelections, quoteTotal: withTotal.quoteTotal } });
 });
 
 export const updateLead = asyncHandler(async (req, res) => {
@@ -292,48 +292,13 @@ export const updateLead = asyncHandler(async (req, res) => {
   }
   const validatedBody = parsed.data;
 
-  // Traveler count and travel dates are locked once quoted — both shape the
-  // itinerary/pricing the same way, so they share one window. Package
-  // identity itself no longer changes via this endpoint (see /:id/packages).
-  if (validatedBody.numberOfTravelers !== undefined) {
-    validateTravelerUpdate({
-      currentStatus: lead.lifecycleStatus,
-      previousTravelers: lead.numberOfTravelers,
-      nextTravelers: validatedBody.numberOfTravelers,
-    });
-  }
-  if (validatedBody.travelDate !== undefined || validatedBody.endDate !== undefined) {
-    validateTravelDatesUpdate({
-      currentStatus: lead.lifecycleStatus,
-      previousTravelDate: lead.travelDate,
-      nextTravelDate: validatedBody.travelDate,
-      previousEndDate: lead.endDate,
-      nextEndDate: validatedBody.endDate,
-    });
-  }
-
   // Lifecycle transitions (except QUOTED — that's only reachable through a
   // specific selection's quote endpoint, since quoting now targets one
   // package at a time).
   const statusHistoryCreate = [];
   if (validatedBody.lifecycleStatus && validatedBody.lifecycleStatus !== lead.lifecycleStatus) {
-    if (validatedBody.lifecycleStatus === 'QUOTED') {
-      throw new AppError('Use POST /:id/packages/:selectionId/quote to quote a specific package', 400);
-    }
-    const primarySelection = await loadPrimarySelection(lead);
-    try {
-      validateTransition({
-        currentStatus: lead.lifecycleStatus,
-        nextStatus: validatedBody.lifecycleStatus,
-        pricing: gatekeeperInputs(primarySelection?.pricing, primarySelection?.costLines),
-        lostReason: validatedBody.lostReason || lead.lostReason,
-      });
-    } catch (err) {
-      // State-machine gatekeeper failures are client errors (e.g. CLOSED_LOST
-      // without a lostReason) — the error carries its own 400 and marks itself as
-      // safe to show. Anything else is reported generically, never echoed.
-      if (err.isOperational) throw err;
-      throw new AppError("We couldn't update this lead's status. Please try again.", 400);
+    if (validatedBody.lifecycleStatus === 'CLOSED_LOST' && !(validatedBody.lostReason || lead.lostReason)?.trim()) {
+      throw new AppError('Cannot set lifecycleStatus to CLOSED_LOST without a lostReason', 400);
     }
     statusHistoryCreate.push({
       status: validatedBody.lifecycleStatus,
@@ -387,7 +352,21 @@ export const updateLead = asyncHandler(async (req, res) => {
     include: { remarks: true, statusHistory: { orderBy: { changedAt: 'desc' } } },
   });
 
-  res.json({ success: true, data: updated });
+  // A different party size changes per-person totals, room counts and vehicle
+  // counts — re-price the saved packages so the quote matches the new party.
+  // The lead update itself has already committed, so a pricing failure is
+  // logged and reported, never turned into a failed request.
+  let repricing;
+  if (updateData.numberOfTravelers != null && updateData.numberOfTravelers !== lead.numberOfTravelers) {
+    try {
+      repricing = { ok: true, ...(await repriceSelectionsForTravelers(lead.id)) };
+    } catch (err) {
+      req.log?.error({ err, leadId: lead.id }, 'Re-pricing after a traveller-count change failed');
+      repricing = { ok: false };
+    }
+  }
+
+  res.json({ success: true, data: updated, ...(repricing && { repricing }) });
 });
 
 export const deleteLead = asyncHandler(async (req, res) => {
@@ -587,7 +566,7 @@ export const searchLeads = asyncHandler(async (req, res) => {
   }
 
   const leads = await prisma.lead.findMany({ where, take: 20, include: { remarks: { orderBy: { date: 'desc' } } } });
-  res.json({ success: true, count: leads.length, data: leads });
+  res.json({ success: true, count: leads.length, data: await withQuoteTotals(leads) });
 });
 
 export const downloadLeadItineraryPDF = asyncHandler(async (req, res) => {

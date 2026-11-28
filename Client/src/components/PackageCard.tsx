@@ -3,6 +3,7 @@ import { MapPin, Plane, Hotel, Car, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { formatCurrency } from '../lib/currency';
 import { fetchPackageById } from '../services/api/packages';
+import { PRICE_BASIS_SHORT } from '../utils/priceBasis';
 
 interface PackageCardProps {
   id: string;
@@ -70,7 +71,7 @@ const PackageCard: React.FC<PackageCardProps> = ({
 
         <div className="mt-auto flex flex-wrap gap-2 items-center justify-between border-t border-gray-100 pt-4">
           <div className="text-sm text-gray-500">
-            From <span className="text-lg font-bold text-slate-800">{formatCurrency(price)}</span> /person
+            From <span className="text-lg font-bold text-slate-800">{formatCurrency(price)}</span> {PRICE_BASIS_SHORT}
           </div>
           <button className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center text-emerald-700 hover:bg-emerald-50 hover:border-emerald-100 transition-colors group/btn">
             <ArrowRight className="w-4 h-4 group-hover/btn:translate-x-0.5 transition-transform" />

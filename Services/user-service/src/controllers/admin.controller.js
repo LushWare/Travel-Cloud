@@ -187,6 +187,12 @@ export const getInternalOrganizationSettings = asyncHandler(async (req, res) => 
   res.json({ status: 'success', data: { settings } });
 });
 
+// Staff building packages and quotes need the starting costs; customers never do.
+export const getPricingDefaults = asyncHandler(async (req, res) => {
+  const { pricingDefaults, defaultCurrency } = await getOrCreateSingleton();
+  res.json({ status: 'success', data: { pricingDefaults: pricingDefaults || {}, currency: defaultCurrency } });
+});
+
 // Any logged-in Management user (not just admin/superAdmin) — the sidebar
 // shows the company name/logo to every role, and salesRep needs the invoice
 // payment terms/instructions defaults to prefill the invoice dialog. Narrow,

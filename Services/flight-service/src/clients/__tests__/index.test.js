@@ -11,11 +11,11 @@ describe('createFlightClient', () => {
     process.env = { ...originalEnv };
   });
 
-  it('should return MockFlightClient by default (no env vars set)', () => {
+  it('refuses to search with made-up fares when no provider is configured', () => {
     delete process.env.DUFFEL_ACCESS_TOKEN;
     delete process.env.TRAVELPORT_MOCK_MODE;
-    const client = createFlightClient();
-    expect(client).toBeInstanceOf(MockFlightClient);
+    delete process.env.FLIGHT_PROVIDER;
+    expect(() => createFlightClient()).toThrow('Flight search is not configured');
   });
 
   it('should return MockFlightClient when TRAVELPORT_MOCK_MODE is true', () => {

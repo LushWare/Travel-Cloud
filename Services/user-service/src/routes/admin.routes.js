@@ -5,7 +5,7 @@ import {
   updateUser, deleteUser, updateAdminPermissions, getAdminPermissions,
   getAvailablePermissions, promoteSuperAdmin, demoteSuperAdmin, getSuperAdminInfo,
   listSuperAdmins, createStaff, getSettings, updateSettings, getInternalOrganizationSettings,
-  getOrganizationBranding,
+  getOrganizationBranding, getPricingDefaults,
 } from '../controllers/admin.controller.js';
 import {
   getPolicyDocuments, getPolicyDocument, postPolicyDocument, putPolicyDocument,
@@ -40,6 +40,7 @@ router.get('/internal/policy-documents', (req, res, next) => {
 // Any logged-in Management user — see getOrganizationBranding for why this
 // isn't behind the admin/superAdmin gate below.
 router.get('/organization-branding', requireAuth, getOrganizationBranding);
+router.get('/pricing-defaults', requireAuth, authorize('admin', 'superAdmin', 'salesRep'), getPricingDefaults);
 
 router.use(requireAuth, authorize('admin', 'superAdmin'));
 

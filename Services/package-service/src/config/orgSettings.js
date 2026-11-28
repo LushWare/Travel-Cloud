@@ -1,4 +1,5 @@
 import { cloudRunAuthHeader } from '../services/cloudRunAuth.js';
+import AppError from '../utils/appError.js';
 // Local, trimmed copy of billing-service's org-settings client
 // (Services/billing-service/src/config/orgSettings.js) — package-service only
 // needs the identity/branding fields the package PDF's header, footer and
@@ -28,6 +29,7 @@ const FALLBACK = {
 };
 
 let cache = null; // { value, expiresAt }
+let pricingCache = null; // { value, expiresAt }
 
 async function fetchFromUserService(fetchImpl) {
   const res = await fetchImpl(`${USER_SERVICE_URL}/api/v1/admin/internal/organization-settings`, {
@@ -70,7 +72,30 @@ export async function getOrgSettings({ fetchImpl = fetch } = {}) {
   }
 }
 
+export const PRICING_SETTINGS_UNAVAILABLE = 'Pricing settings could not be loaded. Please try again in a moment.';
+
+/**
+ * The agency's Settings pricing ({} when none saved yet). Prices are never
+ * invented: when user-service can't be reached and nothing was read recently,
+ * this throws (503) instead. `fresh` skips the cache — a reprice right after
+ * an admin edit must see it.
+ */
+export async function getPricingDefaults({ fetchImpl = fetch, fresh = false } = {}) {
+  const now = Date.now();
+  if (!fresh && pricingCache && pricingCache.expiresAt > now) return pricingCache.value;
+  try {
+    const settings = await fetchFromUserService(fetchImpl);
+    const value = settings?.pricingDefaults && typeof settings.pricingDefaults === 'object' ? settings.pricingDefaults : {};
+    pricingCache = { value, expiresAt: now + CACHE_TTL_MS };
+    return value;
+  } catch {
+    if (pricingCache && !fresh) return pricingCache.value;
+    throw new AppError(PRICING_SETTINGS_UNAVAILABLE, 503);
+  }
+}
+
 /** Test-only: clear the module-level cache between test cases. */
 export function _resetCache() {
   cache = null;
+  pricingCache = null;
 }

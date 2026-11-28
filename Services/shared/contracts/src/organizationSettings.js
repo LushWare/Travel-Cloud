@@ -13,6 +13,38 @@ const docNumberPrefixesShape = {
   voucher: z.string().max(10).optional(),
 };
 
+const price = z.coerce.number().min(0).max(1_000_000);
+
+export const TRANSPORT_RATE_MODES = ['CAR', 'VAN', 'BUS', 'TRAIN', 'BOAT'];
+
+// Starting costs for package/lead pricing; every one is still editable per day or per package.
+export const PricingDefaults = z
+  .object({
+    mealPrices: z.object({ breakfast: price, lunch: price, dinner: price }).strict(),
+    // Both values are kept, so switching the type never turns 20% into $20.
+    margin: z.object({
+      type: z.enum(['PERCENTAGE', 'FIXED']),
+      percentage: z.coerce.number().min(0).max(1000),
+      fixed: price,
+    }).strict(),
+    // One rate per pricing model; `pricingModel` is the one a new row starts with.
+    transportRates: z.object(Object.fromEntries(TRANSPORT_RATE_MODES.map((mode) => [
+      mode,
+      z.object({
+        pricingModel: z.enum(['PER_VEHICLE', 'PER_KM', 'PER_PERSON']),
+        PER_VEHICLE: price.optional(),
+        PER_KM: price.optional(),
+        PER_PERSON: price.optional(),
+        // Passengers one vehicle carries; a bigger group is charged for more vehicles.
+        seats: z.coerce.number().int().min(1).max(500).optional(),
+      }).strict(),
+    ]))).partial().strict(),
+    // Travellers sharing one room when a lead's rooms are counted.
+    peoplePerRoom: z.coerce.number().int().min(1).max(10),
+  })
+  .partial()
+  .strict();
+
 // Full singleton row as returned by GET /admin/settings and the internal
 // user-service → billing-service endpoint. .passthrough() so id/createdAt/
 // updatedAt/updatedById don't need to be re-declared field-by-field here.
@@ -97,6 +129,7 @@ export const OrganizationSettingsUpdate = z
     ratingTagline: z.string().nullable().optional(),
     paymentMethods: z.array(z.string()).optional(),
     docNumberPrefixes: z.object(docNumberPrefixesShape).partial().nullable().optional(),
+    pricingDefaults: PricingDefaults.nullable().optional(),
 
     bankName: z.string().nullable().optional(),
     bankAccountName: z.string().nullable().optional(),

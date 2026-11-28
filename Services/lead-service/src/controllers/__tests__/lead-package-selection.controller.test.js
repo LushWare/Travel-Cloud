@@ -28,6 +28,7 @@ const {
   mockRecomputeSelectionPricing,
   mockSnapshotSelectionQuotation,
   mockSendVoiceQuotation,
+  mockRepriceSelection,
   mockSyncLeadBudgetFromSelection,
   mockApplyLeadSelectionItinerary,
   mockSerializeLeadDays,
@@ -62,6 +63,7 @@ const {
   mockRecomputeSelectionPricing: vi.fn(),
   mockSnapshotSelectionQuotation: vi.fn(),
   mockSendVoiceQuotation: vi.fn(),
+  mockRepriceSelection: vi.fn().mockResolvedValue(false),
   mockSyncLeadBudgetFromSelection: vi.fn(),
   mockApplyLeadSelectionItinerary: vi.fn(),
   mockSerializeLeadDays: vi.fn(),
@@ -99,19 +101,25 @@ vi.mock('../../services/lead-selection.service.js', () => ({
   recomputeSelectionPricing: mockRecomputeSelectionPricing,
   snapshotSelectionQuotation: mockSnapshotSelectionQuotation,
   sendVoiceQuotation: mockSendVoiceQuotation,
-  syncLeadBudgetFromSelection: mockSyncLeadBudgetFromSelection,
+  repriceSelection: mockRepriceSelection,
 }));
 
 vi.mock('../../services/lead-itinerary.service.js', () => ({
   applyLeadSelectionItinerary: mockApplyLeadSelectionItinerary,
   serializeLeadDays: mockSerializeLeadDays,
   buildAutoCostLines: mockBuildAutoCostLines,
+  flatPackageLine: (blueprint) => ({
+    category: 'package', description: blueprint.title || 'Package price', basis: 'PER_PERSON', quantity: 1,
+    estimatedUnitPrice: Number(blueprint.basePrice), actualUnitPrice: null, marginType: null, marginValue: null,
+    source: 'AUTO', orderIndex: 0,
+  }),
   EDIT_BLOCKED_STATUSES: ['QUOTED', 'APPROVED', 'BOOKING_IN_PROGRESS', 'CONFIRMED', 'BOOKING_FAILED', 'CLOSED_LOST', 'CANCELLED'],
 }));
 
 vi.mock('../../services/state-machine.service.js', () => ({ validateTransition: mockValidateTransition }));
 vi.mock('../../services/gatekeeper.service.js', () => ({ gatekeeperInputs: mockGatekeeperInputs }));
 
+import { getLinePricing } from '../../config/pricingDefaults.js';
 import {
   listPackageSelections,
   createPackageSelection,
@@ -140,9 +148,10 @@ const resetAll = () => {
     mockCostLineDeleteMany, mockCostLineCreateMany, mockPricingUpdate, mockTransaction, mockFetchPackage,
     mockDeriveSelectionView, mockToEditorDays, mockIsSelectionMaterialized, mockMaterializeSelection,
     mockRefreshSelection, mockRecomputeSelectionPricing, mockSnapshotSelectionQuotation, mockApplyLeadSelectionItinerary,
-    mockSendVoiceQuotation,
+    mockSendVoiceQuotation, mockRepriceSelection,
     mockSerializeLeadDays, mockBuildAutoCostLines, mockValidateTransition, mockGatekeeperInputs,
   ]) m.mockReset();
+  mockRepriceSelection.mockResolvedValue(false);
   mockTransaction.mockImplementation(async (ops) => Promise.all(ops));
 };
 
@@ -171,6 +180,46 @@ describe('listPackageSelections', () => {
     const [{ data }] = res.json.mock.calls[0];
     expect(data[0].isMaterialized).toBe(true);
     expect(data[0].itineraryDays).toEqual([{ dayNumber: 1, serialized: true }]);
+  });
+
+  it('reprices a saved package on an open lead with current Settings', async () => {
+    mockLeadFindUnique.mockResolvedValue({ id: 'lead-1', lifecycleStatus: 'DRAFTING' });
+    mockSelectionFindMany.mockResolvedValue([
+      { id: 'sel-1', isManual: false, packageId: 'pkg-1', pricing: { id: 'pr-1' }, itineraryDays: [{ dayNumber: 1 }], costLines: [] },
+    ]);
+    mockSerializeLeadDays.mockReturnValue([{ dayNumber: 1 }]);
+
+    const { req, res, next } = buildReqRes();
+    await listPackageSelections(req, res, next);
+
+    expect(mockRepriceSelection).toHaveBeenCalledWith('sel-1');
+  });
+
+  it('leaves a quoted lead\'s packages at the prices that were quoted', async () => {
+    mockLeadFindUnique.mockResolvedValue({ id: 'lead-1', lifecycleStatus: 'QUOTED' });
+    mockSelectionFindMany.mockResolvedValue([
+      { id: 'sel-1', isManual: false, packageId: 'pkg-1', pricing: { id: 'pr-1' }, itineraryDays: [{ dayNumber: 1 }], costLines: [] },
+    ]);
+    mockSerializeLeadDays.mockReturnValue([{ dayNumber: 1 }]);
+
+    const { req, res, next } = buildReqRes();
+    await listPackageSelections(req, res, next);
+
+    expect(mockRepriceSelection).not.toHaveBeenCalled();
+  });
+
+  it('reloads the packages after a reprice so the response shows the new prices', async () => {
+    mockLeadFindUnique.mockResolvedValue({ id: 'lead-1', lifecycleStatus: 'NEW' });
+    mockSelectionFindMany.mockResolvedValue([
+      { id: 'sel-1', isManual: false, packageId: 'pkg-1', pricing: { id: 'pr-1' }, itineraryDays: [{ dayNumber: 1 }], costLines: [] },
+    ]);
+    mockSerializeLeadDays.mockReturnValue([{ dayNumber: 1 }]);
+    mockRepriceSelection.mockResolvedValueOnce(true);
+
+    const { req, res, next } = buildReqRes();
+    await listPackageSelections(req, res, next);
+
+    expect(mockSelectionFindMany).toHaveBeenCalledTimes(2);
   });
 
   it('derives a pristine selection from the live package instead', async () => {
@@ -211,8 +260,8 @@ describe('listPackageSelections', () => {
     expect(next).not.toHaveBeenCalled();
     const [{ data }] = res.json.mock.calls[0];
     // PER_PERSON line scales with the lead's 2 travelers: 100 * 2 = 200 sell
-    // subtotal, plus the default 18% tax → 236 total.
-    expect(data[0].pricing).toEqual(expect.objectContaining({ sellSubtotal: 200, taxAmount: 36, totalAmount: 236, currency: 'USD' }));
+    // subtotal, plus the Settings tax (none set) → 200 total.
+    expect(data[0].pricing).toEqual(expect.objectContaining({ sellSubtotal: 200, taxAmount: 0, totalAmount: 200, currency: 'USD' }));
   });
 
   it('degrades gracefully when package-service is unreachable for one selection', async () => {
@@ -611,6 +660,42 @@ describe('calculateSelectionPricing', () => {
     expect(next).not.toHaveBeenCalled();
     const [{ data }] = res.json.mock.calls[0];
     expect(data.financials.sellSubtotal).toBe(500);
+  });
+
+  it('charges a flat package price once per traveller', async () => {
+    mockSelectionFindUnique.mockResolvedValue({ id: 'sel-1', leadId: 'lead-1', packageId: 'pkg-1' });
+    mockBuildAutoCostLines.mockReturnValue([]);
+    mockCostLineFindMany.mockResolvedValue([]);
+    mockFetchPackage.mockResolvedValue({ id: 'pkg-1', title: 'Weekend Getaway', basePrice: 500 });
+
+    const { req, res } = buildReqRes({ body: { days: [], travelers: 4 } });
+    await calculateSelectionPricing(req, res, vi.fn());
+
+    expect(res.json.mock.calls[0][0].data.financials.sellSubtotal).toBe(2000);
+  });
+
+  it('sizes rooms and vehicles for the party being priced', async () => {
+    mockSelectionFindUnique.mockResolvedValue({ id: 'sel-1', leadId: 'lead-1', packageId: 'pkg-1' });
+    mockBuildAutoCostLines.mockReturnValue([]);
+    mockCostLineFindMany.mockResolvedValue([]);
+
+    const { req, res } = buildReqRes({ body: { days: [{ dayNumber: 1 }], travelers: 3 } });
+    await calculateSelectionPricing(req, res, vi.fn());
+
+    expect(mockBuildAutoCostLines).toHaveBeenCalledWith([{ dayNumber: 1 }], 3, {});
+  });
+
+  it('prices the lead with the agency Settings pricing', async () => {
+    const linePricing = { mealPrices: { breakfast: 8, lunch: 15, dinner: 20 }, vehicleSeats: { CAR: 4 }, peoplePerRoom: 2 };
+    getLinePricing.mockResolvedValueOnce(linePricing);
+    mockSelectionFindUnique.mockResolvedValue({ id: 'sel-1', leadId: 'lead-1', packageId: 'pkg-1' });
+    mockBuildAutoCostLines.mockReturnValue([]);
+    mockCostLineFindMany.mockResolvedValue([]);
+
+    const { req, res } = buildReqRes({ body: { days: [{ dayNumber: 1 }], travelers: 2 } });
+    await calculateSelectionPricing(req, res, vi.fn());
+
+    expect(mockBuildAutoCostLines).toHaveBeenCalledWith([{ dayNumber: 1 }], 2, linePricing);
   });
 
   it('does not fetch the package when auto or manual lines already exist', async () => {

@@ -22,6 +22,12 @@ interface TransportRowEditorProps {
   index: number;
 }
 
+const PRICE_LABELS: Record<string, string> = {
+  PER_VEHICLE: 'Price per vehicle',
+  PER_KM: 'Price per km',
+  PER_PERSON: 'Price per person',
+};
+
 const TransportRowEditor = ({ transport, onChange, onRemove, index }: TransportRowEditorProps) => {
   const row = transport || {};
   const isPerKm = row.pricingModel === 'PER_KM';
@@ -69,10 +75,13 @@ const TransportRowEditor = ({ transport, onChange, onRemove, index }: TransportR
           </Select>
         </div>
 
-        {/* Unit cost */}
-        <div className="w-28">
-          <label className="block text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">Unit cost</label>
+        {/* Price for the chosen pricing */}
+        <div className="w-36">
+          <label htmlFor={`transport-${index}-price`} className="block text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">
+            {PRICE_LABELS[row.pricingModel] ?? 'Price'}
+          </label>
           <Input
+            id={`transport-${index}-price`}
             type="number"
             min="0"
             step="0.01"

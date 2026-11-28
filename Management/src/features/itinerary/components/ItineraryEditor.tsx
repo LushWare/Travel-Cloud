@@ -10,7 +10,7 @@ import {
   Coffee, UtensilsCrossed, Moon, Check, Star, Phone, Bed,
   Receipt, Plane,
 } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { uploadItineraryImages } from '../../../services/cloudinaryService';
 import Swal from 'sweetalert2';
 import ActivitySelector from './ActivitySelector';
@@ -21,7 +21,9 @@ import {
   calculateMealCosts,
   calculateActivityCosts,
   calculateTransportCosts,
-  DEFAULTS,
+  dayMealPrices,
+  chargeableMealDays,
+  STANDARD_OCCUPANCY,
 } from '@travel-crm/pricing-engine';
 import {
   getMealCounts,
@@ -37,6 +39,10 @@ import {
   countUnlinkedFlightRows,
 } from '../utils/flightSync';
 import { createDefaultTransportRow } from '@travel-crm/constants';
+import HotelService from '../../../services/hotel.service';
+import { usePricingDefaults, transportRateFor, seatsFor, type MealKey, type PricingDefaults } from '../hooks/usePricingDefaults';
+import { TRANSPORT_MODE_LABELS } from '@travel-crm/constants';
+import { getCountryCodeFromDestination, getMappedCityFromDestination } from '../utils/destinationMapping';
 import { formatCurrency } from '../../../utils/currency.js';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -44,10 +50,210 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 
+const MEAL_FIELDS: Array<{ meal: MealKey; count: string; label: string; price: string }> = [
+  { meal: 'breakfast', count: 'breakfastCount', label: 'Breakfasts', price: 'breakfastPriceOverride' },
+  { meal: 'lunch', count: 'lunchCount', label: 'Lunches', price: 'lunchPriceOverride' },
+  { meal: 'dinner', count: 'dinnerCount', label: 'Dinners', price: 'dinnerPriceOverride' },
+];
+
+/**
+ * A new row, or a row switched to another vehicle or pricing model, takes that Settings rate;
+ * with no Settings rate for the new choice it starts at 0. The rep can still type a cost after.
+ */
+export function withTransportRate(previous: any, next: any, defaults: PricingDefaults) {
+  const modeChanged = !previous || previous.transportMode !== next.transportMode;
+  const rate = transportRateFor(defaults, next.transportMode, modeChanged ? undefined : next.pricingModel);
+  if (rate) return { ...next, ...rate };
+  return previous ? { ...next, unitCost: 0 } : next;
+}
+
+/**
+ * A day's meals after the hotel's meal plan: what is still charged, and which
+ * meals the plan covers (breakfast from last night's hotel, lunch/dinner from tonight's).
+ * Same rule the package price uses.
+ */
+export function dayMealsAfterHotelPlan(days: any[], dayNumber: number) {
+  const list = (days || []).filter(Boolean).map((d: any) => ({ ...getMealCounts(d), dayNumber: d.dayNumber, accommodation: d.accommodation }));
+  return chargeableMealDays(list).find((d: any) => d.dayNumber === dayNumber);
+}
+
+const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`;
+
+/**
+ * Why a transport row costs what it does: the vehicle's seats, and for a lead
+ * the number of vehicles its travellers need. Null when there is nothing to explain.
+ */
+export function transportHint(row: any, defaults: PricingDefaults, travelers?: number) {
+  const mode = row?.transportMode;
+  if (!mode || mode === 'FLIGHT') return null;
+  const label = (TRANSPORT_MODE_LABELS as Record<string, string>)[mode] || mode;
+  const unit = Number(row.unitCost) || 0;
+  const party = Number(travelers) >= 1 ? Math.floor(Number(travelers)) : null;
+  if (row.pricingModel === 'PER_PERSON') {
+    return party ? `Per person · ${plural(party, 'traveller')} × ${formatCurrency(unit)} = ${formatCurrency(unit * party)}` : null;
+  }
+  const seats = seatsFor(defaults, mode);
+  if (!seats) return null;
+  if (!party) return `${label} seats ${seats}`;
+  const vehicles = Math.ceil(party / seats);
+  const vehicleWord = label.toLowerCase();
+  if (row.pricingModel === 'PER_KM') {
+    const km = Number(row.distanceKm) || 0;
+    return `${label} seats ${seats} · ${plural(party, 'traveller')} → ${plural(vehicles, vehicleWord)} × ${km} km × ${formatCurrency(unit)} = ${formatCurrency(unit * km * vehicles)}`;
+  }
+  return `${label} seats ${seats} · ${plural(party, 'traveller')} → ${plural(vehicles, vehicleWord)} × ${formatCurrency(unit)} = ${formatCurrency(unit * vehicles)}`;
+}
+
+/**
+ * A day's transport rows with every unpriced ($0) vehicle row given its Settings rate —
+ * for its own pricing model, else the vehicle's default one. Null when nothing changes.
+ */
+export function fillUnpricedTransports(rows: any[], defaults: PricingDefaults) {
+  let changed = false;
+  const next = rows.map((row) => {
+    if (!row || row.transportMode === 'FLIGHT' || Number(row.unitCost) > 0) return row;
+    const rate = transportRateFor(defaults, row.transportMode, row.pricingModel)
+      ?? transportRateFor(defaults, row.transportMode);
+    if (!rate) return row;
+    changed = true;
+    return { ...row, ...rate, distanceKm: rate.pricingModel === 'PER_KM' ? row.distanceKm ?? null : null };
+  });
+  return changed ? next : null;
+}
+
+/** For a lead: how many rooms its travellers need, unless the hotel price already covers the whole party. */
+export function roomsHint(accommodation: any, defaults: PricingDefaults, travelers?: number) {
+  const party = Number(travelers) >= 1 ? Math.floor(Number(travelers)) : null;
+  if (!party || !accommodation?.name || accommodation.priceCovers === 'PARTY') return null;
+  const rooms = Math.ceil(party / defaults.peoplePerRoom);
+  return `${plural(party, 'traveller')} → ${plural(rooms, 'room')} (${defaults.peoplePerRoom} per room)`;
+}
+
+// Stored price is one twin room for one night — what package pricing charges.
+function toAccommodation(hotel: any, day: any, nights = 1) {
+  const rate = hotel.cheapestRate || {};
+  const stayTotal = Number(rate.totalAmount ?? hotel.totalAmount);
+  const perNight = Number.isFinite(stayTotal) && stayTotal > 0
+    ? Math.round((stayTotal / Math.max(1, Number(nights) || 1)) * 100) / 100
+    : null;
+  return {
+    name: hotel.name,
+    address: hotel.address || '',
+    contactNumber: hotel.contactNumber || hotel.phone || '',
+    rating: hotel.starRating ?? hotel.rating ?? (day?.accommodation?.rating || ''),
+    type: day?.accommodation?.type || 'hotel',
+    hotelId: hotel.hotelId || hotel.id || null,
+    hotelImage: hotel.images?.[0] || hotel.hotelImage || null,
+    roomType: rate.roomType || hotel.roomType || null,
+    boardType: rate.boardType || hotel.boardType || null,
+    totalAmount: perNight,
+    currency: rate.currency || hotel.currency || null,
+    refundable: rate.refundable ?? hotel.refundable ?? null,
+  };
+}
+
+const sampleDate = (daysAhead: number) => {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() + daysAhead);
+  return date.toISOString().slice(0, 10);
+};
+
+let countryListCache: Promise<Array<{ code: string; name: string }>> | null = null;
+const cityListCache = new Map<string, Promise<string[]>>();
+
+async function providerCountryCode(text: string) {
+  if (!text?.trim()) return null;
+  countryListCache ||= HotelService.getCountries()
+    .then((response: any) => (Array.isArray(response?.data) ? response.data : []))
+    .catch(() => { countryListCache = null; return []; });
+  const wanted = text.trim().toLowerCase();
+  const countries = await countryListCache!;
+  return countries.find((c) => c.name?.toLowerCase() === wanted)?.code
+    || countries.find((c) => c.name && wanted.includes(c.name.toLowerCase()))?.code
+    || null;
+}
+const cityHotelCache = new Map<string, Promise<any | null>>();
+
+function providerCities(country: string) {
+  if (!cityListCache.has(country)) {
+    cityListCache.set(country, HotelService.getCities(country)
+      .then((response: any) => (Array.isArray(response?.data) ? response.data : []))
+      .catch(() => { cityListCache.delete(country); return []; }));
+  }
+  return cityListCache.get(country)!;
+}
+
+function matchProviderCity(name: unknown, cities: string[]) {
+  if (typeof name !== 'string' || name.trim().length < 3) return null;
+  const wanted = name.trim().toLowerCase();
+  return cities.find((city) => city.toLowerCase() === wanted)
+    || cities.find((city) => city.length >= 3 && (wanted.includes(city.toLowerCase()) || city.toLowerCase().includes(wanted)))
+    || null;
+}
+
+function bestHotelInCity(city: string, country: string) {
+  const key = `${country}|${city}`;
+  if (!cityHotelCache.has(key)) {
+    cityHotelCache.set(key, HotelService.search({
+      city,
+      country,
+      checkin: sampleDate(30),
+      checkout: sampleDate(31),
+      occupancies: [{ adults: STANDARD_OCCUPANCY, children: [] }],
+      currency: 'USD',
+      guestNationality: country,
+      limit: 30,
+    }).then((response: any) => {
+      const priced = (response?.data || []).filter((h: any) => Number(h.cheapestRate?.totalAmount) > 0);
+      return priced.sort((a: any, b: any) =>
+        (Number(b.rating) || 0) - (Number(a.rating) || 0)
+        || Number(a.cheapestRate.totalAmount) - Number(b.cheapestRate.totalAmount))[0] || null;
+    }).catch(() => { cityHotelCache.delete(key); return null; }));
+  }
+  return cityHotelCache.get(key)!;
+}
+
+/**
+ * Real provider hotels for every day without one: the day's own location
+ * first, then the previous day's hotel, then the package's first hotel,
+ * then the destination's main city.
+ */
+export async function pickHotelsForDays(days: any[], destination: string) {
+  const picks = new Map<number, any>();
+  const sorted = days.filter(Boolean).sort((a, b) => a.dayNumber - b.dayNumber);
+  const country = getCountryCodeFromDestination(destination)
+    || await providerCountryCode(destination)
+    || sorted.flatMap((d) => d.locations || []).map((loc: string) => getCountryCodeFromDestination(loc)).find(Boolean);
+  if (!country) return picks;
+
+  const cities = await providerCities(country);
+  const destinationCity = matchProviderCity(getMappedCityFromDestination(destination, country), cities)
+    || matchProviderCity(destination, cities);
+
+  const dayHotels = await Promise.all(sorted.map(async (day) => {
+    const city = (Array.isArray(day.locations) ? day.locations : [])
+      .map((loc: string) => matchProviderCity(loc, cities))
+      .find(Boolean);
+    return city ? bestHotelInCity(city, country) : null;
+  }));
+
+  const firstFound = dayHotels.find(Boolean)
+    || (destinationCity ? await bestHotelInCity(destinationCity, country) : null);
+
+  let previous: any = null;
+  sorted.forEach((day, index) => {
+    const existing = day.accommodation?.name ? day.accommodation : null;
+    const hotel = dayHotels[index] || previous || firstFound;
+    if (!existing && hotel) picks.set(day.dayNumber, hotel);
+    previous = dayHotels[index] || (existing?.hotelId ? existing : previous) || hotel;
+  });
+  return picks;
+}
+
 // ═══════════════════════════════════════════════════════════════════
 //  Hotel Stay Card — shown when a hotel is selected from the API
 // ═══════════════════════════════════════════════════════════════════
-function HotelStayCard({ accommodation, onSearch, onRemove }: { accommodation: any; onSearch: () => void; onRemove: () => void }) {
+function HotelStayCard({ accommodation, onSearch, onRemove, roomsNote }: { accommodation: any; onSearch: () => void; onRemove: () => void; roomsNote?: string | null }) {
   const [expanded, setExpanded] = useState(false);
   const acc = accommodation || {};
 
@@ -122,6 +328,7 @@ function HotelStayCard({ accommodation, onSearch, onRemove }: { accommodation: a
               </span>
             )}
           </div>
+          {roomsNote && <p className="mt-2 text-xs text-muted-foreground">{roomsNote}</p>}
         </div>
 
         {/* Actions */}
@@ -192,6 +399,27 @@ function getFlightPrice(flight: any) {
   return value == null || value === '' ? null : Number(value);
 }
 
+type DayDetailSection = 'plan' | 'stay' | 'notes' | 'costs';
+
+const DAY_DETAIL_TABS: { id: DayDetailSection; label: string; icon: typeof MapPin }[] = [
+  { id: 'plan', label: 'Plan', icon: MapPin },
+  { id: 'stay', label: 'Flights & stay', icon: Plane },
+  { id: 'notes', label: 'Notes & photos', icon: StickyNote },
+  { id: 'costs', label: 'Costs', icon: Receipt },
+];
+
+function getDayDetailStatus(day: any, section: DayDetailSection) {
+  const locations = Array.isArray(day.locations) ? day.locations : [];
+  const activities = Array.isArray(day.activities) ? day.activities : [];
+  const flights = Array.isArray(day.flights) ? day.flights : [];
+  const images = Array.isArray(day.images) ? day.images : [];
+
+  if (section === 'plan') return `${locations.length} places · ${activities.length} activities`;
+  if (section === 'stay') return `${flights.length} flights · ${day.accommodation?.name ? 'Hotel selected' : 'Hotel not selected'}`;
+  if (section === 'notes') return `${day.notes?.trim() ? 'Notes added' : 'No notes'} · ${images.length} photos`;
+  return 'Meals, activities, transport and hotel';
+}
+
 interface ItineraryEditorProps {
   days?: any[];
   onDayChange: (dayNumber: number, patch: any) => void;
@@ -204,6 +432,11 @@ interface ItineraryEditorProps {
   LocationAutocompleteComponent?: any;
   hideTitleAndDescription?: boolean;
   hideDescription?: boolean;
+  compactDayNavigation?: boolean;
+  /** A lead's party size: shows how many vehicles and rooms it needs. Omitted for packages. */
+  travelers?: number;
+  /** Package editing: give unpriced vehicle rows their Settings rate once the rates load. */
+  fillUnpricedTransport?: boolean;
 }
 
 const MEALS = [
@@ -232,15 +465,35 @@ const ItineraryEditor = ({
   LocationAutocompleteComponent = null,
   hideTitleAndDescription = false,
   hideDescription = false,
+  compactDayNavigation = false,
+  travelers,
+  fillUnpricedTransport = false,
 }: ItineraryEditorProps) => {
   const [uploadingDayImages, setUploadingDayImages] = useState<Record<number, boolean>>({});
   const [currentDayForHotel, setCurrentDayForHotel] = useState<number | null>(null);
   const [currentDayLocations, setCurrentDayLocations] = useState<string[]>([]);
   const [autoFillingHotel, setAutoFillingHotel] = useState(false);
+  const autoFillAttempts = useRef(new Set<string>());
+  const pricingDefaults = usePricingDefaults();
+
+  useEffect(() => {
+    if (!fillUnpricedTransport) return;
+    days.forEach((day) => {
+      if (!day) return;
+      const filled = fillUnpricedTransports(getDayTransports(day), pricingDefaults);
+      if (filled) onDayChange(day.dayNumber, { transports: filled });
+    });
+    // Runs when the Settings rates arrive or the set of days changes; a filled row is no longer $0.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fillUnpricedTransport, pricingDefaults, days.length]);
   const [expandedDays, setExpandedDays] = useState<Record<number, boolean>>(() => {
-    // Initialize all days expanded synchronously — no post-mount flicker
     const init: Record<number, boolean> = {};
-    days.forEach(day => { if (day && day.dayNumber != null) init[day.dayNumber] = true; });
+    const firstDayNumber = days.find((day) => day && day.dayNumber != null)?.dayNumber;
+    days.forEach((day) => {
+      if (day && day.dayNumber != null) {
+        init[day.dayNumber] = !compactDayNavigation || day.dayNumber === firstDayNumber;
+      }
+    });
     return init;
   });
   const [showFlightModal, setShowFlightModal] = useState(false);
@@ -251,6 +504,7 @@ const ItineraryEditor = ({
   const [highlightedFlightSection, setHighlightedFlightSection] = useState<number | null>(null);
   // Cost subsections are collapsed by default — summary chips show totals.
   const [expandedCosts, setExpandedCosts] = useState<Record<number, boolean>>({});
+  const [activeDaySections, setActiveDaySections] = useState<Record<number, DayDetailSection>>({});
 
   const toggleCostsExpand = (dayNumber: number) => {
     setExpandedCosts(prev => ({ ...prev, [dayNumber]: !prev[dayNumber] }));
@@ -269,6 +523,19 @@ const ItineraryEditor = ({
       [field]: num,
       meals: { ...(day.meals || {}), [field.replace('Count', '')]: num > 0 },
     });
+  };
+
+  // Editing one meal price moves an older single day price onto the other meals, so they keep it.
+  const handleMealPriceChange = (day: any, meal: MealKey, value: string) => {
+    const legacy = day.mealPriceOverride === '' || day.mealPriceOverride == null ? null : Number(day.mealPriceOverride);
+    const patch: Record<string, number | null> = { [`${meal}PriceOverride`]: value === '' ? null : (parseFloat(value) || 0) };
+    if (legacy != null) {
+      MEAL_FIELDS.filter((f) => f.meal !== meal).forEach((f) => {
+        patch[f.price] = day[f.price] ?? legacy;
+      });
+      patch.mealPriceOverride = null;
+    }
+    onDayChange(day.dayNumber, patch);
   };
 
   const handleActivityCostChange = (day: any, name: string, field: string, value: string) => {
@@ -292,7 +559,13 @@ const ItineraryEditor = ({
       ? current
       : [createDefaultTransportRow()];
     onDayChange(day.dayNumber, {
-      transports: rows.map((row: any, i: number) => (i === index ? { ...row, ...patch } : row)),
+      transports: rows.map((row: any, i: number) => {
+        if (i !== index) return row;
+        const next = { ...row, ...patch };
+        const switched = (patch.transportMode && patch.transportMode !== row.transportMode)
+          || (patch.pricingModel && patch.pricingModel !== row.pricingModel);
+        return switched ? withTransportRate(row, next, pricingDefaults) : next;
+      }),
     });
   };
 
@@ -301,7 +574,7 @@ const ItineraryEditor = ({
     onDayChange(day.dayNumber, {
       transports: [
         ...current,
-        createDefaultTransportRow(),
+        withTransportRate(null, createDefaultTransportRow(), pricingDefaults),
       ],
     });
   };
@@ -353,9 +626,10 @@ const ItineraryEditor = ({
     const accommodationTotal = getAccommodationTotal(day);
     const isExpanded = Boolean(expandedCosts[day.dayNumber]);
 
-    const mealTotal = calculateMealCosts([mealCounts], {
-      mealCostPerPerson: DEFAULTS.mealCostPerPerson,
-    }).total;
+    const mealsCharged = dayMealsAfterHotelPlan(days, day.dayNumber) ?? { ...mealCounts, includedMeals: {} };
+    const mealTotal = calculateMealCosts([mealsCharged], { mealPrices: pricingDefaults.mealPrices }).total;
+    const coveredByHotel = MEAL_FIELDS.filter((f) => Number(mealsCharged.includedMeals?.[f.meal]) > 0).map((f) => f.meal);
+    const mealPrices = dayMealPrices(mealCounts, pricingDefaults.mealPrices);
     const activityTotal = calculateActivityCosts(activityRows, { groupSize: 1 }).total;
     const transportTotal = calculateTransportCosts(transportRows, { groupSize: 1 }).total;
     const flightTotal = transportRows
@@ -370,8 +644,8 @@ const ItineraryEditor = ({
           className={cn(
             'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border',
             hasValue
-              ? 'bg-success/10 border-success/20 text-success'
-              : 'bg-muted border-border text-muted-foreground'
+              ? 'bg-success/10 border-success/20 text-success dark:bg-success/15 dark:border-success/40'
+              : 'bg-muted border-border text-muted-foreground dark:bg-secondary dark:border-white/15 dark:text-foreground/90'
           )}
         >
           {label}: {hasValue ? formatCurrency(value) : '—'}
@@ -379,79 +653,96 @@ const ItineraryEditor = ({
       );
     };
 
-    const mealUnitCost = mealCounts.mealPriceOverride ?? DEFAULTS.mealCostPerPerson;
-    const mealCountSum = mealCounts.breakfastCount + mealCounts.lunchCount + mealCounts.dinnerCount;
+    const mealSummary = MEAL_FIELDS
+      .filter((f) => Number((mealsCharged as any)[f.count]) > 0)
+      .map((f) => `${(mealsCharged as any)[f.count]} × ${formatCurrency(mealPrices[f.meal], { minimumFractionDigits: Number.isInteger(mealPrices[f.meal]) ? 0 : 2 })}`)
+      .join(' + ');
+    const costSummary = (
+      <div className="flex flex-wrap gap-1.5">
+        {chip('Meals', mealTotal)}
+        {chip('Activities', activityTotal)}
+        {chip('Transport', transportTotal)}
+        {chip('Flight', flightTotal)}
+        {chip('Hotel', accommodationTotal)}
+      </div>
+    );
 
     return (
-      <div className="bg-card rounded-lg border border-success/20 overflow-hidden">
-        {/* Section header / chips row */}
-        <button
-          type="button"
-          onClick={() => toggleCostsExpand(day.dayNumber)}
-          className="w-full px-4 py-3 flex items-center justify-between hover:bg-success/5 transition-colors"
-        >
-          <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-            <Receipt className="w-4 h-4 text-success" />
-            Costs &amp; Pricing
-            <span className="text-xs font-normal text-muted-foreground">
-              ({isExpanded ? 'editing' : 'collapsed'})
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="flex flex-wrap gap-1.5 justify-end">
-              {chip('Meals', mealTotal)}
-              {chip('Activities', activityTotal)}
-              {chip('Transport', transportTotal)}
-              {chip('Flight', flightTotal)}
-              {chip('Hotel', accommodationTotal)}
+      <div className={cn(
+        'bg-card rounded-lg border border-success/20 overflow-hidden',
+        compactDayNavigation && 'dark:bg-secondary/50 dark:border-success/40'
+      )}>
+        {compactDayNavigation ? (
+          <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between dark:bg-secondary/70">
+            <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+              <Receipt className="w-4 h-4 text-success" />
+              Costs &amp; Pricing
             </div>
-            <div className="w-7 h-7 rounded-lg bg-success/10 flex items-center justify-center shrink-0">
-              {isExpanded ? <ChevronUp className="w-4 h-4 text-success" /> : <ChevronDown className="w-4 h-4 text-success" />}
-            </div>
+            {costSummary}
           </div>
-        </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => toggleCostsExpand(day.dayNumber)}
+            className="w-full px-4 py-3 flex items-center justify-between hover:bg-success/5 transition-colors"
+          >
+            <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+              <Receipt className="w-4 h-4 text-success" />
+              Costs &amp; Pricing
+              <span className="text-xs font-normal text-muted-foreground">
+                ({isExpanded ? 'editing' : 'collapsed'})
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              {costSummary}
+              <div className="w-7 h-7 rounded-lg bg-success/10 flex items-center justify-center shrink-0">
+                {isExpanded ? <ChevronUp className="w-4 h-4 text-success" /> : <ChevronDown className="w-4 h-4 text-success" />}
+              </div>
+            </div>
+          </button>
+        )}
 
-        {isExpanded && (
-          <div className="px-4 pb-4 pt-1 border-t border-success/10 space-y-4">
+        {(isExpanded || compactDayNavigation) && (
+          <div className="px-4 pb-4 pt-1 border-t border-success/10 dark:border-success/30 space-y-4">
             {/* ── Meals ───────────────────────────────────────── */}
             <div>
               <label className="flex items-center gap-2 text-xs font-semibold text-foreground mb-2 uppercase tracking-wider">
                 <Utensils className="w-3.5 h-3.5 text-success" /> Meals
               </label>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 items-end">
-                {[
-                  { key: 'breakfastCount', label: 'Breakfasts' },
-                  { key: 'lunchCount', label: 'Lunches' },
-                  { key: 'dinnerCount', label: 'Dinners' },
-                ].map((field) => (
-                  <div key={field.key}>
-                    <label className="block text-xs text-muted-foreground mb-1">{field.label}</label>
-                    <Input
-                      type="number" min="0"
-                      value={mealCounts[field.key as keyof typeof mealCounts]}
-                      onChange={(e) => handleMealCountChange(day, field.key, e.target.value)}
-                      onWheel={(e) => e.currentTarget.blur()}
-                    />
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                {MEAL_FIELDS.map((field) => (
+                  <div key={field.meal} className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label htmlFor={`day-${day.dayNumber}-${field.count}`} className="block text-xs text-muted-foreground mb-1">{field.label}</label>
+                      <Input
+                        id={`day-${day.dayNumber}-${field.count}`}
+                        type="number" min="0"
+                        value={(mealCounts as any)[field.count]}
+                        onChange={(e) => handleMealCountChange(day, field.count, e.target.value)}
+                        onWheel={(e) => e.currentTarget.blur()}
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor={`day-${day.dayNumber}-${field.price}`} className="block text-xs text-muted-foreground mb-1">Price each</label>
+                      <Input
+                        id={`day-${day.dayNumber}-${field.price}`}
+                        type="number" min="0" step="0.01"
+                        value={(mealCounts as any)[field.price] ?? mealCounts.mealPriceOverride ?? ''}
+                        placeholder={pricingDefaults.mealPricesSet ? String(pricingDefaults.mealPrices[field.meal]) : 'Not set'}
+                        onChange={(e) => handleMealPriceChange(day, field.meal, e.target.value)}
+                        onWheel={(e) => e.currentTarget.blur()}
+                      />
+                    </div>
                   </div>
                 ))}
-                <div>
-                  <label className="block text-xs text-muted-foreground mb-1" title="Leaves blank to use the $15/person default">
-                    Cost / meal
-                  </label>
-                  <Input
-                    type="number" min="0" step="0.01"
-                    value={mealCounts.mealPriceOverride ?? ''}
-                    placeholder="15"
-                    onChange={(e) => onDayChange(day.dayNumber, {
-                      mealPriceOverride: e.target.value === '' ? null : (parseFloat(e.target.value) || 0),
-                    })}
-                    onWheel={(e) => e.currentTarget.blur()}
-                  />
-                </div>
               </div>
               <p className="mt-2 text-xs text-muted-foreground">
-                {mealCountSum} meal{mealCountSum === 1 ? '' : 's'} × {formatCurrency(mealUnitCost)} ={' '}
+                {mealSummary ? <>{mealSummary} = </> : (coveredByHotel.length ? '' : 'No meals · ')}
                 <span className="font-semibold text-success">{formatCurrency(mealTotal)}</span>
+                {coveredByHotel.length > 0 && (
+                  <span className="ml-1">· {coveredByHotel.join(', ')} in hotel meal plan (included in the room price)</span>
+                )}
+                <span className="ml-1">per person · {pricingDefaults.mealPricesSet ? 'a blank price uses the Settings price' : 'meal prices are not set in Settings yet'}</span>
               </p>
             </div>
 
@@ -504,13 +795,17 @@ const ItineraryEditor = ({
               ) : (
                 <div className="space-y-2">
                   {transportRows.map((row: any, i: number) => (
-                    <TransportRowEditor
-                      key={`${day.dayNumber}-transport-${i}`}
-                      index={i}
-                      transport={row}
-                      onChange={(patch: any) => handleTransportCostChange(day, i, patch)}
-                      onRemove={(idx: number) => handleRemoveTransport(day, idx)}
-                    />
+                    <div key={`${day.dayNumber}-transport-${i}`}>
+                      <TransportRowEditor
+                        index={i}
+                        transport={row}
+                        onChange={(patch: any) => handleTransportCostChange(day, i, patch)}
+                        onRemove={(idx: number) => handleRemoveTransport(day, idx)}
+                      />
+                      {transportHint(row, pricingDefaults, travelers) && (
+                        <p className="mt-1 px-1 text-xs text-muted-foreground">{transportHint(row, pricingDefaults, travelers)}</p>
+                      )}
+                    </div>
                   ))}
                 </div>
               )}
@@ -567,8 +862,21 @@ const ItineraryEditor = ({
     );
   };
 
-  // Ensure new days (added after initial render) are expanded
+  // Keep the focused day visible when the itinerary length changes.
   useEffect(() => {
+    if (compactDayNavigation) {
+      const validDays = days.filter(Boolean);
+      setExpandedDays((prev) => {
+        const hasNewDay = validDays.some((day) => prev[day.dayNumber] === undefined);
+        const currentDay = validDays.find((day) => prev[day.dayNumber]);
+        const focusedDay = hasNewDay ? validDays[validDays.length - 1] : currentDay || validDays[0];
+        const next: Record<number, boolean> = {};
+        validDays.forEach((day) => { next[day.dayNumber] = day.dayNumber === focusedDay?.dayNumber; });
+        return next;
+      });
+      return;
+    }
+
     const expanded: Record<number, boolean> = {};
     days.forEach(day => {
       if (day && day.dayNumber != null && expandedDays[day.dayNumber] === undefined) {
@@ -579,9 +887,17 @@ const ItineraryEditor = ({
       setExpandedDays(prev => ({ ...prev, ...expanded }));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [days.length]);
+  }, [days.length, compactDayNavigation]);
 
   const toggleDayExpand = (dayNumber: number) => {
+    if (compactDayNavigation) {
+      setExpandedDays((prev) => {
+        const next: Record<number, boolean> = {};
+        days.filter(Boolean).forEach((day) => { next[day.dayNumber] = day.dayNumber === dayNumber; });
+        return next;
+      });
+      return;
+    }
     setExpandedDays(prev => ({ ...prev, [dayNumber]: !prev[dayNumber] }));
   };
 
@@ -611,78 +927,48 @@ const ItineraryEditor = ({
     onDayChange(dayNumber, { images: updatedImages });
   };
 
-  const autoFillBestMatchHotel = async (dayNumber: number, dayLocations: string[]) => {
-    if (!destination) return;
-
-    try {
-      setAutoFillingHotel(true);
-      const { hotelAPI } = await import('../../../services/api');
-      const locationsString = (Array.isArray(dayLocations) ? dayLocations : []).join(', ');
-
-      const response = await hotelAPI.suggest(
-        destination,
-        packageType,
-        category,
-        locationsString,
-        1
-      );
-
-      if (response.success || response.status === 'success') {
-        const hotels = response.data?.hotels || [];
-        if (hotels.length > 0) {
-          const bestMatch = hotels[0];
-          const day = days.find(d => d && d.dayNumber === dayNumber);
-
-          onDayChange(dayNumber, {
-            accommodation: {
-              name: bestMatch.name,
-              address: bestMatch.address,
-              contactNumber: bestMatch.contactNumber || '',
-              rating: bestMatch.rating !== undefined && bestMatch.rating !== null
-                ? parseFloat(bestMatch.rating)
-                : (day?.accommodation?.rating !== undefined ? day.accommodation.rating : ''),
-              type: day?.accommodation?.type || 'hotel',
-            },
-          });
-        }
-      }
-    } catch (error) {
-      console.error('Error auto-filling hotel:', error);
-    } finally {
-      setAutoFillingHotel(false);
-    }
-  };
+  const latestDays = useRef(days);
+  latestDays.current = days;
 
   useEffect(() => {
-    const timeouts: ReturnType<typeof setTimeout>[] = [];
+    if (!destination) return undefined;
+    const keyOf = (d: any) => `${destination}|${d.dayNumber}|${(d.locations || []).join(',')}`;
+    const missing = days.filter((d) => d && !d.accommodation?.name && !autoFillAttempts.current.has(keyOf(d)));
+    if (missing.length === 0) return undefined;
 
-    days.forEach((day) => {
-      const dayLocations = day && Array.isArray(day.locations) ? day.locations : [];
-      if (day && dayLocations.length > 0 && destination) {
-        const hasAccommodation = day.accommodation?.name && day.accommodation?.address;
-
-        if (!hasAccommodation && !autoFillingHotel) {
-          const timeoutId = setTimeout(() => {
-            autoFillBestMatchHotel(day.dayNumber, dayLocations);
-          }, 1500);
-
-          timeouts.push(timeoutId);
-        }
+    const timer = setTimeout(async () => {
+      missing.forEach((d) => autoFillAttempts.current.add(keyOf(d)));
+      const targets = new Set(missing.map((d) => d.dayNumber));
+      setAutoFillingHotel(true);
+      try {
+        const picks = await pickHotelsForDays(latestDays.current, destination);
+        picks.forEach((hotel, dayNumber) => {
+          const day = latestDays.current.find((d) => d && d.dayNumber === dayNumber);
+          if (day && targets.has(dayNumber) && !day.accommodation?.name) {
+            onDayChange(dayNumber, { accommodation: toAccommodation(hotel, day) });
+          }
+        });
+      } catch (error) {
+        console.error('Error auto-filling hotels:', error);
+      } finally {
+        setAutoFillingHotel(false);
       }
-    });
+    }, 1500);
 
-    return () => {
-      timeouts.forEach(timeoutId => clearTimeout(timeoutId));
-    };
+    return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [days
     .filter(Boolean)
-    .map(d => `${d.dayNumber}-${Array.isArray(d.locations) ? d.locations.join(',') : ''}`)
+    .map(d => `${d.dayNumber}-${Array.isArray(d.locations) ? d.locations.join(',') : ''}-${d.accommodation?.name ? 1 : 0}`)
     .join('|'), destination, packageType, category]);
 
   // Field Group Component
   const FieldGroup = ({ label, icon: Icon, children, className = '' }: { label: string; icon?: any; children: React.ReactNode; className?: string }) => (
-    <div className={cn('bg-card rounded-lg border border-border p-4', className)}>
+    <div className={cn(
+      'bg-card rounded-lg border border-border p-4',
+      compactDayNavigation && 'dark:bg-secondary/70 dark:border-white/15',
+      className
+    )}>
       <label className="flex items-center gap-2 text-sm font-semibold text-foreground mb-3">
         {Icon && <Icon className="w-4 h-4 text-muted-foreground" />}
         {label}
@@ -707,41 +993,153 @@ const ItineraryEditor = ({
     );
   }
 
+  const validDays = days.filter(Boolean);
+
   return (
     <div className="space-y-4">
-      {days.filter(Boolean).map((day) => (
+      {compactDayNavigation && (
+        <div role="tablist" aria-label="Itinerary days" className="flex gap-2 overflow-x-auto pb-2">
+          {validDays.map((day) => {
+            const isActive = Boolean(expandedDays[day.dayNumber]);
+            return (
+              <button
+                key={day.dayNumber}
+                type="button"
+                role="tab"
+                id={`itinerary-day-${day.dayNumber}-tab`}
+                aria-label={`Day ${day.dayNumber}${day.title ? `: ${day.title}` : ''}`}
+                aria-selected={isActive}
+                aria-controls={`day-${day.dayNumber}-content`}
+                onClick={() => toggleDayExpand(day.dayNumber)}
+                className={cn(
+                  'flex min-h-14 w-40 shrink-0 flex-col items-start justify-center gap-1 rounded-xl border-2 px-3 py-2 text-left transition-colors',
+                  isActive
+                    ? 'border-primary bg-primary text-primary-foreground shadow-sm'
+                    : 'border-border bg-card text-foreground hover:border-primary/40'
+                )}
+              >
+                <span className={cn('text-xs font-semibold uppercase', isActive ? 'text-primary-foreground/75' : 'text-muted-foreground')}>
+                  Day {day.dayNumber}
+                </span>
+                <span className="w-full truncate text-sm font-semibold">
+                  {day.title || `Day ${day.dayNumber}`}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {validDays.filter((day) => !compactDayNavigation || expandedDays[day.dayNumber]).map((day) => {
+        const isExpanded = Boolean(expandedDays[day.dayNumber]);
+        const activeDaySection = activeDaySections[day.dayNumber] || 'plan';
+
+        return (
         <div key={day.dayNumber} className="bg-card rounded-xl border border-border shadow-card overflow-hidden">
           {/* Day Header */}
-          <div
-            className="bg-primary text-primary-foreground px-6 py-4 flex justify-between items-center cursor-pointer"
-            onClick={() => toggleDayExpand(day.dayNumber)}
-          >
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 bg-primary-foreground/20 rounded-lg flex items-center justify-center">
-                <span className="text-lg font-bold font-mono">{day.dayNumber}</span>
-              </div>
-              <div>
-                <h3 className="font-heading font-semibold text-lg">Day {day.dayNumber}</h3>
-                {day.title && <p className="text-primary-foreground/80 text-sm">{day.title}</p>}
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={(e) => { e.stopPropagation(); onRemoveDay(day.dayNumber); }}
-                className="p-2 hover:bg-destructive/80 rounded-lg transition-colors"
-                title="Remove day"
-              >
-                <Trash2 size={18} />
-              </button>
-              <div className="w-8 h-8 bg-primary-foreground/10 rounded-lg flex items-center justify-center">
-                {expandedDays[day.dayNumber] ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-              </div>
-            </div>
+          <div className={cn(
+            'flex items-stretch justify-between',
+            compactDayNavigation ? 'border-b border-border bg-card' : 'bg-primary text-primary-foreground'
+          )}>
+            <button
+              type="button"
+              aria-expanded={isExpanded}
+              aria-controls={`day-${day.dayNumber}-content`}
+              onClick={() => toggleDayExpand(day.dayNumber)}
+              className={cn(
+                'flex min-w-0 flex-1 items-center gap-4 px-6 py-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
+                compactDayNavigation ? 'hover:bg-muted/60' : 'hover:bg-primary/90'
+              )}
+            >
+              <span className={cn(
+                'flex size-10 shrink-0 items-center justify-center rounded-lg text-lg font-bold font-mono',
+                compactDayNavigation ? 'bg-primary/10 text-primary dark:bg-primary/20' : 'bg-primary-foreground/20'
+              )}>
+                {String(day.dayNumber).padStart(2, '0')}
+              </span>
+              <span className="min-w-0 flex-1">
+                {compactDayNavigation && (
+                  <span className="block text-xs font-semibold uppercase text-muted-foreground">Day {day.dayNumber}</span>
+                )}
+                <span className={cn(
+                  'block truncate font-heading font-semibold',
+                  compactDayNavigation ? 'text-base text-foreground' : 'text-lg'
+                )}>
+                  {compactDayNavigation ? day.title || `Day ${day.dayNumber}` : `Day ${day.dayNumber}`}
+                </span>
+                {!compactDayNavigation && day.title ? (
+                  <span className="block truncate text-sm text-primary-foreground/80">{day.title}</span>
+                ) : null}
+              </span>
+              <span className={cn(
+                'flex size-8 shrink-0 items-center justify-center rounded-lg',
+                compactDayNavigation ? 'text-muted-foreground' : 'bg-primary-foreground/10'
+              )}>
+                {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+              </span>
+            </button>
+            <button
+              type="button"
+              aria-label={`Remove Day ${day.dayNumber}`}
+              onClick={() => onRemoveDay(day.dayNumber)}
+              className={cn(
+                'mr-4 my-auto rounded-md p-2 transition-colors',
+                compactDayNavigation
+                  ? 'text-muted-foreground hover:bg-destructive/10 hover:text-destructive'
+                  : 'hover:bg-destructive/80'
+              )}
+              title="Remove day"
+            >
+              <Trash2 size={18} />
+            </button>
           </div>
 
           {/* Day Content */}
-          {expandedDays[day.dayNumber] && (
-            <div className="p-6 space-y-4">
+          {isExpanded && (
+            <div id={`day-${day.dayNumber}-content`} className="p-6 space-y-4">
+              {compactDayNavigation && (
+                <div
+                  role="tablist"
+                  aria-label={`Day ${day.dayNumber} details`}
+                  className="grid grid-cols-2 gap-2 border-b border-border pb-4 sm:grid-cols-4"
+                >
+                  {DAY_DETAIL_TABS.map(({ id, label, icon: Icon }) => {
+                    const isActive = activeDaySection === id;
+                    return (
+                      <button
+                        key={id}
+                        id={`day-${day.dayNumber}-${id}-tab`}
+                        type="button"
+                        role="tab"
+                        aria-selected={isActive}
+                        aria-controls={`day-${day.dayNumber}-details`}
+                        onClick={() => setActiveDaySections((prev) => ({ ...prev, [day.dayNumber]: id }))}
+                        className={cn(
+                          'flex min-h-14 min-w-0 flex-col items-start justify-center gap-1 rounded-md border-2 px-3 py-2 text-left transition-colors',
+                          isActive
+                            ? 'border-primary bg-background text-foreground shadow-sm'
+                            : 'border-border bg-muted/40 text-foreground hover:bg-muted dark:border-white/15 dark:bg-secondary dark:hover:bg-muted'
+                        )}
+                      >
+                        <span className="flex items-center gap-2 text-sm font-semibold">
+                          <Icon className={cn('size-4 shrink-0', isActive && 'text-primary')} />
+                          <span className="truncate">{label}</span>
+                        </span>
+                        <span className="w-full truncate pl-6 text-xs text-muted-foreground dark:text-foreground/75">
+                          {getDayDetailStatus(day, id)}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              <div
+                id={compactDayNavigation ? `day-${day.dayNumber}-details` : undefined}
+                role={compactDayNavigation ? 'tabpanel' : undefined}
+                aria-labelledby={compactDayNavigation ? `day-${day.dayNumber}-${activeDaySection}-tab` : undefined}
+                className="space-y-4"
+              >
+              {(!compactDayNavigation || activeDaySection === 'plan') && (
+              <div className="space-y-4">
               {/* Row 1: Title and Description */}
               {!hideTitleAndDescription && (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -802,7 +1200,10 @@ const ItineraryEditor = ({
                       <label
                         key={meal.key}
                         className={cn(
-                          'flex items-center gap-2 px-4 py-2.5 rounded-lg cursor-pointer transition-colors border',
+                          // `relative` anchors the sr-only (absolute) checkbox inside the chip.
+                          // Without it the input is positioned against the dialog, and focusing
+                          // it on click scrolls the overflow-hidden dialog shell out of place.
+                          'relative flex items-center gap-2 px-4 py-2.5 rounded-lg cursor-pointer transition-colors border',
                           checked
                             ? 'bg-warning/10 border-warning/30 text-warning'
                             : 'bg-muted border-border text-muted-foreground hover:bg-accent'
@@ -825,7 +1226,11 @@ const ItineraryEditor = ({
                   })}
                 </div>
               </FieldGroup>
+              </div>
+              )}
 
+              {(!compactDayNavigation || activeDaySection === 'stay') && (
+              <div className="space-y-4">
               {/* Flight Booking — standalone section */}
               <div
                 id={`day-${day.dayNumber}-flight-section`}
@@ -833,7 +1238,8 @@ const ItineraryEditor = ({
                   'bg-card rounded-lg border overflow-hidden transition-shadow',
                   highlightedFlightSection === day.dayNumber
                     ? 'border-primary ring-4 ring-primary/20'
-                    : 'border-primary/20'
+                    : 'border-primary/20',
+                  compactDayNavigation && 'dark:bg-secondary/50 dark:border-primary/40'
                 )}
               >
                 <div className="px-4 py-3 flex items-center justify-between">
@@ -857,7 +1263,7 @@ const ItineraryEditor = ({
                     <p className="text-xs text-muted-foreground">No flight selected</p>
                   ) : (
                     (day.flights || []).map((flight: any, index: number) => (
-                      <div key={flight.id || index} className="bg-primary/5 rounded-lg border border-primary/20 p-4">
+                      <div key={flight.id || index} className="bg-primary/5 rounded-lg border border-primary/20 p-4 dark:bg-primary/10 dark:border-primary/35">
                         <div className="flex items-center justify-between gap-3 flex-wrap">
                           <span className="text-sm font-medium text-primary">
                             {flight.origin ? `${flight.origin} → ${flight.destination}` : 'No flight selected'}
@@ -891,7 +1297,10 @@ const ItineraryEditor = ({
               </div>
 
               {/* Row 4: Accommodation */}
-              <div className="bg-card rounded-lg border border-border p-4">
+              <div className={cn(
+                'bg-card rounded-lg border border-border p-4',
+                compactDayNavigation && 'dark:bg-secondary/70 dark:border-white/15'
+              )}>
                 <label className="flex items-center gap-2 text-sm font-semibold text-foreground mb-3">
                   <Building2 className="w-4 h-4 text-muted-foreground" />
                   Accommodation
@@ -901,6 +1310,7 @@ const ItineraryEditor = ({
                   /* ── Hotel Card (selected) ──────────────────── */
                   <HotelStayCard
                     accommodation={day.accommodation}
+                    roomsNote={roomsHint(day.accommodation, pricingDefaults, travelers)}
                     onSearch={() => {
                       setCurrentDayForHotel(day.dayNumber);
                       setCurrentDayLocations(day.locations || []);
@@ -962,14 +1372,18 @@ const ItineraryEditor = ({
                   </div>
                 )}
 
-                {autoFillingHotel && days.find(d => d && d.dayNumber === day.dayNumber)?.locations?.length > 0 && (
+                {autoFillingHotel && !day.accommodation?.name && (
                   <div className="flex items-center gap-1 mt-2 text-xs text-primary bg-primary/5 px-2 py-1 rounded-lg">
                     <Loader className="w-3 h-3 animate-spin" />
                     <span>Finding best match...</span>
                   </div>
                 )}
               </div>
+              </div>
+              )}
 
+              {(!compactDayNavigation || activeDaySection === 'notes') && (
+              <div className="space-y-4">
               {/* Row 5: Notes */}
               <FieldGroup label="Additional Notes" icon={StickyNote}>
                 <Textarea
@@ -983,7 +1397,10 @@ const ItineraryEditor = ({
               {/* Row 6: Day Images — intentionally shown regardless of
                   hideTitleAndDescription (that flag only concerns the
                   title/description text fields above, not imagery). */}
-              <div className="bg-card rounded-lg border border-border p-4">
+              <div className={cn(
+                'bg-card rounded-lg border border-border p-4',
+                compactDayNavigation && 'dark:bg-secondary/70 dark:border-white/15'
+              )}>
                 <label className="flex items-center gap-2 text-sm font-semibold text-foreground mb-3">
                   <ImageIcon className="w-4 h-4 text-muted-foreground" />
                   Day Images
@@ -1049,13 +1466,17 @@ const ItineraryEditor = ({
                   </div>
                 )}
               </div>
+              </div>
+              )}
 
               {/* Costs & Pricing — last section of the day card */}
-              {renderCostsSection(day)}
+              {(!compactDayNavigation || activeDaySection === 'costs') && renderCostsSection(day)}
+              </div>
             </div>
           )}
         </div>
-      ))}
+        );
+      })}
 
       {/* Add Day Button */}
       <button
@@ -1106,25 +1527,11 @@ const ItineraryEditor = ({
         packageType={packageType}
         category={category}
         locations={currentDayLocations}
+        travelers={STANDARD_OCCUPANCY}
         onSelectHotel={(hotel: any) => {
           if (currentDayForHotel) {
             const day = days.find(d => d && d.dayNumber === currentDayForHotel);
-            onDayChange(currentDayForHotel, {
-              accommodation: {
-                name: hotel.name,
-                address: hotel.address || '',
-                contactNumber: hotel.contactNumber || '',
-                rating: hotel.starRating ?? hotel.rating ?? (day?.accommodation?.rating || ''),
-                type: day?.accommodation?.type || 'hotel',
-                hotelId: hotel.hotelId || hotel.id || null,
-                hotelImage: hotel.images?.[0] || hotel.hotelImage || null,
-                roomType: hotel.cheapestRate?.roomType || hotel.roomType || null,
-                boardType: hotel.cheapestRate?.boardType || hotel.boardType || null,
-                totalAmount: hotel.cheapestRate?.totalAmount ?? hotel.totalAmount ?? null,
-                currency: hotel.cheapestRate?.currency || hotel.currency || null,
-                refundable: hotel.cheapestRate?.refundable ?? hotel.refundable ?? null,
-              },
-            });
+            onDayChange(currentDayForHotel, { accommodation: toAccommodation(hotel, day, hotel.nights) });
           }
         }}
       />

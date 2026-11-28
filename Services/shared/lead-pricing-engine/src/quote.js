@@ -29,16 +29,46 @@ export function computeQuote({
   discountValue = 0,
   serviceChargeRate = 0,
 } = {}) {
+  // A lead-level FIXED margin is per traveller for the whole trip, not per line:
+  // it becomes the equivalent % spread over the lines without their own margin,
+  // so the quotation items still add up to the total.
+  let defaultType = marginType;
+  let defaultValue = marginValue;
+  if (marginType === 'FIXED') {
+    const party = Math.max(1, Number(travelers) || 1);
+    const baseCents = lines
+      .filter((line) => !line.marginType)
+      .reduce((sum, line) => sum + computeLine({ ...line, marginType: null }, { travelers }).estimatedTotal * 100, 0);
+    const marginCents = toCents(Number(marginValue) || 0) * party;
+    defaultType = baseCents > 0 && marginCents > 0 ? 'PERCENTAGE' : null;
+    defaultValue = baseCents > 0 ? (marginCents / baseCents) * 100 : 0;
+  }
+
   const resolved = lines.map((line) =>
     computeLine(
       {
         ...line,
-        marginType: line.marginType ?? marginType ?? null,
-        marginValue: line.marginValue ?? marginValue,
+        marginType: line.marginType ?? defaultType ?? null,
+        marginValue: line.marginType ? line.marginValue : defaultValue,
       },
       { travelers },
     ),
   );
+
+  // Per-line rounding can leave the fixed margin a cent or two off; put the
+  // remainder on a quantity-1 line so the margin is exact and items still add up.
+  if (marginType === 'FIXED' && defaultType === 'PERCENTAGE') {
+    const own = (line) => line.marginType && line.marginType !== 'PERCENTAGE';
+    const eligible = resolved.filter((line, i) => !lines[i].marginType && !own(line));
+    const target = toCents(Number(marginValue) || 0) * Math.max(1, Number(travelers) || 1);
+    const actual = eligible.reduce((sum, l) => sum + toCents(l.sellTotal) - toCents(l.estimatedTotal), 0);
+    const absorber = eligible.filter((l) => l.quantity === 1).sort((a, b) => b.sellTotal - a.sellTotal)[0];
+    if (absorber && target !== actual) {
+      const fixedCents = toCents(absorber.sellTotal) + (target - actual);
+      absorber.quotedUnitPrice = fromCents(fixedCents);
+      absorber.sellTotal = fromCents(fixedCents);
+    }
+  }
 
   const sellSubtotalCents = sumCents(resolved, 'sellTotal');
   const estimatedTotalCents = sumCents(resolved, 'estimatedTotal');

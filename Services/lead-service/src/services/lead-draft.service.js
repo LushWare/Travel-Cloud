@@ -25,7 +25,7 @@ export async function fetchPackage(packageId, fetchImpl = fetch) {
  * itinerary days (with snapshotted places/activities/transports), AUTO cost
  * lines and LeadPricing defaults (currency + margin inherited).
  */
-export function buildDraftData(packageData) {
+export function buildDraftData(packageData, { travelers = 1, pricing = {} } = {}) {
   const days = (packageData.itineraryDays || []).map((day, idx) => ({
     dayNumber: day.dayNumber ?? idx + 1,
     title: day.title ?? null,
@@ -34,6 +34,9 @@ export function buildDraftData(packageData) {
     lunchCount: day.lunchCount || 0,
     dinnerCount: day.dinnerCount || 0,
     mealPriceOverride: day.mealPriceOverride ?? null,
+    breakfastPriceOverride: day.breakfastPriceOverride ?? null,
+    lunchPriceOverride: day.lunchPriceOverride ?? null,
+    dinnerPriceOverride: day.dinnerPriceOverride ?? null,
     accommodation: day.accommodation ?? {},
     flights: day.flights ?? [],
     places: {
@@ -73,12 +76,20 @@ export function buildDraftData(packageData) {
     },
   }));
 
+  // Room and vehicle counts are sized for this party.
   const engineLines = buildItineraryCostLines({
+    travelers,
+    mealPrices: pricing.mealPrices,
+    vehicleSeats: pricing.vehicleSeats,
+    peoplePerRoom: pricing.peoplePerRoom,
     days: days.map((d) => ({
       breakfastCount: d.breakfastCount,
       lunchCount: d.lunchCount,
       dinnerCount: d.dinnerCount,
       mealPriceOverride: d.mealPriceOverride ?? null,
+      breakfastPriceOverride: d.breakfastPriceOverride ?? null,
+      lunchPriceOverride: d.lunchPriceOverride ?? null,
+      dinnerPriceOverride: d.dinnerPriceOverride ?? null,
       accommodation: d.accommodation,
     })),
     activities: days.flatMap((d) => d.activities.create),
@@ -90,11 +101,12 @@ export function buildDraftData(packageData) {
   // line seeded from the package's own basePrice so the lead's quotation
   // isn't stuck at 0. Packages with a real itinerary already produce lines
   // above, so this only fires for the flat-price case.
+  // basePrice is the package's cost per person, so it is charged per traveller.
   if (engineLines.length === 0 && Number(packageData.basePrice) > 0) {
     engineLines.push({
       category: 'package',
       description: packageData.title || 'Package price',
-      basis: 'FIXED',
+      basis: 'PER_PERSON',
       estimatedUnit: Number(packageData.basePrice),
       source: 'AUTO',
     });

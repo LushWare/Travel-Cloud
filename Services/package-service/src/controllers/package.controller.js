@@ -1,19 +1,23 @@
 import prisma from '../db/client.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import AppError from '../utils/appError.js';
-import { computeMargin } from '../../../shared/pricing-engine/src/index.js';
 import {
   serializePackage,
   serializePackageList,
   buildCreateData,
   buildUpdateData,
-  recomputeBasePrice,
+  priceItinerary,
+  readActivityCatalogCosts,
   resolveActivityCatalogIds,
   assembleWhere,
   buildInclude,
   buildListOrderBy,
   resolveDestinationRaws,
+  repricePackages,
 } from '../services/package.service.js';
+import { getPricingDefaults } from '../config/orgSettings.js';
+
+const settingsMealPrices = async () => (await getPricingDefaults()).mealPrices;
 
 // ── List / Search ─────────────────────────────────────────────
 
@@ -69,6 +73,16 @@ export const getPackages = asyncHandler(async (req, res) => {
     pagination: { page: pageNumber, limit: pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) },
     data: data.map(serializePackageList),
   });
+});
+
+export const getPackageOptions = asyncHandler(async (_req, res) => {
+  const data = await prisma.package.findMany({
+    where: { isActive: true },
+    select: { id: true, title: true, isActive: true },
+    orderBy: { title: 'asc' },
+  });
+
+  res.json({ success: true, data });
 });
 
 // ── Detail ────────────────────────────────────────────────────
@@ -146,28 +160,8 @@ export const createPackage = asyncHandler(async (req, res) => {
   // itinerary was provided — matches the form's "Leave at 0 to auto-compute".
   const wantsAutoCompute = req.body.basePrice == null || Number(req.body.basePrice) === 0;
   if (wantsAutoCompute && resolvedDays.length > 0) {
-    const activityItems = resolvedDays.flatMap((d) =>
-      (d.activities || []).map((a) => ({
-        defaultCost: activityCost(a),
-        costOverride: a.costOverride,
-      }))
-    );
-    const transportItems = resolvedDays.flatMap((d) =>
-      (d.transports || []).map((t) => ({
-        pricingModel: t.pricingModel,
-        unitCost: t.unitCost,
-        distanceKm: t.distanceKm,
-      }))
-    );
-    const mealDays = resolvedDays.map((d) => ({
-      breakfastCount: d.breakfastCount || 0,
-      lunchCount: d.lunchCount || 0,
-      dinnerCount: d.dinnerCount || 0,
-      mealPriceOverride: d.mealPriceOverride,
-    }));
-
-    const pricing = recomputeBasePrice(mealDays, activityItems, transportItems);
-    data.basePrice = pricing.basePrice;
+    // Same calculation the editor's price preview shows.
+    data.basePrice = priceItinerary(resolvedDays, activityCost, { mealPrices: await settingsMealPrices() }).perPerson;
   }
 
   const pkg = await prisma.package.create({
@@ -194,28 +188,8 @@ export const updatePackage = asyncHandler(async (req, res) => {
   // at 0 (auto-compute) — a positive basePrice is an explicit override.
   const wantsAutoCompute = req.body.basePrice == null || Number(req.body.basePrice) === 0;
   if (req.body.itineraryDays !== undefined && wantsAutoCompute) {
-    const activityItems = resolvedDays.flatMap((d) =>
-      (d.activities || []).map((a) => ({
-        defaultCost: activityCost(a),
-        costOverride: a.costOverride,
-      }))
-    );
-    const transportItems = resolvedDays.flatMap((d) =>
-      (d.transports || []).map((t) => ({
-        pricingModel: t.pricingModel,
-        unitCost: t.unitCost,
-        distanceKm: t.distanceKm,
-      }))
-    );
-    const mealDays = resolvedDays.map((d) => ({
-      breakfastCount: d.breakfastCount || 0,
-      lunchCount: d.lunchCount || 0,
-      dinnerCount: d.dinnerCount || 0,
-      mealPriceOverride: d.mealPriceOverride,
-    }));
-
-    const pricing = recomputeBasePrice(mealDays, activityItems, transportItems);
-    data.basePrice = pricing.basePrice;
+    // Same calculation the editor's price preview shows.
+    data.basePrice = priceItinerary(resolvedDays, activityCost, { mealPrices: await settingsMealPrices() }).perPerson;
   }
 
   const pkg = await prisma.package.update({ where: { id: req.params.id }, data, include: buildInclude() });
@@ -270,37 +244,40 @@ export const calculatePrice = asyncHandler(async (req, res) => {
   } = req.body || {};
 
   const days = Array.isArray(itineraryDays) ? itineraryDays : [];
-  const activities = days.flatMap((day) => day.activities || []);
-  const transports = days.flatMap((day) => day.transports || []);
 
-  // Always recompute from the itinerary so the breakdown reflects real costs.
-  const pricing = recomputeBasePrice(days, activities, transports);
-
-  // Accommodation is a per-day cost the engine does not model (each day is an
-  // independent per-night booking for now), so add it to the package cost and
-  // expose it as its own breakdown bucket.
-  const accommodationTotal = days.reduce(
-    (sum, day) => sum + Number(day.accommodation?.totalAmount ?? 0),
-    0
-  );
-  const packageCost =
-    Math.round((pricing.basePrice + accommodationTotal) * 100) / 100;
-  const margin = computeMargin(
-    packageCost,
-    defaultMarginType,
-    Number(defaultMarginInput) || 0
-  );
+  // Exactly what saving will store: the same calculation, with the same
+  // catalog activity costs (read-only here — nothing is created).
+  const activityCost = await readActivityCatalogCosts(days);
+  const pricing = priceItinerary(days, activityCost, {
+    marginType: defaultMarginType,
+    marginValue: Number(defaultMarginInput) || 0,
+    mealPrices: await settingsMealPrices(),
+  });
 
   res.json({
     success: true,
     data: {
-      packageCost,
-      sellPrice: margin.sellPrice,
-      margin: { type: defaultMarginType, amount: margin.marginAmount },
-      breakdown: {
-        ...pricing.breakdown,
-        accommodation: { total: accommodationTotal },
-      },
+      basis: 'PER_PERSON_TWIN_SHARING',
+      occupancy: pricing.occupancy,
+      // Per person, twin sharing — the stored basePrice and the website price.
+      packageCost: pricing.perPerson,
+      sellPrice: pricing.sellPerPerson,
+      margin: { type: defaultMarginType, amount: pricing.margin.amountPerPerson },
+      // Totals for the two people sharing, per cost bucket.
+      party: pricing.party,
+      single: pricing.single,
+      // The lines behind each bucket, so the editor's breakdown adds up to the total.
+      rows: pricing.rows,
     },
   });
+});
+
+// ── Reprice all packages ──────────────────────────────────────
+
+// After Settings meal prices change: preview (commit=false) or apply new costs.
+export const repriceAllPackages = asyncHandler(async (req, res) => {
+  const { mealPrices } = await getPricingDefaults({ fresh: true });
+  const result = await repricePackages({ commit: req.body.commit === true, mealPrices });
+  req.log?.info({ commit: req.body.commit === true, changed: result.changed }, 'Package prices recalculated');
+  res.json({ success: true, data: result });
 });

@@ -178,6 +178,7 @@ model OrganizationSettings {
   ratingTagline            String?
   paymentMethods           String[]
   docNumberPrefixes        Json? // { quotation, invoice, receipt, payment, creditNote, voucher }
+  pricingDefaults          Json? // { mealPrices, margin, transportRates } — starting costs, editable per package
 
   // Bank / payment details — sensitive, admin-only in every response path
   bankName          String?

@@ -2,7 +2,7 @@ import slugify from 'slugify';
 import { PackageCategory } from '@prisma/client';
 import { z } from 'zod';
 import prisma from '../db/client.js';
-import { calculateBasePrice, computeMargin } from '../../../shared/pricing-engine/src/index.js';
+import { packagePriceFromDays, computeMargin, singleSupplementFromDays } from '../../../shared/pricing-engine/src/index.js';
 
 const packageIdFilterSchema = z.string().min(1).max(255).regex(/^[a-zA-Z0-9_-]+$/);
 
@@ -36,6 +36,9 @@ export function serializePackage(pkg) {
     lunchCount: day.lunchCount,
     dinnerCount: day.dinnerCount,
     mealPriceOverride: day.mealPriceOverride ? Number(day.mealPriceOverride) : null,
+    breakfastPriceOverride: day.breakfastPriceOverride != null ? Number(day.breakfastPriceOverride) : null,
+    lunchPriceOverride: day.lunchPriceOverride != null ? Number(day.lunchPriceOverride) : null,
+    dinnerPriceOverride: day.dinnerPriceOverride != null ? Number(day.dinnerPriceOverride) : null,
     accommodation: day.accommodation || {},
     images: day.images || [],
     places: (day.places || []).map((dp) => ({
@@ -84,6 +87,8 @@ export function serializePackage(pkg) {
     defaultMarginType: pkg.defaultMarginType,
     defaultMarginInput,
     sellPrice: resolveSellPrice(pkg, basePrice),
+    // Extra a traveller alone pays over the twin-sharing price (full room and vehicle).
+    singleSupplement: singleSupplementFromDays(itineraryDays, { marginType: pkg.defaultMarginType, marginValue: defaultMarginInput }).total,
     currency: pkg.currency,
     isActive: pkg.isActive,
     isFeatured: pkg.isFeatured,
@@ -231,6 +236,9 @@ export function buildItineraryDaysData(days) {
     lunchCount: day.lunchCount ?? 0,
     dinnerCount: day.dinnerCount ?? 0,
     mealPriceOverride: day.mealPriceOverride ?? null,
+    breakfastPriceOverride: day.breakfastPriceOverride ?? null,
+    lunchPriceOverride: day.lunchPriceOverride ?? null,
+    dinnerPriceOverride: day.dinnerPriceOverride ?? null,
     images: day.images ?? [],
     accommodation: day.accommodation ?? {},
     places: {
@@ -264,32 +272,52 @@ export function buildItineraryDaysData(days) {
 
 // ── Pricing ────────────────────────────────────────────────────
 
-export function recomputeBasePrice(days, activities, transports, options = {}) {
-  const mealDays = days.map((day) => ({
-    breakfastCount: day.breakfastCount,
-    lunchCount: day.lunchCount,
-    dinnerCount: day.dinnerCount,
-    mealPriceOverride: day.mealPriceOverride,
+/**
+ * Price a package itinerary — per person, twin sharing — the one way the price
+ * preview and the save both use, so what the editor shows is what is stored.
+ *
+ * Each activity is priced at its catalog default cost (the master price),
+ * unless the rep set a per-package cost override; an activity not in the
+ * catalog yet keeps the cost the editor gave it (which is what saving will
+ * create it with). `activityCost(a)` returns the catalog cost or undefined.
+ */
+export function priceItinerary(days, activityCost = () => undefined, { marginType = null, marginValue = 0, mealPrices } = {}) {
+  const priced = (days || []).map((day) => ({
+    ...day,
+    activities: (day.activities || []).map((a) => {
+      const catalogCost = activityCost(a);
+      return { ...a, defaultCost: catalogCost ?? a.defaultCost ?? 0 };
+    }),
   }));
+  return packagePriceFromDays(priced, { marginType, marginValue, mealPrices });
+}
 
-  const actRows = activities.map((a) => ({
-    defaultCost: a.costOverride ?? a.defaultCost ?? (a.activity?.defaultCost ?? 0),
-    costOverride: a.costOverride,
-  }));
-
-  const transportRows = transports.map((t) => ({
-    pricingModel: t.pricingModel,
-    unitCost: t.unitCost,
-    distanceKm: t.distanceKm,
-  }));
-
-  return calculateBasePrice({
-    days: mealDays,
-    activities: actRows,
-    transports: transportRows,
-    groupSize: options.groupSize,
-    mealCostPerPerson: options.mealCostPerPerson,
-  });
+/**
+ * Read-only catalog cost lookup for a price preview: the same costs
+ * resolveActivityCatalogIds would use, without creating anything. Returns
+ * `activityCost(a)` → catalog cost, or undefined when the activity isn't
+ * catalogued yet.
+ */
+export async function readActivityCatalogCosts(days) {
+  const ids = new Set();
+  const names = new Set();
+  for (const day of days || []) {
+    for (const a of day.activities || []) {
+      if (a?.activityId) ids.add(a.activityId);
+      else if (a?.name) names.add(a.name);
+    }
+  }
+  const [byId, byName] = await Promise.all([
+    ids.size ? prisma.activityCatalog.findMany({ where: { id: { in: [...ids] } } }) : [],
+    names.size ? prisma.activityCatalog.findMany({ where: { name: { in: [...names] } } }) : [],
+  ]);
+  const costById = new Map(byId.map((row) => [row.id, Number(row.defaultCost)]));
+  const costByName = new Map(byName.map((row) => [row.name, Number(row.defaultCost)]));
+  return (a) => {
+    if (a?.activityId) return costById.get(a.activityId);
+    if (a?.name) return costByName.get(a.name);
+    return undefined;
+  };
 }
 
 // ── Activity catalog resolution ────────────────────────────────
@@ -329,7 +357,7 @@ export async function resolveActivityCatalogIds(days) {
 
   await Promise.all([...activityIds].map(async (id) => {
     const row = await prisma.activityCatalog.findUnique({ where: { id } });
-    costById.set(id, row ? Number(row.defaultCost) : 0);
+    if (row) costById.set(id, Number(row.defaultCost));
   }));
 
   await Promise.all([...defaultCostByName.keys()].map(async (name) => {
@@ -355,11 +383,13 @@ export async function resolveActivityCatalogIds(days) {
 
   return {
     days: resolvedDays,
+    // Catalog cost, or undefined when the activity isn't catalogued — the same
+    // answers readActivityCatalogCosts gives a price preview.
     activityCost: (a) => {
-      if (!a) return 0;
+      if (!a) return undefined;
       if (a.activityId && costById.has(a.activityId)) return costById.get(a.activityId);
       if (a.name && infoByName.has(a.name)) return infoByName.get(a.name).cost;
-      return 0;
+      return undefined;
     },
   };
 }
@@ -604,4 +634,91 @@ export function assembleWhere(query) {
   if (minRating !== undefined) where.rating = { gte: minRating };
 
   return where;
+}
+
+// ── Reprice ────────────────────────────────────────────────────
+
+const flightFare = (flight) => {
+  const fare = Number(flight?.totalAmount ?? flight?.fareTotal ?? flight?.estimatedUnitPrice) || 0;
+  return fare > 0 ? fare : null;
+};
+
+// Transport rows as a save stores them: each FLIGHT row carries its day flight's fare.
+function transportsAsSaved(day) {
+  const flights = Array.isArray(day.flights) ? day.flights : [];
+  const manual = [];
+  const flightRows = [];
+  let next = 0;
+  for (const t of day.transports || []) {
+    const row = {
+      transportMode: t.transportMode,
+      pricingModel: t.pricingModel,
+      unitCost: Number(t.unitCost) || 0,
+      distanceKm: t.distanceKm != null ? Number(t.distanceKm) : null,
+    };
+    if (row.transportMode === 'FLIGHT' && next < flights.length) {
+      flightRows.push({ ...row, unitCost: flightFare(flights[next++]) ?? row.unitCost });
+    } else {
+      manual.push(row);
+    }
+  }
+  for (; next < flights.length; next++) {
+    flightRows.push({ transportMode: 'FLIGHT', pricingModel: 'PER_PERSON', unitCost: flightFare(flights[next]) ?? 0, distanceKm: null });
+  }
+  return [...manual, ...flightRows];
+}
+
+const optionalNumber = (value) => (value != null ? Number(value) : null);
+
+function storedDaysForPricing(itineraryDays) {
+  return itineraryDays.map((d) => ({
+    dayNumber: d.dayNumber,
+    breakfastCount: d.breakfastCount,
+    lunchCount: d.lunchCount,
+    dinnerCount: d.dinnerCount,
+    mealPriceOverride: optionalNumber(d.mealPriceOverride),
+    breakfastPriceOverride: optionalNumber(d.breakfastPriceOverride),
+    lunchPriceOverride: optionalNumber(d.lunchPriceOverride),
+    dinnerPriceOverride: optionalNumber(d.dinnerPriceOverride),
+    accommodation: d.accommodation || {},
+    activities: (d.activities || []).map((a) => ({
+      activityId: a.activityId,
+      name: a.activity?.name,
+      defaultCost: a.activity?.defaultCost != null ? Number(a.activity.defaultCost) : 0,
+      costOverride: optionalNumber(a.costOverride),
+    })),
+    transports: transportsAsSaved(d),
+  }));
+}
+
+/**
+ * Recompute every package's cost from its stored itinerary with the current
+ * prices. Dry run unless `commit`; returns old and new website prices.
+ */
+export async function repricePackages({ commit = false, mealPrices } = {}) {
+  const packages = await prisma.package.findMany({
+    orderBy: { title: 'asc' },
+    include: {
+      itineraryDays: {
+        orderBy: { dayNumber: 'asc' },
+        include: { activities: { include: { activity: true } }, transports: true },
+      },
+    },
+  });
+
+  const rows = [];
+  for (const pkg of packages) {
+    const nowSell = Number(pkg.sellPrice ?? pkg.basePrice) || 0;
+    if (pkg.itineraryDays.length === 0) continue;
+    const days = storedDaysForPricing(pkg.itineraryDays);
+    const cost = priceItinerary(days, await readActivityCatalogCosts(days), { mealPrices }).perPerson;
+    if (Math.abs(cost - Number(pkg.basePrice)) < 0.005) continue;
+    const newSell = computeMargin(cost, pkg.defaultMarginType, Number(pkg.defaultMarginInput) || 0).sellPrice;
+    rows.push({ id: pkg.id, title: pkg.title, isActive: pkg.isActive, oldPrice: nowSell, newPrice: newSell, newCost: cost });
+  }
+
+  if (commit && rows.length > 0) {
+    await prisma.$transaction(rows.map((r) => prisma.package.update({ where: { id: r.id }, data: { basePrice: r.newCost } })));
+  }
+  return { committed: commit, total: packages.length, changed: rows.length, packages: rows };
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { getOrgSettings, _resetCache } from '../orgSettings.js';
+import { getOrgSettings, getPricingDefaults, _resetCache } from '../orgSettings.js';
 
 function fakeSettingsResponse(overrides = {}) {
   return {
@@ -101,5 +101,28 @@ describe('getOrgSettings', () => {
     vi.advanceTimersByTime(61_000);
     const settings = await getOrgSettings({ fetchImpl });
     expect(settings.companyName).toBe('Lush Travel');
+  });
+});
+
+describe('getPricingDefaults', () => {
+  it('returns the saved pricing defaults', async () => {
+    const pricingDefaults = { mealPrices: { breakfast: 8, lunch: 15, dinner: 20 } };
+    const fetchImpl = vi.fn().mockResolvedValue(fakeSettingsResponse({ pricingDefaults }));
+    expect(await getPricingDefaults({ fetchImpl })).toEqual(pricingDefaults);
+  });
+
+  it('refuses to price with made-up numbers when user-service is unreachable', async () => {
+    const fetchImpl = vi.fn().mockRejectedValue(new Error('down'));
+    await expect(getPricingDefaults({ fetchImpl })).rejects.toMatchObject({ statusCode: 503 });
+  });
+
+  it('returns empty defaults when the agency has saved none', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(fakeSettingsResponse({ pricingDefaults: null }));
+    expect(await getPricingDefaults({ fetchImpl })).toEqual({});
+  });
+
+  it('fails a fresh read when user-service is unreachable so a reprice never uses stale prices', async () => {
+    const fetchImpl = vi.fn().mockRejectedValue(new Error('down'));
+    await expect(getPricingDefaults({ fetchImpl, fresh: true })).rejects.toMatchObject({ statusCode: 503 });
   });
 });

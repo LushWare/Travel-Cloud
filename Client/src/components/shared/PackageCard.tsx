@@ -30,6 +30,7 @@ export interface PackageCardProps {
    * and does not import formatting logic.
    */
   price: string;
+  priceNote?: string;
   /**
    * Optional top-right floating overlay on the image. Context-specific
    * call-outs that sit in that corner: the gold "Featured" ribbon
@@ -112,6 +113,7 @@ export default function PackageCard({
   fallbackImage,
   title,
   price,
+  priceNote,
   badge,
   overlayMeta,
   hoverReveal,
@@ -177,7 +179,10 @@ export default function PackageCard({
         ) : null}
         {meta ? <div className="mb-6">{meta}</div> : null}
         <div className="mt-auto flex items-center justify-between border-t border-gray-200 pt-4">
-          <span className="font-display text-xl font-bold text-brand-600">{price}</span>
+          <span className="flex flex-col">
+            <span className="font-display text-xl font-bold text-brand-600">{price}</span>
+            {priceNote ? <span className="text-xs text-gray-500">{priceNote}</span> : null}
+          </span>
           <span className="inline-flex items-center rounded-xl bg-brand-800 px-4 py-2 text-sm font-semibold text-white transition-colors duration-300 group-hover:bg-brand-900">
             View Details
           </span>

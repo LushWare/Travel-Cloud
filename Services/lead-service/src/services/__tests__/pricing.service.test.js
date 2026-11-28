@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computePricing, toLineDescriptor } from '../pricing.service.js';
+import { computePricing, toLineDescriptor, effectiveTaxRate, parseOwnTaxRate } from '../pricing.service.js';
 import { buildAutoCostLines } from '../lead-itinerary.service.js';
 
 const baseLines = [
@@ -21,6 +21,7 @@ describe('computePricing', () => {
       discountType: 'percentage',
       discountValue: 10,
       serviceChargeRate: 5,
+      taxRate: 18,
       verifiedPaymentTotal: 330.26,
     });
 
@@ -68,14 +69,14 @@ describe('computePricing', () => {
     expect(result.balanceDue).toBe(0);
   });
 
-  it('defaults to the global tax constant and USD', () => {
+  it('charges no tax and uses USD when neither is given', () => {
     const result = computePricing({
       lines: [{ basis: 'FIXED', estimatedUnit: 100, quantity: 1, description: 'X' }],
       travelers: 1,
     });
     expect(result.currency).toBe('USD');
-    expect(result.taxAmount).toBe(18);
-    expect(result.totalAmount).toBe(118);
+    expect(result.taxAmount).toBe(0);
+    expect(result.totalAmount).toBe(100);
   });
 
   it('handles empty input without crashing', () => {
@@ -143,12 +144,63 @@ describe('toLineDescriptor', () => {
         transports: [{ pricingModel: 'PER_VEHICLE', unitCost: 300 }],
       },
     ];
-    const lines = buildAutoCostLines(days).map(toLineDescriptor);
+    const lines = buildAutoCostLines(days, 1, { mealPrices: { breakfast: 15, lunch: 15, dinner: 15 } }).map(toLineDescriptor);
     const food = lines.find((l) => l.category === 'food');
     const transport = lines.find((l) => l.category === 'transportation');
     const accommodation = lines.find((l) => l.category === 'accommodation');
     expect(food.estimatedUnit).toBe(60);
     expect(transport.estimatedUnit).toBe(300);
     expect(accommodation.estimatedUnit).toBe(100);
+  });
+});
+
+describe('effectiveTaxRate', () => {
+  it('uses the package\'s own rate when a rep set one', () => {
+    expect(effectiveTaxRate(5, 18)).toBe(5);
+  });
+
+  it('keeps an own rate of 0 for a tax-exempt customer', () => {
+    expect(effectiveTaxRate(0, 18)).toBe(0);
+  });
+
+  it('follows Settings when the package has no rate of its own', () => {
+    expect(effectiveTaxRate(null, 12.5)).toBe(12.5);
+  });
+
+  it('reads a Prisma Decimal string as a number', () => {
+    expect(effectiveTaxRate('7.50', 18)).toBe(7.5);
+  });
+
+  it('charges no tax when neither the package nor Settings has a rate', () => {
+    expect(effectiveTaxRate(null, null)).toBe(0);
+  });
+});
+
+describe('parseOwnTaxRate', () => {
+  it('accepts a percentage', () => {
+    expect(parseOwnTaxRate('8')).toBe(8);
+  });
+
+  it('treats an empty field as follow Settings', () => {
+    expect(parseOwnTaxRate('')).toBeNull();
+  });
+
+  it('leaves a rate that was not sent as undefined', () => {
+    expect(parseOwnTaxRate(undefined)).toBeUndefined();
+  });
+
+  it('rejects a rate above 100% with a 400', () => {
+    expect(() => parseOwnTaxRate(120)).toThrow(expect.objectContaining({ statusCode: 400 }));
+  });
+
+  it('rejects a negative rate', () => {
+    expect(() => parseOwnTaxRate(-1)).toThrow('Tax rate must be a percentage from 0 to 100');
+  });
+});
+
+describe('computePricing applied tax rate', () => {
+  it('reports the rate it charged', () => {
+    const result = computePricing({ lines: baseLines, travelers: 1, taxRate: 9 });
+    expect(result.appliedTaxRate).toBe(9);
   });
 });

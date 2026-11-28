@@ -32,6 +32,8 @@ export const LeadSnapshotForQuotation = z.object({
   discountType: z.string(),
   discountValue: moneyField,
   serviceChargeRate: moneyField,
+  // The tax % the lead was priced at. Omitted = billing uses the Settings default.
+  taxRate: moneyField.optional(),
   notes: z.string().nullable(),
   terms: z.string().nullable(),
   paymentTerms: z.string().nullable(),

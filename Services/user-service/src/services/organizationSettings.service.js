@@ -18,7 +18,7 @@ const EDITABLE_FIELDS = [
   'themeInk', 'themeMuted', 'themeAccent', 'themeAccentDark',
   'defaultCurrency', 'defaultTaxRate', 'defaultServiceChargeRate', 'quotationValidityDays',
   'quotationTerms', 'cancellationPolicy', 'invoicePaymentTerms', 'invoicePaymentInstructions',
-  'ratingTagline', 'paymentMethods', 'docNumberPrefixes',
+  'ratingTagline', 'paymentMethods', 'docNumberPrefixes', 'pricingDefaults',
   'bankName', 'bankAccountName', 'bankAccountNumber', 'bankIfscCode', 'bankSwiftCode',
   'bankBranch', 'bankAccountType', 'upiId',
 ];

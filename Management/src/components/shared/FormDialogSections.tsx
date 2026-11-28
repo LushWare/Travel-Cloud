@@ -7,9 +7,9 @@ import { DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/di
 /**
  * Shared scaffolding for "big multi-section edit form" dialogs (lead
  * create/edit, package create/edit). Any dialog using these must set
- * DialogContent className to "sm:max-w-4xl max-h-[95vh] p-0 gap-0
- * overflow-hidden flex flex-col" - header/footer pin via shrink-0,
- * FormDialogBody is the only scrolling region.
+ * DialogContent to a responsive bounded size with "p-0 gap-0 overflow-hidden
+ * flex flex-col" - header/footer pin via shrink-0, FormDialogBody is the only
+ * scrolling region.
  */
 
 export interface FormDialogHeaderTab {
@@ -26,23 +26,26 @@ interface FormDialogHeaderProps {
   tabs?: FormDialogHeaderTab[];
   activeTab?: string;
   onTabChange?: (key: string) => void;
+  /** Buttons shown at the header's right edge (kept clear of the close X). */
+  actions?: ReactNode;
 }
 
 export function FormDialogHeader({
-  icon: Icon, title, subtitle, tabs, activeTab, onTabChange,
+  icon: Icon, title, subtitle, tabs, activeTab, onTabChange, actions,
 }: FormDialogHeaderProps) {
   return (
     <DialogHeader className="bg-primary text-primary-foreground p-4 sm:p-6 shrink-0 space-y-0">
-      <div className="flex items-center gap-4">
+      <div className={cn('flex items-center gap-4', actions && 'pr-10')}>
         <div className="p-3 bg-primary-foreground/15 rounded-xl shrink-0">
           <Icon className="w-7 h-7" />
         </div>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <DialogTitle className="text-xl sm:text-2xl text-primary-foreground">{title}</DialogTitle>
           {subtitle && (
             <DialogDescription className="text-primary-foreground/80 mt-0.5">{subtitle}</DialogDescription>
           )}
         </div>
+        {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
       </div>
 
       {tabs && tabs.length > 1 && (

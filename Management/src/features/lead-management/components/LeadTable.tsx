@@ -295,7 +295,7 @@ const LeadTable = ({
             return (
               <div
                 key={leadId}
-                onClick={() => onEditClick?.(lead)}
+                onClick={() => onLeadClick(lead)}
                 className={`bg-card rounded-xl border-2 transition-all cursor-pointer group ${
                   isHighlighted ? 'border-primary ring-2 ring-primary/20 shadow-[var(--shadow-modal)]' : 'border-border hover:border-ring hover:shadow-[var(--shadow-card)]'
                 }`}

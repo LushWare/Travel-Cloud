@@ -13,7 +13,7 @@ export {
   QuotePackageSelectionResult,
 } from './packageSelection.js';
 export { QuotationSummary } from './quotationSummary.js';
-export { OrganizationSettings, OrganizationSettingsUpdate } from './organizationSettings.js';
+export { OrganizationSettings, OrganizationSettingsUpdate, PricingDefaults, TRANSPORT_RATE_MODES } from './organizationSettings.js';
 export { apiEnvelopeAny } from './envelope.js';
 export { LoginRequest, RegisterRequest, WebsiteUser, AuthResult, ProfileUpdateRequest, ProfileUpdateResult } from './websiteAuth.js';
 export {

@@ -38,7 +38,30 @@ interface NewEditPackageFormProps {
   onSetCover?: ((id: string) => void) | null;
   hideLeadManagementButtons?: boolean;
   onlyItineraryEditable?: boolean;
+  /**
+   * The popup is open but the full package hasn't arrived yet. Each section shows a
+   * spinner and saving is disabled; the form reads `formData` once loading ends.
+   */
+  isLoading?: boolean;
+  /** Swap an existing package editor to its read-only details popup. */
+  onViewDetails?: (pkg: any) => void;
 }
+
+const SectionLoading = ({ label }: { label: string }) => (
+  <div className="flex flex-col items-center justify-center py-8" role="status">
+    <Loader className="w-6 h-6 text-primary animate-spin" />
+    <p className="mt-2 text-sm text-muted-foreground">{label}</p>
+  </div>
+);
+
+type EditorSection = 'basic' | 'images' | 'itinerary' | 'details';
+
+const EDITOR_SECTIONS = [
+  { id: 'basic', label: 'Basic Information', icon: FileText },
+  { id: 'images', label: 'Package Images', icon: Image },
+  { id: 'itinerary', label: 'Day-wise Itinerary', icon: Calendar },
+  { id: 'details', label: 'Price Calculation', icon: DollarSign },
+] as const;
 
 const NewEditPackageForm = ({
   isOpen,
@@ -57,18 +80,18 @@ const NewEditPackageForm = ({
   onSetCover = null,
   hideLeadManagementButtons = false,
   onlyItineraryEditable = false,
+  isLoading = false,
+  onViewDetails,
 }: NewEditPackageFormProps) => {
   const [localFormData, setLocalFormData] = useState(formData);
   const [saving] = useState(false);
   const [showItinerary, setShowItinerary] = useState(false);
-  const [expandedSections, setExpandedSections] = useState({
-    basic: true,
-    details: true,
-    images: true,
-    itinerary: true,
-  });
+  const [activeSection, setActiveSection] = useState<EditorSection>('basic');
 
   useEffect(() => {
+    // Wait for the full package; initialising from the card summary would seed a
+    // blank default day that then gets thrown away.
+    if (isLoading) return;
     const initialData = { ...formData };
 
     // Duration is derived from the itinerary, not stored separately. Seed one
@@ -80,11 +103,11 @@ const NewEditPackageForm = ({
 
     setLocalFormData(initialData);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Only run on mount
+  }, [isLoading]); // On mount, and once more when loading finishes
 
-  const toggleSection = (section: string) => {
-    setExpandedSections(prev => ({ ...prev, [section]: !prev[section as keyof typeof prev] }));
-  };
+  useEffect(() => {
+    if (isOpen) setActiveSection(onlyItineraryEditable ? 'itinerary' : 'basic');
+  }, [isOpen, onlyItineraryEditable]);
 
   const handleBasicInfoChange = (data: any) => {
     setLocalFormData(data);
@@ -180,30 +203,83 @@ const NewEditPackageForm = ({
 
   const itineraryDays = (localFormData.days || []).filter(Boolean);
   const duration = itineraryDays.length;
+  const visibleSections = EDITOR_SECTIONS.filter(({ id }) => !onlyItineraryEditable || id !== 'images');
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent
-        className="sm:max-w-4xl max-h-[95vh] p-0 gap-0 overflow-hidden flex flex-col"
+        className="h-dvh w-screen max-w-none max-h-none rounded-none p-0 gap-0 overflow-hidden flex flex-col sm:h-[92vh] sm:w-[96vw] sm:max-w-[1440px] sm:max-h-[1000px] sm:rounded-xl"
         closeClassName="text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground dark:hover:bg-primary-foreground/20 dark:hover:text-primary-foreground"
       >
-        <FormDialogHeader icon={Package} title={title} subtitle={subtitle} />
-        <FormDialogBody>
+        <FormDialogHeader
+          icon={Package}
+          title={title}
+          subtitle={subtitle}
+          actions={onViewDetails ? (
+            <Button
+              type="button"
+              aria-label="View Details"
+              onClick={() => onViewDetails(formData)}
+              className="bg-primary-foreground/15 text-primary-foreground ring-1 ring-primary-foreground/40 hover:bg-primary-foreground/25 sm:min-w-32"
+            >
+              <Eye className="w-4 h-4" />
+              <span className="hidden sm:inline">View Details</span>
+            </Button>
+          ) : undefined}
+        />
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden sm:flex-row">
+          <div
+            role="tablist"
+            aria-label="Package editor sections"
+            className="flex shrink-0 gap-1 overflow-x-auto border-b border-border p-2 sm:w-56 sm:flex-col sm:overflow-y-auto sm:overflow-x-hidden sm:border-b-0 sm:border-r sm:p-3"
+          >
+            {visibleSections.map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                id={`package-editor-${id}-tab`}
+                type="button"
+                role="tab"
+                aria-selected={activeSection === id}
+                aria-controls={`package-editor-${id}-panel`}
+                onClick={() => setActiveSection(id)}
+                className={`flex min-w-max items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors sm:w-full sm:justify-start ${
+                  activeSection === id
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
+              >
+                <Icon className="size-4 shrink-0" />
+                <span>{label}</span>
+              </button>
+            ))}
+          </div>
+
+          <div
+            id={`package-editor-${activeSection}-panel`}
+            role="tabpanel"
+            aria-labelledby={`package-editor-${activeSection}-tab`}
+            className="flex min-h-0 min-w-0 flex-1 flex-col"
+          >
+        <FormDialogBody className="min-h-0 space-y-6 overscroll-y-contain [scrollbar-gutter:stable]">
       {/* Basic Info Section */}
-      {!onlyItineraryEditable ? (
+      {activeSection === 'basic' && (!onlyItineraryEditable ? (
         <FormDialogSection
           id="basic"
-          expanded={expandedSections.basic}
-          onToggle={toggleSection}
+          expanded
+          onToggle={() => {}}
           icon={FileText}
           title="Basic Information"
           subtitle="Package name, destination, and description"
         >
-          <BasicPackageInfo
-            formData={localFormData}
-            onChange={handleBasicInfoChange}
-            packageId={localFormData._id || localFormData.id || null}
-          />
+          {isLoading ? (
+            <SectionLoading label="Loading package details..." />
+          ) : (
+            <BasicPackageInfo
+              formData={localFormData}
+              onChange={handleBasicInfoChange}
+              packageId={localFormData._id || localFormData.id || null}
+            />
+          )}
         </FormDialogSection>
       ) : (
         <div className="bg-muted rounded-xl border border-border p-6">
@@ -231,40 +307,46 @@ const NewEditPackageForm = ({
             </div>
           </div>
         </div>
-      )}
+      ))}
 
       {/* Images Section */}
-      {!onlyItineraryEditable && (
+      {activeSection === 'images' && !onlyItineraryEditable && (
         <FormDialogSection
           id="images"
-          expanded={expandedSections.images}
-          onToggle={toggleSection}
+          expanded
+          onToggle={() => {}}
           icon={Image}
           title="Package Images"
           subtitle="Upload attractive images for your package"
         >
-          <ImageUpload
-            images={images || localFormData.images || []}
-            onImageUpload={onImageUpload}
-            onImageRemove={onImageRemove}
-            isUploading={isUploadingImages}
-            deletingIndexes={deletingImageIndexes}
-            coverUrl={coverImage}
-            onSetCover={onSetCover}
-          />
+          {isLoading ? (
+            <SectionLoading label="Loading images..." />
+          ) : (
+            <ImageUpload
+              images={images || localFormData.images || []}
+              onImageUpload={onImageUpload}
+              onImageRemove={onImageRemove}
+              isUploading={isUploadingImages}
+              deletingIndexes={deletingImageIndexes}
+              coverUrl={coverImage}
+              onSetCover={onSetCover}
+            />
+          )}
         </FormDialogSection>
       )}
 
       {/* Itinerary Section */}
-      <FormDialogSection
+      {activeSection === 'itinerary' && <FormDialogSection
         id="itinerary"
-        expanded={expandedSections.itinerary}
-        onToggle={toggleSection}
+        expanded
+        onToggle={() => {}}
         icon={Calendar}
         title="Day-wise Itinerary"
         subtitle="Plan activities and experiences for each day"
       >
-        {!showItinerary ? (
+        {isLoading ? (
+          <SectionLoading label="Loading itinerary..." />
+        ) : !showItinerary ? (
           <div className="space-y-6">
             <ItineraryEditor
               days={localFormData.days || []}
@@ -275,6 +357,8 @@ const NewEditPackageForm = ({
               packageType={localFormData.packageType || ''}
               category={localFormData.category || ''}
               hideDescription={onlyItineraryEditable}
+              compactDayNavigation
+              fillUnpricedTransport
             />
 
             {!hideLeadManagementButtons && (
@@ -297,23 +381,27 @@ const NewEditPackageForm = ({
             </Button>
           </div>
         )}
-      </FormDialogSection>
+      </FormDialogSection>}
 
       {/* Price Calculation Section */}
-      {!onlyItineraryEditable ? (
+      {activeSection === 'details' && (!onlyItineraryEditable ? (
         <FormDialogSection
           id="details"
-          expanded={expandedSections.details}
-          onToggle={toggleSection}
+          expanded
+          onToggle={() => {}}
           icon={DollarSign}
           title="Price Calculation"
           subtitle="Live pricing breakdown computed from itinerary costs"
         >
-          <PriceCalculation
-            formData={localFormData}
-            onFormChange={handleDetailsChange}
-            duration={duration}
-          />
+          {isLoading ? (
+            <SectionLoading label="Loading pricing..." />
+          ) : (
+            <PriceCalculation
+              formData={localFormData}
+              onFormChange={handleDetailsChange}
+              duration={duration}
+            />
+          )}
         </FormDialogSection>
       ) : (
         <div className="bg-muted rounded-xl border border-border p-6">
@@ -376,11 +464,11 @@ const NewEditPackageForm = ({
             )}
           </div>
         </div>
-      )}
+      ))}
 
       {/* Tip Box — informational, scrolls with the form content rather than
           living in the pinned footer, which is buttons-only. */}
-      {!hideLeadManagementButtons && (
+      {activeSection === 'basic' && !hideLeadManagementButtons && (
         <div className="bg-primary/5 rounded-lg p-4 border border-primary/10 flex items-start gap-3">
           <div className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center flex-shrink-0">
             <Info className="w-4 h-4 text-primary" />
@@ -392,15 +480,17 @@ const NewEditPackageForm = ({
         </div>
       )}
         </FormDialogBody>
+          </div>
+        </div>
 
         <FormDialogFooter>
           {!hideLeadManagementButtons ? (
             <>
-              <Button onClick={() => handleSave('draft')} disabled={saving} variant="outline" className="flex-1">
+              <Button onClick={() => handleSave('draft')} disabled={saving || isLoading} variant="outline" className="flex-1">
                 {saving ? <Loader className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                 {saving ? 'Saving...' : 'Save as Draft'}
               </Button>
-              <Button onClick={() => handleSave('published')} disabled={saving} className="flex-1">
+              <Button onClick={() => handleSave('published')} disabled={saving || isLoading} className="flex-1">
                 {saving ? <Loader className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                 {saving ? 'Publishing...' : 'Publish'}
               </Button>
@@ -411,7 +501,7 @@ const NewEditPackageForm = ({
             </>
           ) : (
             <>
-              <Button onClick={() => handleSave('published')} className="flex-1">
+              <Button onClick={() => handleSave('published')} disabled={isLoading} className="flex-1">
                 <Save className="w-4 h-4" />
                 Save Customized Package
               </Button>

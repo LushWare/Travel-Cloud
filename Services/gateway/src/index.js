@@ -86,7 +86,8 @@ const PUBLIC_PATTERNS = [
   [/^\/api\/v1\/packages\/stats\//,              'GET'], // stats
   [/^\/api\/v1\/packages\/search\//,             'GET'], // search
   [/^\/api\/v1\/packages\/category\//,           'GET'], // by category
-  [/^\/api\/v1\/packages\/[^/]+\/?(\?.*)?$/,    'GET'], // single package view /:id
+  [/^\/api\/v1\/packages\/options\/?$/,           'GET'], // compact active-package picker list
+  [/^\/api\/v1\/packages\/(?!options\/?$)[^/]+\/?(\?.*)?$/, 'GET'], // single package view /:id
   [/^\/api\/v1\/reviews/, 'GET'],
   // Public forms
   [/^\/api\/v1\/bookings\/website$/, 'POST'],

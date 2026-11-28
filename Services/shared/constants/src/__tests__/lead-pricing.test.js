@@ -58,7 +58,6 @@ describe('lead pricing enums', () => {
 
   it('defines the global pricing constants', () => {
     expect(PRICING).toEqual({
-      TAX_RATE: 18,
       DEFAULT_CURRENCY: 'USD',
     });
   });

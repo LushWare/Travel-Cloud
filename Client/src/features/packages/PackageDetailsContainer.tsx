@@ -21,6 +21,7 @@ import BookingModal from './components/BookingModal';
 import ReviewModal from './components/ReviewModal';
 import type { BookingFormData } from './components/BookingModal';
 import type { ReviewFormData } from './components/ReviewModal';
+import { PRICE_BASIS_NOTE } from '../../utils/priceBasis';
 
 interface Review {
   id: string;
@@ -741,6 +742,12 @@ export default function PackageDetailsContainer() {
                 {formatCurrency(pkg.price_from)}
               </span>
               <span className="text-sm text-gray-500">/ person</span>
+              {pkg.single_supplement > 0 && (
+                <p className="w-full text-sm font-medium text-gray-700">
+                  Travelling alone: + {formatCurrency(pkg.single_supplement)} single supplement
+                </p>
+              )}
+              <p className="w-full text-xs text-gray-500">{PRICE_BASIS_NOTE}</p>
             </div>
             <div className="mb-6 flex items-center gap-2 text-sm">
               <span className="flex items-center text-yellow-400" aria-label={`${pkg.rating} out of 5 stars`}>

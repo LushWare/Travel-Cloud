@@ -50,9 +50,15 @@ vi.mock('../../components', async (importOriginal) => {
     // the real PackageFormModal wrapper), so the stub must respect `isOpen`
     // itself — otherwise both the New and Edit package stubs would render
     // simultaneously and collide on the "Stub Save" role query.
-    NewEditPackageForm: ({ isOpen, onSave }) => (
-      isOpen ? <button onClick={() => onSave()}>Stub Save</button> : null
-    ),
+    NewEditPackageForm: ({ isOpen, isLoading, title, onSave }) => {
+      if (!isOpen) return null;
+      return (
+        <div>
+          <h2>{title}</h2>
+          {isLoading ? <p>Stub Loading</p> : <button onClick={() => onSave()}>Stub Save</button>}
+        </div>
+      );
+    },
   };
 });
 
@@ -179,6 +185,93 @@ describe('ItineraryGenerationContainer — package pagination', () => {
     }));
     expect(await screen.findByText('Package 13')).toBeInTheDocument();
     vi.restoreAllMocks();
+  });
+});
+
+describe('ItineraryGenerationContainer — first load', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockApiService.getPackageStats.mockResolvedValue({ success: true, data: { total: 0, active: 0, featured: 0, avgRating: 0 } });
+  });
+
+  it('shows a loading spinner instead of placeholder package cards while packages load', () => {
+    mockApiService.getPackagesProtected.mockReturnValue(new Promise(() => {}));
+
+    render(
+      <MemoryRouter>
+        <ItineraryGenerationContainer />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('Loading packages...')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Edit$/i })).not.toBeInTheDocument();
+    expect(screen.queryByText('Draft')).not.toBeInTheDocument();
+  });
+
+  it('shows the empty state once the API returns no packages', async () => {
+    mockApiService.getPackagesProtected.mockResolvedValue({ success: true, data: [] });
+
+    render(
+      <MemoryRouter>
+        <ItineraryGenerationContainer />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('No packages found')).toBeInTheDocument();
+    expect(screen.queryByText('Loading packages...')).not.toBeInTheDocument();
+  });
+});
+
+describe('ItineraryGenerationContainer — opening the edit popup', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockApiService.getPackageStats.mockResolvedValue({ success: true, data: { total: 1, active: 1, featured: 0, avgRating: 0 } });
+    mockApiService.getPackagesProtected.mockResolvedValue({ success: true, data: [persistedPackage] });
+  });
+
+  it('opens the edit popup immediately in its loading state while the full package is fetched', async () => {
+    mockApiService.getPackage.mockReturnValue(new Promise(() => {}));
+    render(
+      <MemoryRouter>
+        <ItineraryGenerationContainer />
+      </MemoryRouter>,
+    );
+
+    await userEvent.click(await screen.findByRole('button', { name: /^Edit$/i }));
+
+    expect(screen.getByText('Edit Travel Package')).toBeInTheDocument();
+    expect(screen.getByText('Stub Loading')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Stub Save' })).not.toBeInTheDocument();
+  });
+
+  it('switches the edit popup out of its loading state once the package arrives', async () => {
+    mockApiService.getPackage.mockResolvedValue({ success: true, data: persistedPackage });
+    render(
+      <MemoryRouter>
+        <ItineraryGenerationContainer />
+      </MemoryRouter>,
+    );
+
+    await userEvent.click(await screen.findByRole('button', { name: /^Edit$/i }));
+
+    expect(await screen.findByRole('button', { name: 'Stub Save' })).toBeInTheDocument();
+    expect(screen.queryByText('Stub Loading')).not.toBeInTheDocument();
+  });
+
+  it('reuses the package fetched on hover instead of requesting it again on click', async () => {
+    mockApiService.getPackage.mockResolvedValue({ success: true, data: persistedPackage });
+    render(
+      <MemoryRouter>
+        <ItineraryGenerationContainer />
+      </MemoryRouter>,
+    );
+    const editButton = await screen.findByRole('button', { name: /^Edit$/i });
+
+    await userEvent.hover(editButton);
+    await userEvent.click(editButton);
+
+    await screen.findByRole('button', { name: 'Stub Save' });
+    expect(mockApiService.getPackage).toHaveBeenCalledTimes(1);
   });
 });
 

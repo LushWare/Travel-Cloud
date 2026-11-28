@@ -6,6 +6,10 @@ import { computePricing, toLineDescriptor } from './pricing.service.js';
 // with a local (zod v3) validator schema, only .parse() it standalone.
 import { LeadSnapshotForQuotation } from '@travel-crm/contracts';
 import { cloudRunAuthHeader } from './cloudRunAuth.js';
+import { getLinePricing } from '../config/pricingDefaults.js';
+import { resolveTaxRate } from './taxRate.service.js';
+// Circular with lead-itinerary.service.js; both sides only call these at runtime.
+import { buildAutoCostLines, serializeLeadDays } from './lead-itinerary.service.js';
 
 const BILLING_SERVICE_URL = process.env.BILLING_SERVICE_URL || 'http://localhost:3006';
 
@@ -85,6 +89,9 @@ export function toEditorDays(days) {
     lunchCount: day.lunchCount,
     dinnerCount: day.dinnerCount,
     mealPriceOverride: day.mealPriceOverride ?? null,
+    breakfastPriceOverride: day.breakfastPriceOverride ?? null,
+    lunchPriceOverride: day.lunchPriceOverride ?? null,
+    dinnerPriceOverride: day.dinnerPriceOverride ?? null,
     accommodation: day.accommodation || {},
     flights: day.flights || [],
     places: (day.places?.create || []).map((p) => ({
@@ -110,7 +117,7 @@ export function toEditorDays(days) {
  * fetches the live blueprint from package-service; for the manual slot it's
  * a single blank day with no cost lines.
  */
-export async function deriveSelectionView({ selection, fetchImpl = fetch }) {
+export async function deriveSelectionView({ selection, fetchImpl = fetch, travelers, prismaClient = prisma }) {
   if (selection.isManual) {
     return {
       packageName: null,
@@ -119,8 +126,14 @@ export async function deriveSelectionView({ selection, fetchImpl = fetch }) {
       pricing: { currency: 'USD', marginType: null, marginValue: null },
     };
   }
+  // Rooms and vehicles are sized for the lead's party.
+  let party = travelers ?? selection.lead?.numberOfTravelers;
+  if (party == null && selection.leadId) {
+    const lead = await prismaClient.lead.findUnique({ where: { id: selection.leadId }, select: { numberOfTravelers: true } });
+    party = lead?.numberOfTravelers;
+  }
   const pkg = await fetchPackage(selection.packageId, fetchImpl);
-  const { packageName, days, costLines, pricing } = buildDraftData(pkg);
+  const { packageName, days, costLines, pricing } = buildDraftData(pkg, { travelers: party || 1, pricing: await getLinePricing() });
   return { packageName, days, costLines, pricing };
 }
 
@@ -138,7 +151,7 @@ export async function materializeSelection({ selectionId, fetchImpl = fetch, pri
     return selection;
   }
 
-  const { packageName, days, costLines, pricing } = await deriveSelectionView({ selection, fetchImpl });
+  const { packageName, days, costLines, pricing } = await deriveSelectionView({ selection, fetchImpl, prismaClient });
 
   try {
     return await prismaClient.leadPackageSelection.update({
@@ -202,24 +215,45 @@ export async function refreshSelection({ selectionId, force = false, prismaClien
 }
 
 /**
- * Mirror a selection's computed total onto the lead's free-text `budget` so the
- * lead summary reflects the currently-quoted package. Only syncs from the lead's
- * primary selection (adopting this one as primary when the lead has none yet).
- * Best-effort: a no-op when there's no pricing/total.
+ * Each lead's current quote total, read live from the package that drives it:
+ * the lead's primary selection, else its first-created priced selection.
+ *
+ * Kept apart from `lead.budget` on purpose — the budget is what the CUSTOMER
+ * said they want to spend and is never overwritten; this is what WE are
+ * quoting. Returns Map<leadId, { amount, currency, selectionId }>; leads with
+ * no priced package are absent.
  */
-export async function syncLeadBudgetFromSelection(leadId, selectionId, prismaClient = prisma) {
-  const [lead, pricing] = await Promise.all([
-    prismaClient.lead.findUnique({ where: { id: leadId }, select: { primarySelectionId: true } }),
-    prismaClient.leadPricing.findUnique({ where: { leadPackageSelectionId: selectionId } }),
-  ]);
-  if (!lead || !pricing) return;
-  const isPrimary = !lead.primarySelectionId || lead.primarySelectionId === selectionId;
-  if (!isPrimary) return;
-  const total = Number(pricing.totalAmount) || 0;
-  if (total <= 0) return;
-  const currency = pricing.currency || 'USD';
-  const budget = `${currency} ${total.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
-  await prismaClient.lead.update({ where: { id: leadId }, data: { budget } });
+export async function loadQuoteTotals(leads, prismaClient = prisma) {
+  const ids = (leads || []).map((l) => l?.id).filter(Boolean);
+  const totals = new Map();
+  if (ids.length === 0) return totals;
+
+  const selections = await prismaClient.leadPackageSelection.findMany({
+    where: { leadId: { in: ids } },
+    orderBy: { createdAt: 'asc' },
+    select: { id: true, leadId: true, pricing: { select: { totalAmount: true, currency: true } } },
+  });
+  const primaryOf = new Map(leads.map((l) => [l.id, l.primarySelectionId ?? null]));
+
+  for (const selection of selections) {
+    const total = Number(selection.pricing?.totalAmount);
+    if (!Number.isFinite(total) || total <= 0) continue;
+    const entry = { amount: total, currency: selection.pricing.currency || 'USD', selectionId: selection.id };
+    // A lead with a primary package is quoted on that package only; a lead
+    // without one shows its first priced package.
+    const primary = primaryOf.get(selection.leadId);
+    if (primary ? primary === selection.id : !totals.has(selection.leadId)) totals.set(selection.leadId, entry);
+  }
+  return totals;
+}
+
+/** Adds `quoteTotal` ({ amount, currency } | null) to each lead record. */
+export async function withQuoteTotals(leads, prismaClient = prisma) {
+  const totals = await loadQuoteTotals(leads, prismaClient);
+  return leads.map((lead) => {
+    const total = totals.get(lead.id);
+    return { ...lead, quoteTotal: total ? { amount: total.amount, currency: total.currency } : null };
+  });
 }
 
 /**
@@ -235,6 +269,7 @@ export async function recomputeSelectionPricing(selectionId, verifiedPaymentTota
   const pricing = selection.pricing || {};
   const computed = computePricing({
     lines: selection.costLines.map(toLineDescriptor),
+    taxRate: await resolveTaxRate(pricing),
     travelers: selection.lead.numberOfTravelers || 1,
     currency: pricing.currency || 'USD',
     marginType: pricing.marginType || null,
@@ -265,6 +300,43 @@ export async function recomputeSelectionPricing(selectionId, verifiedPaymentTota
   });
 }
 
+const lineKey = (l) => [
+  l.category, l.description, l.basis, Number(l.quantity) || 1, Math.round((Number(l.estimatedUnitPrice) || 0) * 100),
+].join('|');
+
+/**
+ * Re-price a saved selection's AUTO cost lines from its own saved itinerary
+ * with today's Settings (meal prices, vehicle seats, people per room) and the
+ * lead's current party size, then recompute its totals. MANUAL lines — rep
+ * entries and transfer flights — are kept as they are. A package priced as one
+ * flat line (no day-by-day costs) is left alone. Returns true when the lines
+ * changed.
+ */
+export async function repriceSelection(selectionId, { prismaClient = prisma } = {}) {
+  const selection = await prismaClient.leadPackageSelection.findUnique({
+    where: { id: selectionId },
+    include: {
+      lead: { select: { numberOfTravelers: true } },
+      pricing: true,
+      costLines: { orderBy: { orderIndex: 'asc' } },
+      itineraryDays: { orderBy: { dayNumber: 'asc' }, include: { places: true, activities: true, transports: true } },
+    },
+  });
+  if (!selection?.pricing || !selection.itineraryDays?.length) return false;
+
+  const fresh = buildAutoCostLines(serializeLeadDays(selection), selection.lead?.numberOfTravelers || 1, await getLinePricing());
+  if (fresh.length === 0) return false;
+  const stored = selection.costLines.filter((l) => l.source === 'AUTO');
+  if (stored.length === fresh.length && stored.every((l, i) => lineKey(l) === lineKey(fresh[i]))) return false;
+
+  await prismaClient.$transaction([
+    prismaClient.leadCostLine.deleteMany({ where: { leadPackageSelectionId: selectionId, source: 'AUTO' } }),
+    prismaClient.leadPackageSelection.update({ where: { id: selectionId }, data: { costLines: { create: fresh } } }),
+  ]);
+  await recomputeSelectionPricing(selectionId, null, prismaClient);
+  return true;
+}
+
 /**
  * Snapshot a selection's pricing into a versioned billing quotation. A still
  * -pristine selection is materialized first so the quotation and the lead's
@@ -273,6 +345,10 @@ export async function recomputeSelectionPricing(selectionId, verifiedPaymentTota
 export async function snapshotSelectionQuotation(selectionId, { createdById = null, fetchImpl = fetch, prismaClient = prisma } = {}) {
   if (!(await isSelectionMaterialized(selectionId, prismaClient))) {
     await materializeSelection({ selectionId, fetchImpl, prismaClient });
+  } else {
+    // A new quotation goes out at today's prices, not the ones saved when the
+    // itinerary was last edited.
+    await repriceSelection(selectionId, { prismaClient });
   }
 
   const selection = await prismaClient.leadPackageSelection.findUnique({
@@ -293,6 +369,7 @@ export async function snapshotSelectionQuotation(selectionId, { createdById = nu
 
   const computed = computePricing({
     lines: selection.costLines.map(toLineDescriptor),
+    taxRate: await resolveTaxRate(pricing),
     travelers: lead.numberOfTravelers || 1,
     currency: pricing.currency || 'USD',
     marginType: pricing.marginType || null,
@@ -380,6 +457,8 @@ export async function snapshotSelectionQuotation(selectionId, { createdById = nu
     discountType: pricing.discountType || 'none',
     discountValue: Number(pricing.discountValue) || 0,
     serviceChargeRate: Number(pricing.serviceChargeRate) || 0,
+    // The rate the lead was priced at, so the quotation's tax matches it.
+    taxRate: computed.taxRate,
     notes: null,
     terms: null,
     paymentTerms: null,

@@ -10,6 +10,9 @@
     "./transport": "./src/transport.js",
     "./activities": "./src/activities.js",
     "./margin": "./src/margin.js",
+    "./package-price": "./src/package-price.js",
+    "./board": "./src/board.js",
+    "./itinerary-price": "./src/itinerary-price.js",
     "./config": "./src/config.js"
   },
   "scripts": {

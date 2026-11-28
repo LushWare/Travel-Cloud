@@ -23,6 +23,7 @@ import { useAIDayGenerator } from './hooks/useAIDayGenerator';
 import RegenerationToast from './components/RegenerationToast';
 import { useAssistantPageRegistration } from '../assistant/capabilities/AssistantCapabilityProvider';
 import type { AssistantActionPayload, AssistantPageAction, AssistantPageRegistration } from '../assistant/capabilities/AssistantCapabilityProvider';
+import { PRICE_BASIS_SHORT } from '../../utils/priceBasis';
 
 /** Step labels for the shared Stepper — must match the five per-step titles below. */
 const CUSTOMIZE_STEPS = [
@@ -518,6 +519,7 @@ export default function CustomizePackageContainer() {
             <div className="rounded-lg border border-white/25 bg-white/10 px-3.5 py-2 backdrop-blur-sm sm:px-4 sm:py-2.5">
               <p className="mb-0.5 text-xs uppercase tracking-wide text-white/75 sm:mb-1">From</p>
               <p className="text-lg font-semibold text-white sm:text-xl">{formatCurrency(pkg.price_from)}</p>
+              <p className="text-xs text-white/75">{PRICE_BASIS_SHORT}</p>
             </div>
           </div>
         </div>

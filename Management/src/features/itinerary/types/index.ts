@@ -90,6 +90,9 @@ export interface ItineraryDay {
   lunchCount: number;
   dinnerCount: number;
   mealPriceOverride: number | null;
+  breakfastPriceOverride?: number | null;
+  lunchPriceOverride?: number | null;
+  dinnerPriceOverride?: number | null;
   places: DefaultPlace[];
   activities: DefaultActivity[];
   // Per-activity cost data keyed by activity name so the display-name based
@@ -203,7 +206,7 @@ export const PACKAGE_DEFAULTS: PackageDefaults = {
   isActive: true,
   isFeatured: false,
   defaultMarginType: 'PERCENTAGE',
-  defaultMarginInput: 20,
+  defaultMarginInput: 0,
   currency: 'USD',
 };
 

@@ -350,6 +350,15 @@ resource "google_cloud_run_v2_service_iam_member" "lead_invoker_notification" {
   member   = "serviceAccount:${google_service_account.services["lead-service"].email}"
 }
 
+resource "google_cloud_run_v2_service_iam_member" "lead_invoker_user" {
+  # Agency meal prices (Settings) for lead cost lines.
+  project  = var.project_id
+  location = var.region
+  name     = module.user_service.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.services["lead-service"].email}"
+}
+
 resource "google_cloud_run_v2_service_iam_member" "package_invoker_user" {
   # Company branding for package PDFs and the trip wizard.
   project  = var.project_id

@@ -29,7 +29,7 @@ const packageFixture = {
 
 describe('buildDraftData', () => {
   it('maps the package into itinerary days, AUTO cost lines and pricing defaults', () => {
-    const data = buildDraftData(packageFixture);
+    const data = buildDraftData(packageFixture, { pricing: { mealPrices: { breakfast: 15, lunch: 15, dinner: 15 } } });
 
     expect(data.days).toHaveLength(1);
     expect(data.days[0]).toMatchObject({
@@ -53,7 +53,7 @@ describe('buildDraftData', () => {
       expect.objectContaining({ category: 'food', basis: 'PER_PERSON', estimatedUnitPrice: 60, source: 'AUTO' }),
       expect.objectContaining({ category: 'activity', basis: 'PER_PERSON', estimatedUnitPrice: 50, source: 'AUTO' }),
       expect.objectContaining({ category: 'transportation', basis: 'PER_VEHICLE', estimatedUnitPrice: 300, quantity: 1, source: 'AUTO' }),
-      expect.objectContaining({ category: 'accommodation', basis: 'PER_PERSON', estimatedUnitPrice: 100, source: 'AUTO' }),
+      expect.objectContaining({ category: 'accommodation', basis: 'PER_ROOM', quantity: 1, estimatedUnitPrice: 100, source: 'AUTO' }),
     ]));
 
     expect(data.pricing).toEqual({
@@ -90,7 +90,7 @@ describe('buildDraftData', () => {
   });
 
   it('builds cost lines with per-person basis from meal counts', () => {
-    const data = buildDraftData(packageFixture);
+    const data = buildDraftData(packageFixture, { pricing: { mealPrices: { breakfast: 15, lunch: 15, dinner: 15 } } });
     const food = data.costLines.find((l) => l.category === 'food');
     expect(food).toEqual(expect.objectContaining({
       basis: 'PER_PERSON',
@@ -110,7 +110,8 @@ describe('buildDraftData', () => {
     expect(data.costLines).toEqual([
       expect.objectContaining({
         category: 'package',
-        basis: 'FIXED',
+        // basePrice is per person, so the line scales with the party.
+        basis: 'PER_PERSON',
         estimatedUnitPrice: 850,
         description: 'Weekend Getaway',
         source: 'AUTO',

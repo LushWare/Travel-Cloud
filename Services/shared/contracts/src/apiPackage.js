@@ -48,6 +48,7 @@ export const ApiPackage = z
     coverImage: z.string().nullable().optional(),
     basePrice: moneyField.optional(),
     sellPrice: moneyField.optional(),
+    singleSupplement: moneyField.optional(),
     currency: z.string().optional(),
     termsAndConditions: z.string().nullable().optional(),
     inclusions: z.array(z.string()).optional(),

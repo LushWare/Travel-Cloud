@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Plus,
   RefreshCw,
@@ -27,7 +27,7 @@ import InvoiceDialog from "../features/lead-management/components/InvoiceDialog"
 import ReceiptDialog from "../features/lead-management/components/ReceiptDialog";
 import VoucherDialog from "../features/lead-management/components/VoucherDialog";
 import LeadSectionView from "../features/lead-management/components/LeadSectionView";
-import LeadDetailPane from "../features/lead-management/components/LeadDetailPane";
+import LeadDetailsDialog from "../features/lead-management/components/LeadDetailsDialog";
 import ActiveSalesRepsDialog from "../features/lead-management/components/ActiveSalesRepsDialog";
 import { LIFECYCLE_STATUS_COLORS, LIFECYCLE_STATUS_LABELS } from "../features/lead-management/components/LeadStatusBadge";
 import type { LifecycleStatus } from "../features/lead-management/components/LeadStatusBadge";
@@ -96,9 +96,9 @@ const LeadManagement = () => {
 
   const [selectedLead, setSelectedLead] = useState<any>(null);
   const [statusLead, setStatusLead] = useState<any>(null);
+  const statusChangeCompleteRef = useRef<((status: string) => void) | null>(null);
   const [sectionLead, setSectionLead] = useState<any>(null);
-  // The lead selected into the persistent detail pane. This — not the documents
-  // dialog below — owns the copilot scope: clearing it unmounts the session.
+  // The lead shown in the read-only View Details popup (opened by a row click).
   const [detailLead, setDetailLead] = useState<any>(null);
   // When set, the lead editor was opened from the quotation flow and we return
   // to the quotation modal once the editor closes.
@@ -392,14 +392,22 @@ const LeadManagement = () => {
       const payload: Record<string, any> = { lifecycleStatus: newStatus };
       if (reason) payload.lostReason = reason;
       await leadAPI.updateLead(leadId, payload);
+      statusChangeCompleteRef.current?.(newStatus);
       toast.success("Status updated successfully");
       fetchLeads();
       fetchLeadStats();
     } catch (err: any) {
       toast.error(apiErrorMessage(err));
     }
+    statusChangeCompleteRef.current = null;
     setShowStatusDialog(false);
     setStatusLead(null);
+  };
+
+  const requestStatusChange = (lead: any, onStatusChanged?: (status: string) => void) => {
+    statusChangeCompleteRef.current = onStatusChanged || null;
+    setStatusLead(lead);
+    setShowStatusDialog(true);
   };
 
   const handleClaimLead = async (lead: any) => {
@@ -514,9 +522,6 @@ const LeadManagement = () => {
               />
             )}
 
-            {/* Persistent record surface: the Evidence Lens reveals into these anchors. */}
-            <LeadDetailPane lead={detailLead} salesReps={salesReps} onClose={() => setDetailLead(null)} />
-
             {/* Lead Cards Grid */}
             <div id="recommendation-target" className="scroll-mt-20">
             {!loading && !error && leads.length > 0 && (
@@ -607,6 +612,38 @@ const LeadManagement = () => {
           </div>
         </div>
       {/* Dialogs */}
+      {/* Each action hides the details popup before opening its own dialog, so
+          two modals never stack. */}
+      <LeadDetailsDialog
+        lead={detailLead}
+        onClose={() => setDetailLead(null)}
+        salesReps={salesReps}
+        onEdit={(lead: any) => {
+          setDetailLead(null);
+          setSelectedLead(lead);
+          setShowEditDialog(true);
+        }}
+        onRemarksClick={(lead: any) => {
+          setDetailLead(null);
+          setSelectedLead(lead);
+          setShowRemarksDialog(true);
+        }}
+        onWhatsappClick={(lead: any) => {
+          setDetailLead(null);
+          setSelectedLead(lead);
+          setShowWhatsappDialog(true);
+        }}
+        onQuotationClick={(lead: any) => {
+          setDetailLead(null);
+          setQuotationLead(lead);
+        }}
+        onDocumentsClick={(lead: any) => {
+          setDetailLead(null);
+          setSectionLead(lead);
+          setShowSectionView(true);
+        }}
+      />
+
       <NewLeadDialog
         isOpen={showNewDialog}
         onClose={() => setShowNewDialog(false)}
@@ -621,6 +658,20 @@ const LeadManagement = () => {
         salesReps={salesReps}
         onSuccess={handleLeadSuccess}
         initialSelectionId={editorInitialSelectionId ?? undefined}
+        onRequestStatusChange={requestStatusChange}
+        onViewDetails={(lead: any) => {
+          // A deliberate switch to View Details, so don't bounce back into the
+          // quotation/voucher flow the editor may have been opened from.
+          setShowEditDialog(false);
+          setSelectedLead(null);
+          setEditorInitialSelectionId(null);
+          setResumeQuoteLead(null);
+          setResumeQuoteSelectionId(null);
+          setResumeVoucherLead(null);
+          setResumeVoucherSelectionId(null);
+          const leadId = String(lead._id || lead.id);
+          setDetailLead(leads.find((l) => String(l._id || l.id) === leadId) ?? lead);
+        }}
       />
 
       <RemarksDialog
@@ -677,6 +728,7 @@ const LeadManagement = () => {
       <StatusChangeDialog
         isOpen={showStatusDialog}
         onClose={() => {
+          statusChangeCompleteRef.current = null;
           setShowStatusDialog(false);
           setStatusLead(null);
         }}

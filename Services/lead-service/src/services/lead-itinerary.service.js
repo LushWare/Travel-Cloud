@@ -3,6 +3,9 @@ import AppError from '../utils/appError.js';
 import { buildItineraryCostLines } from '../../../shared/lead-pricing-engine/src/index.js';
 import { computePricing, toLineDescriptor } from './pricing.service.js';
 import { fetchPackage } from './lead-draft.service.js';
+import { recomputeSelectionPricing } from './lead-selection.service.js';
+import { getLinePricing } from '../config/pricingDefaults.js';
+import { parseTaxRate, resolveTaxRate } from './taxRate.service.js';
 
 export const EDIT_BLOCKED_STATUSES = [
   'QUOTED',
@@ -27,6 +30,9 @@ export function buildDaysCreateData(days) {
     lunchCount: day.lunchCount || 0,
     dinnerCount: day.dinnerCount || 0,
     mealPriceOverride: day.mealPriceOverride != null ? Number(day.mealPriceOverride) : null,
+    breakfastPriceOverride: day.breakfastPriceOverride != null ? Number(day.breakfastPriceOverride) : null,
+    lunchPriceOverride: day.lunchPriceOverride != null ? Number(day.lunchPriceOverride) : null,
+    dinnerPriceOverride: day.dinnerPriceOverride != null ? Number(day.dinnerPriceOverride) : null,
     accommodation: day.accommodation ?? {},
     flights: day.flights ?? [],
     places: {
@@ -87,15 +93,43 @@ export function buildDaysCreateData(days) {
 }
 
 /**
- * Derive AUTO cost lines from editor-shaped days (persistence column names).
+ * The cost line for a package with no day-by-day breakdown: its stored price
+ * is the cost per person (twin sharing), so it is charged per traveller.
  */
-export function buildAutoCostLines(days) {
+export function flatPackageLine(blueprint) {
+  return {
+    category: 'package',
+    description: blueprint.title || 'Package price',
+    basis: 'PER_PERSON',
+    quantity: 1,
+    estimatedUnitPrice: Number(blueprint.basePrice),
+    actualUnitPrice: null,
+    marginType: null,
+    marginValue: null,
+    source: 'AUTO',
+    orderIndex: 0,
+  };
+}
+
+/**
+ * Derive AUTO cost lines from editor-shaped days (persistence column names)
+ * for a party of `travelers` — room and vehicle counts depend on it, so call
+ * again whenever the party size changes.
+ */
+export function buildAutoCostLines(days, travelers = 1, pricing = {}) {
   const engineLines = buildItineraryCostLines({
+    travelers,
+    mealPrices: pricing.mealPrices,
+    vehicleSeats: pricing.vehicleSeats,
+    peoplePerRoom: pricing.peoplePerRoom,
     days: (days || []).map((d) => ({
       breakfastCount: d.breakfastCount || 0,
       lunchCount: d.lunchCount || 0,
       dinnerCount: d.dinnerCount || 0,
       mealPriceOverride: d.mealPriceOverride ?? null,
+      breakfastPriceOverride: d.breakfastPriceOverride ?? null,
+      lunchPriceOverride: d.lunchPriceOverride ?? null,
+      dinnerPriceOverride: d.dinnerPriceOverride ?? null,
       accommodation: d.accommodation || {},
     })),
     activities: (days || []).flatMap((d) =>
@@ -120,6 +154,7 @@ export function buildAutoCostLines(days) {
     ),
     transports: (days || []).flatMap((d) =>
       (d.transports || []).map((t) => ({
+        transportMode: t.transportMode,
         pricingModel: t.pricingModel,
         unitCost: t.unitCost,
         distanceKm: t.distanceKm,
@@ -152,6 +187,9 @@ export function serializeLeadDays(lead) {
     lunchCount: day.lunchCount,
     dinnerCount: day.dinnerCount,
     mealPriceOverride: day.mealPriceOverride ? Number(day.mealPriceOverride) : null,
+    breakfastPriceOverride: day.breakfastPriceOverride != null ? Number(day.breakfastPriceOverride) : null,
+    lunchPriceOverride: day.lunchPriceOverride != null ? Number(day.lunchPriceOverride) : null,
+    dinnerPriceOverride: day.dinnerPriceOverride != null ? Number(day.dinnerPriceOverride) : null,
     accommodation: day.accommodation || {},
     flights: day.flights || [],
     places: (day.places || []).map((p) => ({
@@ -260,26 +298,13 @@ export async function applyLeadSelectionItinerary({
       : lead.lifecycleStatus;
 
   const daysCreate = buildDaysCreateData(days);
-  const autoLines = buildAutoCostLines(days);
+  const autoLines = buildAutoCostLines(days, lead.numberOfTravelers || 1, await getLinePricing());
   // Flat-priced packages (no day-by-day breakdown) have nothing for
-  // buildAutoCostLines to derive from — fall back to a single line from the
-  // package's basePrice so saving/previewing doesn't freeze the total at 0.
+  // buildAutoCostLines to derive from — fall back to the package's per-person
+  // price so saving/previewing doesn't freeze the total at 0.
   if (autoLines.length === 0) {
     const blueprint = await loadPackage();
-    if (Number(blueprint?.basePrice) > 0) {
-      autoLines.push({
-        category: 'package',
-        description: blueprint.title || 'Package price',
-        basis: 'FIXED',
-        quantity: 1,
-        estimatedUnitPrice: Number(blueprint.basePrice),
-        actualUnitPrice: null,
-        marginType: null,
-        marginValue: null,
-        source: 'AUTO',
-        orderIndex: 0,
-      });
-    }
+    if (Number(blueprint?.basePrice) > 0) autoLines.push(flatPackageLine(blueprint));
   }
 
   await prismaClient.$transaction([
@@ -319,9 +344,12 @@ export async function applyLeadSelectionItinerary({
 
   // Persist pricing settings + recomputed totals.
   const settings = { ...pricing, ...pricingSettings };
+  // Blank = follow the Settings default tax rate.
+  const ownTaxRate = parseTaxRate(settings.taxRate);
   const freshLines = await prismaClient.leadCostLine.findMany({ where: { leadPackageSelectionId: selection.id } });
   const computed = computePricing({
     lines: freshLines.map(toLineDescriptor),
+    taxRate: await resolveTaxRate({ taxRate: ownTaxRate }),
     travelers: lead.numberOfTravelers || 1,
     currency: settings.currency || 'USD',
     marginType: settings.marginType || null,
@@ -344,6 +372,7 @@ export async function applyLeadSelectionItinerary({
       discountType: settings.discountType || 'none',
       discountValue: Number(settings.discountValue) || 0,
       serviceChargeRate: Number(settings.serviceChargeRate) || 0,
+      taxRate: ownTaxRate,
       estimatedTotal: computed.estimatedTotal,
       actualTotal: computed.actualTotal,
       sellSubtotal: computed.sellSubtotal,
@@ -360,4 +389,51 @@ export async function applyLeadSelectionItinerary({
   });
 
   return { leadId, selectionId: selection.id, lifecycleStatus: nextStatus };
+}
+
+/**
+ * The party size changed: rebuild every saved package's AUTO cost lines (room
+ * and vehicle counts depend on it) and recompute its totals, so the price the
+ * rep sees matches the new number of travellers.
+ *
+ * Skipped once the lead is quoted or later — the price on a sent quotation
+ * must not move underneath it. The rep moves the lead back to drafting (which
+ * unlocks edits) to re-price it. Pristine selections need nothing: they are
+ * derived from the package with the current party size on every read.
+ */
+export async function repriceSelectionsForTravelers(leadId, prismaClient = prisma) {
+  const lead = await prismaClient.lead.findUnique({ where: { id: leadId } });
+  if (!lead || EDIT_BLOCKED_STATUSES.includes(lead.lifecycleStatus)) return { repriced: [] };
+  const travelers = lead.numberOfTravelers || 1;
+
+  const selections = await prismaClient.leadPackageSelection.findMany({
+    where: { leadId },
+    include: {
+      pricing: true,
+      itineraryDays: {
+        orderBy: { dayNumber: 'asc' },
+        include: { places: true, activities: true, transports: true, images: true },
+      },
+    },
+  });
+
+  const repriced = [];
+  const linePricing = await getLinePricing();
+  for (const selection of selections) {
+    if (!selection.pricing) continue; // pristine — nothing persisted to re-price
+    const lines = buildAutoCostLines(serializeLeadDays(selection), travelers, linePricing);
+    // A flat-priced package has no days to rebuild from; its per-person line
+    // already scales with the party when totals are recomputed.
+    if (lines.length > 0) {
+      await prismaClient.$transaction([
+        prismaClient.leadCostLine.deleteMany({ where: { leadPackageSelectionId: selection.id, source: 'AUTO' } }),
+        prismaClient.leadCostLine.createMany({
+          data: lines.map((line) => ({ ...line, leadPackageSelectionId: selection.id })),
+        }),
+      ]);
+    }
+    await recomputeSelectionPricing(selection.id, null, prismaClient);
+    repriced.push(selection.id);
+  }
+  return { repriced };
 }

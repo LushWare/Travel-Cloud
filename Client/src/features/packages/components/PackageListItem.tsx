@@ -3,6 +3,7 @@ import { Clock, ArrowRight } from 'lucide-react';
 import { formatCurrency } from '../../../lib/currency';
 import type { EnrichedPackage } from '../PackagesContainer';
 import { categoryImage } from '../../../config/media';
+import { PRICE_BASIS_SHORT } from '../../../utils/priceBasis';
 
 interface PackageListItemProps {
   pkg: EnrichedPackage;
@@ -56,6 +57,7 @@ export default function PackageListItem({ pkg }: PackageListItemProps) {
             <div>
               <p className="text-xs text-gray-500 mb-1">Starting Price</p>
               <p className="text-3xl font-bold text-brand-600">{formatCurrency(pkg.price_from)}</p>
+              <p className="text-xs text-gray-500">{PRICE_BASIS_SHORT}</p>
             </div>
             <Link
               to={`/package/${pkg.id}`}

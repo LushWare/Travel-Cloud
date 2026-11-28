@@ -182,6 +182,9 @@ model ItineraryDay {
   lunchCount        Int      @default(0) @map("lunch_count")
   dinnerCount       Int      @default(0) @map("dinner_count")
   mealPriceOverride Decimal? @map("meal_price_override") @db.Decimal(10, 2)
+  breakfastPriceOverride Decimal? @map("breakfast_price_override") @db.Decimal(10, 2)
+  lunchPriceOverride     Decimal? @map("lunch_price_override") @db.Decimal(10, 2)
+  dinnerPriceOverride    Decimal? @map("dinner_price_override") @db.Decimal(10, 2)
   accommodation     Json     @default("{}") // { name?, totalAmount, roomType? } per night
   flights           Json     @default("[]") // editor flight preferences per day
   images            Json     @default("[]") // [{ url, publicId, altText? }] uploaded in the day editor

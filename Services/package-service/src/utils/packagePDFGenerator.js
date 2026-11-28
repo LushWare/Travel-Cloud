@@ -3,6 +3,7 @@ import PDFDocument from 'pdfkit';
 import { theme as T } from '../config/pdfTheme.js';
 import { loadRemoteImageBuffer } from './pdfImageLoader.js';
 import { getOrgSettings } from '../config/orgSettings.js';
+import { computeMargin } from '../../../shared/pricing-engine/src/index.js';
 
 const asList = (v) => (Array.isArray(v) ? v.filter(Boolean) : v ? [v] : []);
 
@@ -216,8 +217,13 @@ export async function generatePackagePDF(pkg) {
         // that doesn't belong on the cover.
         const firstTransportMode = days.flatMap((d) => d.transports || []).map((t) => t.transportMode).find(Boolean);
         if (firstTransportMode) stats.push(['TRAVEL METHOD', titleCase(firstTransportMode)]);
-        if (Number(pkg.basePrice) > 0) {
-          stats.push(['STARTING FROM', formatMoney(pkg.basePrice, pkg.currency)]);
+        // The customer's price (cost + margin) — never the cost — per person,
+        // twin sharing, the same figure the website and package card show.
+        const sellPrice = pkg.sellPrice != null
+          ? Number(pkg.sellPrice)
+          : computeMargin(Number(pkg.basePrice) || 0, pkg.defaultMarginType, Number(pkg.defaultMarginInput) || 0).sellPrice;
+        if (sellPrice > 0) {
+          stats.push(['FROM / PERSON', formatMoney(sellPrice, pkg.currency)]);
         }
         doc.x = left;
         doc.y = cardY + cardH + 24;

@@ -214,10 +214,17 @@ describe('generatePackagePDF', () => {
     expect(honeymoon.subarray(0, 5).toString('latin1')).toBe('%PDF-');
   });
 
-  it('omits the "Starting From" price row when basePrice is zero', async () => {
+  it('omits the price row when the package has no price', async () => {
     const priced = await generatePackagePDF({ ...basePackage, basePrice: 1899 });
     const unpriced = await generatePackagePDF({ ...basePackage, basePrice: 0 });
     expect(priced.length).not.toBe(unpriced.length);
+  });
+
+  it('prints the selling price, not the cost', async () => {
+    // A stored selling price prints even when the cost field is empty.
+    const withSellPrice = await generatePackagePDF({ ...basePackage, basePrice: 0, sellPrice: 2279 });
+    const unpriced = await generatePackagePDF({ ...basePackage, basePrice: 0, sellPrice: 0 });
+    expect(withSellPrice.length).not.toBe(unpriced.length);
   });
 
   it('renders a cover image fetched from a remote https URL instead of the banner fallback', async () => {

@@ -4,7 +4,8 @@ import prisma from '../db/client.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import AppError from '../utils/appError.js';
 import logger from '../config/logger.js';
-import { serializePackage, resolveActivityCatalogIds, buildItineraryDaysData, buildInclude } from '../services/package.service.js';
+import { serializePackage, resolveActivityCatalogIds, buildItineraryDaysData, buildInclude, priceItinerary } from '../services/package.service.js';
+import { getPricingDefaults } from '../config/orgSettings.js';
 import { generateStructured } from '../ai/geminiClient.js';
 import { buildGeneratePackagePrompt, generatePackageResponseSchema } from '../ai/prompts/generatePackage.v1.js';
 import { buildGenerateFromTitlePrompt, generateFromTitleResponseSchema } from '../ai/prompts/generateFromTitle.v1.js';
@@ -131,7 +132,8 @@ export const generateAIPackage = asyncHandler(async (req, res) => {
   const d = Number(duration);
 
   const normalizedDays = normalizeAIDays(days);
-  const { days: resolvedDays } = await resolveActivityCatalogIds(normalizedDays);
+  const { days: resolvedDays, activityCost } = await resolveActivityCatalogIds(normalizedDays);
+  const { mealPrices, margin } = await getPricingDefaults();
   const slug = slugify(pkgBody.title || packageData.title || 'package', { lower: true, strict: true }) + '-' + Date.now();
 
   const pkg = await prisma.package.create({
@@ -146,9 +148,9 @@ export const generateAIPackage = asyncHandler(async (req, res) => {
       inclusions: pkgBody.inclusions || [],
       exclusions: pkgBody.exclusions || [],
       termsAndConditions: pkgBody.termsAndConditions || '',
-      basePrice: pkgBody.price || 0,
-      defaultMarginType: 'PERCENTAGE',
-      defaultMarginInput: 20,
+      basePrice: priceItinerary(resolvedDays, activityCost, { mealPrices }).perPerson,
+      defaultMarginType: margin?.type === 'FIXED' ? 'FIXED' : 'PERCENTAGE',
+      defaultMarginInput: margin?.type === 'FIXED' ? Number(margin.fixed) || 0 : Number(margin?.percentage) || 0,
       currency: 'USD',
       isActive: false,
       isFeatured: false,

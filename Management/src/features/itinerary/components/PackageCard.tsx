@@ -46,6 +46,8 @@ interface PackageCardProps {
   onDownload: (pkg: any) => void;
   onDelete: (id: string) => void;
   onDuplicate: (pkg: any) => void;
+  /** Called when the pointer/focus reaches View or Edit, to start loading full details early. */
+  onPrefetch?: (pkg: any) => void;
 }
 
 const PackageCard = ({
@@ -55,6 +57,7 @@ const PackageCard = ({
   onDownload,
   onDelete,
   onDuplicate,
+  onPrefetch,
 }: PackageCardProps) => {
   const { user } = useAuth();
   const { hasPermission } = usePermission();
@@ -110,9 +113,6 @@ const PackageCard = ({
           <Badge className={getCategoryColor(pkg.category)}>
             {pkg.category}
           </Badge>
-          <Badge className="bg-muted text-muted-foreground">
-            {pkg.region}
-          </Badge>
         </div>
       </div>
 
@@ -127,10 +127,6 @@ const PackageCard = ({
             <MapPin className="w-4 h-4" />
             {pkg.destination || 'N/A'}
           </div>
-          <div className="flex items-center gap-2 text-muted-foreground">
-            <Briefcase className="w-4 h-4" />
-            {pkg.accommodation || 'N/A'}
-          </div>
         </div>
 
         {/* Rating and Price */}
@@ -141,6 +137,7 @@ const PackageCard = ({
             <span className="text-xs text-muted-foreground">({pkg.numReviews || 0})</span>
           </div>
           <div className="text-lg font-bold font-mono tabular-nums text-foreground">{formattedPrice || 'Contact us'}</div>
+          {formattedPrice && <div className="text-xs text-muted-foreground">per person · twin sharing</div>}
         </div>
 
         {/* Bookings */}
@@ -151,14 +148,29 @@ const PackageCard = ({
 
         {/* Action Buttons */}
         <div className="flex gap-2 pt-3 border-t border-border">
-          <Button onClick={() => onView(pkg)} title="View package details" size="sm" className="flex-1">
+          <Button
+            onClick={() => onView(pkg)}
+            onPointerEnter={() => onPrefetch?.(pkg)}
+            onFocus={() => onPrefetch?.(pkg)}
+            title="View package details"
+            size="sm"
+            className="flex-1"
+          >
             <Eye className="w-4 h-4" />
             View
           </Button>
 
           {/* Edit button - only visible to admins/staff with manage_packages permission or superAdmin */}
           {canEditPackages && (
-            <Button onClick={() => onEdit(pkg)} title="Edit package" variant="outline" size="sm" className="flex-1">
+            <Button
+              onClick={() => onEdit(pkg)}
+              onPointerEnter={() => onPrefetch?.(pkg)}
+              onFocus={() => onPrefetch?.(pkg)}
+              title="Edit package"
+              variant="outline"
+              size="sm"
+              className="flex-1"
+            >
               <Edit className="w-4 h-4" />
               Edit
             </Button>

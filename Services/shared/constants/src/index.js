@@ -58,8 +58,8 @@ export const ACTOR = {
   SYSTEM: 'SYSTEM',
 };
 
+// Tax comes from Settings (OrganizationSettings.defaultTaxRate), never a built-in rate.
 export const PRICING = {
-  TAX_RATE: 18,
   DEFAULT_CURRENCY: 'USD',
 };
 
@@ -140,6 +140,17 @@ export const TRANSPORT_PRICING_DEFAULTS = {
   TRAIN: 'PER_PERSON',
   BUS: 'PER_PERSON',
   BOAT: 'PER_PERSON',
+};
+
+/**
+ * How many vehicles of `mode` a party of `travelers` needs (at least 1).
+ * `seats` is the agency's Settings seats per vehicle; a vehicle without seats
+ * set is counted once.
+ */
+export const vehiclesNeeded = (mode, travelers, seats = {}) => {
+  const capacity = Number(seats?.[mode]) > 0 ? Number(seats[mode]) : null;
+  const people = Math.max(1, Number(travelers) || 1);
+  return capacity ? Math.ceil(people / capacity) : 1;
 };
 
 export const getDefaultPricingModel = (mode) =>

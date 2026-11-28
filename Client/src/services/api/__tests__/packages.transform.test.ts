@@ -91,6 +91,14 @@ describe('normalizePackage', () => {
     expect(result.isActive).toBe(true);
   });
 
+  it('carries the single supplement for solo travellers', () => {
+    expect(normalizePackage({ title: 'Maldives Escape', sellPrice: 1200, singleSupplement: 450 }).single_supplement).toBe(450);
+  });
+
+  it('has no single supplement when the API sends none', () => {
+    expect(normalizePackage({ title: 'Maldives Escape', sellPrice: 1200 }).single_supplement).toBe(0);
+  });
+
   it('includes a separate cover image and every unique gallery image', () => {
     const result = normalizePackage({
       coverImage: 'https://example.com/cover.jpg',

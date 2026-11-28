@@ -1,5 +1,10 @@
-import { DEFAULTS } from '../../pricing-engine/src/config.js';
+import { chargeableMealDays } from '../../pricing-engine/src/board.js';
+import { resolveMealPrices, dayMealCostPerPerson } from '../../pricing-engine/src/meals.js';
+import { vehiclesNeeded } from '../../constants/src/index.js';
 import { toCents, fromCents } from './money.js';
+
+/** People per standard hotel room when a room price is quoted per room. */
+const PEOPLE_PER_ROOM = 2;
 
 /**
  * Resolve the effective quantity of a line:
@@ -51,29 +56,39 @@ export function computeLine(line, { travelers = 1 } = {}) {
 }
 
 /**
- * Map a copied package itinerary (days/activities/transports/accommodation)
- * into AUTO cost lines with per-person units. Trip-level transport keeps its
- * own basis and quantity; accommodation is treated as PER_PERSON (twin-share).
+ * Map a lead's itinerary (days/activities/transports/accommodation) into AUTO
+ * cost lines for a party of `travelers`:
+ *  - meals and activities are per person (meals the hotel's meal plan already
+ *    includes are left out);
+ *  - a vehicle (PER_VEHICLE / PER_KM) is shared, and a party too big for one
+ *    gets as many vehicles as it needs;
+ *  - a hotel price the rep searched for the whole party
+ *    (`accommodation.priceCovers === 'PARTY'`) is charged once as is; any other
+ *    room price is one room for the night, charged per room needed
+ *    (`peoplePerRoom`, default two). Vehicle seats come from `vehicleSeats`
+ *    (Settings), else the built-in capacity.
+ *
+ * Room and vehicle counts depend on `travelers`, so the lines must be rebuilt
+ * when the party size changes.
  */
 export function buildItineraryCostLines({
   days = [],
   activities = [],
   transports = [],
   mealCostPerPerson,
+  mealPrices,
+  vehicleSeats,
+  peoplePerRoom,
+  travelers = 1,
 } = {}) {
-  const defaultMealCost = mealCostPerPerson ?? DEFAULTS.mealCostPerPerson;
+  const defaultMealPrices = resolveMealPrices({ mealPrices, mealCostPerPerson });
+  const party = Math.max(1, Number(travelers) || 1);
+  const roomSize = Number(peoplePerRoom) >= 1 ? Math.floor(Number(peoplePerRoom)) : PEOPLE_PER_ROOM;
   const lines = [];
 
-  // Per-person meal estimate. Each day may override the per-meal rate via
-  // `mealPriceOverride`; days without an override use the default rate.
-  const mealEstimate = days.reduce((sum, d) => {
-    const count = (d.breakfastCount || 0) + (d.lunchCount || 0) + (d.dinnerCount || 0);
-    const rate =
-      d.mealPriceOverride != null && d.mealPriceOverride !== ''
-        ? Number(d.mealPriceOverride) || 0
-        : defaultMealCost;
-    return sum + count * rate;
-  }, 0);
+  // Per-person meal estimate: each meal at the day's own price for it, else the default.
+  const mealEstimate = chargeableMealDays(days)
+    .reduce((sum, d) => sum + dayMealCostPerPerson(d, defaultMealPrices), 0);
   if (mealEstimate > 0) {
     lines.push({
       category: 'food',
@@ -97,27 +112,56 @@ export function buildItineraryCostLines({
   (transports || []).forEach((t, i) => {
     const isPerPerson = t.pricingModel === 'PER_PERSON';
     const isPerKm = t.pricingModel === 'PER_KM';
-    lines.push({
-      category: 'transportation',
-      description: `Transport ${i + 1}`,
-      basis: isPerPerson ? 'PER_PERSON' : isPerKm ? 'PER_KM' : 'PER_VEHICLE',
-      estimatedUnit: Number(t.unitCost) || 0,
-      quantity: isPerKm ? Number(t.distanceKm) || 0 : isPerPerson ? undefined : 1,
-      source: 'AUTO',
-    });
+    const label = `Transport ${i + 1}`;
+    const unitCost = Number(t.unitCost) || 0;
+    if (isPerPerson) {
+      lines.push({ category: 'transportation', description: label, basis: 'PER_PERSON', estimatedUnit: unitCost, source: 'AUTO' });
+      return;
+    }
+    const vehicles = vehiclesNeeded(t.transportMode, party, vehicleSeats);
+    const suffix = vehicles > 1 ? ` (${vehicles} vehicles)` : '';
+    lines.push(isPerKm
+      ? {
+          // Quantity is the distance, so extra vehicles go into the per-km rate.
+          category: 'transportation',
+          description: `${label}${suffix}`,
+          basis: 'PER_KM',
+          estimatedUnit: unitCost * vehicles,
+          quantity: Number(t.distanceKm) || 0,
+          source: 'AUTO',
+        }
+      : {
+          category: 'transportation',
+          description: `${label}${suffix}`,
+          basis: 'PER_VEHICLE',
+          estimatedUnit: unitCost,
+          quantity: vehicles,
+          source: 'AUTO',
+        });
   });
 
+  const rooms = Math.ceil(party / roomSize);
   (days || []).forEach((d, i) => {
     const amount = Number(d.accommodation?.totalAmount || 0);
-    if (amount > 0) {
-      lines.push({
-        category: 'accommodation',
-        description: `Accommodation day ${i + 1}`,
-        basis: 'PER_PERSON',
-        estimatedUnit: amount,
-        source: 'AUTO',
-      });
-    }
+    if (amount <= 0) return;
+    const coversParty = d.accommodation?.priceCovers === 'PARTY';
+    lines.push(coversParty
+      ? {
+          category: 'accommodation',
+          description: `Accommodation day ${i + 1} (whole party)`,
+          basis: 'FIXED',
+          estimatedUnit: amount,
+          quantity: 1,
+          source: 'AUTO',
+        }
+      : {
+          category: 'accommodation',
+          description: `Accommodation day ${i + 1}${rooms > 1 ? ` (${rooms} rooms)` : ''}`,
+          basis: 'PER_ROOM',
+          estimatedUnit: amount,
+          quantity: rooms,
+          source: 'AUTO',
+        });
   });
 
   return lines;

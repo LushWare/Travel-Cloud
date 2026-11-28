@@ -76,6 +76,9 @@ const itineraryDay = z.object({
   lunchCount: z.number().int().min(0).default(0),
   dinnerCount: z.number().int().min(0).default(0),
   mealPriceOverride: decimal().min(0).optional().nullable(),
+  breakfastPriceOverride: decimal().min(0).optional().nullable(),
+  lunchPriceOverride: decimal().min(0).optional().nullable(),
+  dinnerPriceOverride: decimal().min(0).optional().nullable(),
   places: z.array(dayPlace).optional().default([]),
   activities: z.array(dayActivity).optional().default([]),
   transports: z.array(dayTransport).optional().default([]),
@@ -130,6 +133,10 @@ export const updatePackageSchema = z.object({
   images: z.array(imageSchema).optional(),
   itineraryDays: z.array(itineraryDay).optional(),
 });
+
+export const repricePackagesSchema = z.object({
+  commit: z.boolean().default(false),
+}).strict();
 
 export const packageIdParamSchema = z.object({
   id: z.string().min(1, 'Invalid package ID'),

@@ -132,7 +132,7 @@ interface HotelSelectionModalProps {
   mode?: 'suggest' | 'search';
 
   // Suggest mode
-  onSelectHotel?: (hotel: Hotel) => void;
+  onSelectHotel?: (hotel: Hotel & { nights?: number }) => void;
   destination?: string;
   packageType?: string;
   category?: string;
@@ -793,7 +793,7 @@ export default function HotelSelectionModal({
     if (!selectedOffer) return;
     setSelectedRate(rate);
     if (isSuggestMode) {
-      onSelectHotel?.({ ...selectedOffer, cheapestRate: rate });
+      onSelectHotel?.({ ...selectedOffer, cheapestRate: rate, nights: getNightCount(searchForm.checkin, searchForm.checkout) });
       onClose();
       return;
     }
@@ -1005,7 +1005,7 @@ export default function HotelSelectionModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="w-[calc(100vw-2rem)] max-w-none sm:max-w-7xl max-h-[92vh] overflow-y-auto flex flex-col">
+      <DialogContent className="h-[96dvh] w-[calc(100vw-1rem)] max-w-none max-h-none overflow-y-auto flex flex-col p-3 sm:h-[94dvh] sm:w-[96vw] sm:max-w-[1600px] sm:p-5">
         <DialogHeader>
           <DialogTitle>
             {bookingStep === 'confirmed'

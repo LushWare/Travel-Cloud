@@ -15,6 +15,7 @@ import {
   generateDaysRangePreviewSchema,
   itineraryChatSchema,
   wizardTurnSchema,
+  repricePackagesSchema,
 } from '../validators/package.schema.js';
 import * as packageController from '../controllers/package.controller.js';
 import * as packageImageController from '../controllers/packageImage.controller.js';
@@ -44,6 +45,7 @@ router.get('/ai-status',          packageController.getAIStatus);
 router.get('/protected/all', requireAuth, packageController.getPackages);
 
 // ── Public: list and single-package view ─────────────────────────────────────
+router.get('/options', packageController.getPackageOptions);
 router.get('/', packageController.getPackages);
 router.get('/:id', validateParams(packageIdParamSchema), packageController.getPackageById);
 
@@ -63,6 +65,7 @@ router.post('/generate-days-preview', validateBody(generateDaysRangePreviewSchem
 
 // ── Pricing ───────────────────────────────────────────────────────────────────
 router.post('/calculate-price', requireAuth, packageController.calculatePrice);
+router.post('/reprice', requireAuth, authorize('admin', 'superAdmin'), validateBody(repricePackagesSchema), packageController.repriceAllPackages);
 
 // ── Package CRUD ──────────────────────────────────────────────────────────────
 router.post('/',      requireAuth, authorize('admin', 'staff', 'salesRep'), requirePackagePermissionForSalesRep, validateBody(createPackageSchema), packageController.createPackage);

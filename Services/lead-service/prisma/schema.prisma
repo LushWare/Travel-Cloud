@@ -469,6 +469,8 @@ model LeadPricing {
   discountType      DiscountType @default(none)
   discountValue     Decimal      @default(0) @db.Decimal(12, 2)
   serviceChargeRate Decimal      @default(0) @db.Decimal(12, 2)
+  // This package's own tax %, set by a rep. Null = the Settings default tax rate.
+  taxRate           Decimal?     @db.Decimal(5, 2)
 
   estimatedTotal      Decimal  @default(0) @db.Decimal(12, 2)
   actualTotal         Decimal? @db.Decimal(12, 2)
@@ -532,6 +534,9 @@ model LeadItineraryDay {
   lunchCount             Int                  @default(0)
   dinnerCount            Int                  @default(0)
   mealPriceOverride      Decimal?             @db.Decimal(12, 2)
+  breakfastPriceOverride Decimal?             @db.Decimal(12, 2)
+  lunchPriceOverride     Decimal?             @db.Decimal(12, 2)
+  dinnerPriceOverride    Decimal?             @db.Decimal(12, 2)
   accommodation          Json                 @default("{}")
   flights                Json                 @default("[]")
 

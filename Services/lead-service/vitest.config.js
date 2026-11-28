@@ -6,6 +6,7 @@ export default defineConfig({
     pool: 'forks',
     environment: 'node',
     testTimeout: 15_000,
+    setupFiles: ['./test/setup-pricing-defaults.js'],
     coverage: {
       provider: 'v8',
       include: ['src/**/*.js'],

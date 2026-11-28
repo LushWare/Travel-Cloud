@@ -17,6 +17,7 @@ import { formatCurrency } from '../../lib/currency';
 import { useAssistantViewReport } from '../assistant/capabilities/AssistantCapabilityProvider';
 import { pluralize } from '../../lib/pluralize';
 import { categoryImage } from '../../config/media';
+import { PRICE_BASIS_SHORT } from '../../utils/priceBasis';
 
 export type SortOption = 'popularity' | 'price-low' | 'price-high' | 'duration';
 export type ViewMode = 'grid' | 'list';
@@ -352,6 +353,7 @@ export default function PackagesContainer() {
                       fallbackImage={categoryImage(pkg.category)}
                       title={pkg.title}
                       price={formatCurrency(pkg.price_from)}
+                      priceNote={PRICE_BASIS_SHORT}
                       description={pkg.description}
                       overlayMeta={
                         <>

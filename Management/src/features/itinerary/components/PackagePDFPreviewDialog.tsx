@@ -43,8 +43,9 @@ const PackagePDFPreviewDialog = ({
         icon: Calendar,
       },
       {
-        label: 'Package Price',
-        value: formatPriceINR(packageData.price) || 'On request',
+        // Same price as the package card and website: per person, twin sharing.
+        label: 'Price per person (twin sharing)',
+        value: formatPriceINR(packageData.sellPrice ?? packageData.price) || 'On request',
         icon: Banknote,
       },
       {

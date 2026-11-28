@@ -201,6 +201,7 @@ module "lead_service" {
     NOTIFICATION_SERVICE_URL = module.notification_service.uri
     PACKAGE_SERVICE_URL      = module.package_service.uri
     BILLING_SERVICE_URL      = var.lead_billing_service_url
+    USER_SERVICE_URL         = module.user_service.uri
   })
   memory                = local.services.lead-service.memory
   cpu                   = local.services.lead-service.cpu

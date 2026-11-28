@@ -19,7 +19,11 @@ const {
   mockLeadGroupBy,
   mockLeadAggregate,
   mockLeadCount,
+  mockSelectionFindMany,
+  mockReprice,
 } = vi.hoisted(() => ({
+  mockSelectionFindMany: vi.fn().mockResolvedValue([]),
+  mockReprice: vi.fn(),
   mockLeadFindUnique: vi.fn(),
   mockLeadFindFirst: vi.fn(),
   mockLeadFindMany: vi.fn(),
@@ -50,7 +54,7 @@ vi.mock('../../db/client.js', () => ({
     leadRemark: { create: mockLeadRemarkCreate, findFirst: mockLeadRemarkFindFirst },
     leadCommunicationLog: { create: mockLeadCommunicationLogCreate },
     settings: { upsert: mockSettingsUpsert, update: mockSettingsUpdate },
-    leadPackageSelection: { count: mockSelectionCount },
+    leadPackageSelection: { count: mockSelectionCount, findMany: mockSelectionFindMany },
     $transaction: mockTransaction,
   },
 }));
@@ -62,6 +66,11 @@ vi.mock('../../services/gatekeeper.service.js', () => ({
 
 vi.mock('../../services/notification.client.js', () => ({
   sendWhatsappText: mockSendWhatsappText,
+}));
+
+vi.mock('../../services/lead-itinerary.service.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  repriceSelectionsForTravelers: mockReprice,
 }));
 
 import {
@@ -165,14 +174,16 @@ describe('updateLead — lifecycle transitions', () => {
     mockLeadUpdate.mockResolvedValue(leadFixture());
   });
 
-  it('rejects setting lifecycleStatus to QUOTED directly — must use the per-selection quote endpoint', async () => {
+  it('allows manual status updates without running quote or booking gatekeepers', async () => {
     mockLeadFindUnique.mockResolvedValue(leadFixture({ lifecycleStatus: 'DRAFTING' }));
 
-    const { req, res, next } = buildReqRes({ body: { lifecycleStatus: 'QUOTED' } });
+    const { req, res, next } = buildReqRes({ body: { lifecycleStatus: 'CONFIRMED' } });
     await updateLead(req, res, next);
 
-    expect(next).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringMatching(/packages\/:selectionId\/quote/) }));
-    expect(mockLeadUpdate).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalled();
+    expect(mockLeadUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ lifecycleStatus: 'CONFIRMED' }),
+    }));
   });
 
   it('allows a lead-level transition to CLOSED_LOST with a reason', async () => {
@@ -196,23 +207,24 @@ describe('updateLead — lifecycle transitions', () => {
     expect(next).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringMatching(/lostReason/i) }));
   });
 
-  it('rejects travel date changes once quoted', async () => {
+  it('allows travel date and traveler changes once quoted', async () => {
     mockLeadFindUnique.mockResolvedValue(leadFixture({ lifecycleStatus: 'QUOTED' }));
 
-    const { req, res, next } = buildReqRes({ body: { travelDate: '2026-03-01' } });
+    const { req, res, next } = buildReqRes({ body: {
+      travelDate: '2026-03-01',
+      endDate: '2026-03-10',
+      numberOfTravelers: 4,
+    } });
     await updateLead(req, res, next);
 
-    expect(next).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringMatching(/travel dates/i) }));
-    expect(mockLeadUpdate).not.toHaveBeenCalled();
-  });
-
-  it('rejects traveler count changes once quoted', async () => {
-    mockLeadFindUnique.mockResolvedValue(leadFixture({ lifecycleStatus: 'QUOTED', numberOfTravelers: 2 }));
-
-    const { req, res, next } = buildReqRes({ body: { numberOfTravelers: 4 } });
-    await updateLead(req, res, next);
-
-    expect(next).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringMatching(/numberOfTravelers/i) }));
+    expect(next).not.toHaveBeenCalled();
+    expect(mockLeadUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        travelDate: new Date('2026-03-01T00:00:00.000Z'),
+        endDate: new Date('2026-03-10T00:00:00.000Z'),
+        numberOfTravelers: 4,
+      }),
+    }));
   });
 
   it('allows plain contact-field edits with no lifecycle change', async () => {
@@ -968,5 +980,60 @@ describe('updateLead — remarks replacement', () => {
     await updateLead(req, res, next);
 
     expect(mockLeadUpdate.mock.calls[0][0].data.remarks).toBeUndefined();
+  });
+});
+
+describe('updateLead — traveller count re-prices the packages', () => {
+  beforeEach(() => {
+    mockLeadFindUnique.mockReset().mockResolvedValue(leadFixture({ numberOfTravelers: 2 }));
+    mockLeadUpdate.mockReset().mockResolvedValue(leadFixture({ numberOfTravelers: 4 }));
+    mockReprice.mockReset().mockResolvedValue({ repriced: ['sel-1'] });
+  });
+
+  it('re-prices when the number of travellers changes', async () => {
+    const { req, res, next } = buildReqRes({ body: { numberOfTravelers: 4 } });
+    await updateLead(req, res, next);
+
+    expect(mockReprice).toHaveBeenCalledWith('lead-1');
+  });
+
+  it('reports which packages were re-priced', async () => {
+    const { req, res, next } = buildReqRes({ body: { numberOfTravelers: 4 } });
+    await updateLead(req, res, next);
+
+    expect(res.json.mock.calls[0][0].repricing).toEqual({ ok: true, repriced: ['sel-1'] });
+  });
+
+  it('does not re-price when the count is unchanged', async () => {
+    const { req, res, next } = buildReqRes({ body: { numberOfTravelers: 2 } });
+    await updateLead(req, res, next);
+
+    expect(mockReprice).not.toHaveBeenCalled();
+  });
+
+  it('does not re-price when the count is not sent', async () => {
+    const { req, res, next } = buildReqRes({ body: { name: 'Renamed Lead' } });
+    await updateLead(req, res, next);
+
+    expect(mockReprice).not.toHaveBeenCalled();
+  });
+
+  it('still saves the lead when re-pricing fails', async () => {
+    mockReprice.mockRejectedValue(new Error('db blip'));
+    const { req, res, next } = buildReqRes({ body: { numberOfTravelers: 4 } });
+    req.log = { error: vi.fn() };
+    await updateLead(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.json.mock.calls[0][0]).toMatchObject({ success: true, repricing: { ok: false } });
+  });
+
+  it('logs a failed re-price', async () => {
+    mockReprice.mockRejectedValue(new Error('db blip'));
+    const { req, res, next } = buildReqRes({ body: { numberOfTravelers: 4 } });
+    req.log = { error: vi.fn() };
+    await updateLead(req, res, next);
+
+    expect(req.log.error).toHaveBeenCalledTimes(1);
   });
 });

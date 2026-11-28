@@ -46,7 +46,11 @@ const normalizeFlight = (flightData: Record<string, any> = {}): Flight => ({
   cabinClass: flightData.cabinClass || 'Economy',
   departureTime: flightData.departureTime || '',
   airlinePreference: flightData.airlinePreference || '',
-  totalAmount: Number(flightData.totalAmount ?? flightData.fareTotal ?? 0) || 0,
+  // A package has no dates or passengers yet, so its flight form asks for an
+  // "Estimated Cost (per person)" — that estimate IS the flight's price here.
+  totalAmount: Number(flightData.totalAmount ?? flightData.fareTotal ?? flightData.estimatedUnitPrice ?? 0) || 0,
+  // Kept so the flight form shows the estimate again when the flight is edited.
+  estimatedUnitPrice: Number(flightData.estimatedUnitPrice ?? flightData.totalAmount ?? flightData.fareTotal ?? 0) || 0,
   id: flightData.id || createFlightId(),
 });
 
@@ -157,6 +161,10 @@ export const resolveFlightEdit = ({
     return { flights, transports };
   }
   const flight = { ...flights[index], ...patch, id: flights[index].id };
+  // A new estimate from the flight form replaces the flight's price.
+  if (patch.estimatedUnitPrice !== undefined) {
+    flight.totalAmount = Number(patch.estimatedUnitPrice) || 0;
+  }
   return {
     flights: flights.map((f, i) => (i === index ? flight : f)),
     transports: syncRowForFlight(transports, flight),
@@ -195,6 +203,32 @@ export const countUnlinkedFlightRows = (transports: TransportRow[] = []): number
  * rows are kept untouched; each linked flight contributes one FLIGHT row with
  * unitCost = real price when > 0, else the row's existing manual cost, else 0.
  */
+/**
+ * Link FLIGHT rows that have lost their editor link (every row of a package
+ * loaded from the API) to the day's flights, in order — the same pairing the
+ * editor shows. Without this, reconcileFlightsForSave treats the old row as a
+ * separate manual cost AND adds a row for the flight, so the flight is counted
+ * twice and every save appends another FLIGHT row.
+ */
+export const linkFlightRows = <T extends Partial<TransportRow>>(rows: T[] = [], flights: Flight[] = []): T[] => {
+  const alreadyLinked = new Set(rows.map((row) => row.flightRef).filter(Boolean));
+  const freeFlights = flights.filter((flight) => flight?.id && !alreadyLinked.has(flight.id));
+  let next = 0;
+  return rows.map((row) => (
+    row.transportMode === 'FLIGHT' && !row.flightRef && freeFlights[next]
+      ? { ...row, flightRef: freeFlights[next++].id }
+      : row
+  ));
+};
+
+/**
+ * The transport rows a day is priced and saved with: FLIGHT rows linked to
+ * their flights, each flight counted once at its real fare when it has one.
+ * The price panel and the save/price payload both use this, so they agree.
+ */
+export const pricedDayTransports = (flights: Flight[] = [], transports: TransportRow[] = []): TransportRow[] =>
+  reconcileFlightsForSave({ flights, transports: linkFlightRows(transports, flights) });
+
 export const reconcileFlightsForSave = ({
   flights = [],
   transports = [],

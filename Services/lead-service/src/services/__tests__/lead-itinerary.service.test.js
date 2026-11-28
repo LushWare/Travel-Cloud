@@ -161,13 +161,22 @@ describe('buildDaysCreateData', () => {
 });
 
 describe('buildAutoCostLines', () => {
+  it('prices meals at the Settings prices with a day own dinner price', () => {
+    const lines = buildAutoCostLines(
+      [{ breakfastCount: 1, dinnerCount: 1, dinnerPriceOverride: 40 }],
+      1,
+      { mealPrices: { breakfast: 8, lunch: 15, dinner: 20 } },
+    );
+    expect(lines.find((l) => l.category === 'food').estimatedUnitPrice).toBe(48);
+  });
+
   it('builds persistence-shaped AUTO lines from editor days', () => {
-    const lines = buildAutoCostLines(editorDays);
+    const lines = buildAutoCostLines(editorDays, 1, { mealPrices: { breakfast: 15, lunch: 15, dinner: 15 } });
     expect(lines).toEqual(expect.arrayContaining([
       expect.objectContaining({ category: 'food', basis: 'PER_PERSON', estimatedUnitPrice: 60, source: 'AUTO' }),
       expect.objectContaining({ category: 'activity', basis: 'PER_PERSON', estimatedUnitPrice: 50, source: 'AUTO' }),
       expect.objectContaining({ category: 'transportation', basis: 'PER_VEHICLE', estimatedUnitPrice: 300, source: 'AUTO' }),
-      expect.objectContaining({ category: 'accommodation', basis: 'PER_PERSON', estimatedUnitPrice: 100, source: 'AUTO' }),
+      expect.objectContaining({ category: 'accommodation', basis: 'PER_ROOM', quantity: 1, estimatedUnitPrice: 100, source: 'AUTO' }),
     ]));
     expect(lines.every((l) => l.estimatedUnitPrice != null)).toBe(true);
   });
@@ -361,7 +370,7 @@ describe('applyLeadSelectionItinerary', () => {
     expect(mockSelectionUpdate).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({
         costLines: { create: expect.arrayContaining([
-          expect.objectContaining({ category: 'package', basis: 'FIXED', estimatedUnitPrice: 500, source: 'AUTO' }),
+          expect.objectContaining({ category: 'package', basis: 'PER_PERSON', estimatedUnitPrice: 500, source: 'AUTO' }),
         ]) },
       }),
     }));
@@ -403,5 +412,23 @@ describe('applyLeadSelectionItinerary', () => {
     expect(mockLineDeleteMany).toHaveBeenCalledWith({ where: { leadPackageSelectionId: 'sel-2', source: 'AUTO' } });
     expect(mockDayDeleteMany).not.toHaveBeenCalledWith({ where: { leadPackageSelectionId: 'sel-1' } });
     expect(mockLineDeleteMany).not.toHaveBeenCalledWith({ where: { leadPackageSelectionId: 'sel-1', source: 'AUTO' } });
+  });
+});
+
+describe('getLinePricing', () => {
+  it('reads meal prices, seats per vehicle and people per room from Settings', async () => {
+    const { getLinePricing, _resetCache } = await vi.importActual('../../config/pricingDefaults.js');
+    _resetCache();
+    const mealPrices = { breakfast: 8, lunch: 15, dinner: 20 };
+    const pricingDefaults = { mealPrices, peoplePerRoom: 3, transportRates: { CAR: { pricingModel: 'PER_VEHICLE', PER_VEHICLE: 50, seats: 4 }, VAN: { pricingModel: 'PER_VEHICLE' } } };
+    const fetchImpl = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ data: { settings: { pricingDefaults, defaultTaxRate: '8.00' } } }) });
+    expect(await getLinePricing({ fetchImpl })).toEqual({ mealPrices, vehicleSeats: { CAR: 4 }, peoplePerRoom: 3, taxRate: 8 });
+  });
+
+  it('refuses to price with made-up numbers when user-service is unreachable', async () => {
+    const { getLinePricing, _resetCache } = await vi.importActual('../../config/pricingDefaults.js');
+    _resetCache();
+    const fetchImpl = vi.fn().mockRejectedValue(new Error('down'));
+    await expect(getLinePricing({ fetchImpl })).rejects.toMatchObject({ statusCode: 503 });
   });
 });

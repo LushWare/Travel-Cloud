@@ -111,8 +111,8 @@ describe('GET /leads/:id/packages/:selectionId — itinerary load', () => {
   });
 });
 
-describe('PUT /leads/:id/packages/:selectionId/itinerary — save recomputes quote + syncs budget', () => {
-  it('persists a nonzero total reflecting the meal override and writes the lead budget', async () => {
+describe('PUT /leads/:id/packages/:selectionId/itinerary — save recomputes quote, keeps the customer budget', () => {
+  it('persists a nonzero total reflecting the meal override without touching the lead budget', async () => {
     mockPrisma.lead.findUnique.mockResolvedValue({
       id: LEAD, lifecycleStatus: 'DRAFTING', numberOfTravelers: 2, primarySelectionId: SEL,
     });
@@ -127,8 +127,6 @@ describe('PUT /leads/:id/packages/:selectionId/itinerary — save recomputes quo
       { category: 'food', basis: 'PER_PERSON', quantity: 1, estimatedUnitPrice: 300, actualUnitPrice: null, marginType: null, marginValue: null, source: 'AUTO' },
     ]);
     mockPrisma.leadPricing.update.mockResolvedValue({ id: 'pr-1' });
-    // syncLeadBudgetFromSelection reads these back.
-    mockPrisma.leadPricing.findUnique.mockResolvedValue({ totalAmount: 708, currency: 'USD' });
     mockPrisma.lead.update.mockResolvedValue({ id: LEAD });
 
     const res = await request(app)
@@ -141,14 +139,15 @@ describe('PUT /leads/:id/packages/:selectionId/itinerary — save recomputes quo
 
     expect(res.status).toBe(200);
 
-    // Bug 3: recompute persisted a nonzero total (food 300 × 2 pax + 18% tax = 708).
+    // Bug 3: recompute persisted a nonzero total (food 300 × 2 pax = 600; the
+    // tax rate comes from Settings, which unit tests leave unset, so no tax).
     const pricingUpdate = mockPrisma.leadPricing.update.mock.calls[0][0];
-    expect(pricingUpdate.data.totalAmount).toBe(708);
+    expect(pricingUpdate.data.totalAmount).toBe(600);
 
-    // Bug 2: budget synced from the primary selection total.
-    const leadUpdate = mockPrisma.lead.update.mock.calls.find((c) => c[0]?.data?.budget != null);
-    expect(leadUpdate).toBeTruthy();
-    expect(leadUpdate[0].data.budget).toBe('USD 708');
+    // The budget is what the customer wants to spend — the quote total is
+    // reported separately (quoteTotal) and never written over it.
+    const budgetWrite = mockPrisma.lead.update.mock.calls.find((c) => c[0]?.data?.budget !== undefined);
+    expect(budgetWrite).toBeUndefined();
   });
 });
 

@@ -194,6 +194,8 @@ export interface NormalizedPackage {
   destination: DestinationMeta;
   duration_days: number;
   price_from: number;
+  /** Extra a solo traveller pays over the per-person price; 0 when not known. */
+  single_supplement: number;
   currency: string;
   termsAndConditions: string;
   category: string;
@@ -231,6 +233,7 @@ export const normalizePackage = (apiPackage: ApiPackage = {}): NormalizedPackage
     destination: destinationMeta,
     duration_days: apiPackage.durationDays || 0,
     price_from: apiPackage.sellPrice ?? apiPackage.basePrice ?? 0,
+    single_supplement: Number(apiPackage.singleSupplement) || 0,
     currency: apiPackage.currency || '',
     termsAndConditions: apiPackage.termsAndConditions || '',
     category: apiPackage.category || 'other',

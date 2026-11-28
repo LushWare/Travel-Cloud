@@ -7,8 +7,10 @@ import {
   materializeSelection,
   refreshSelection,
   recomputeSelectionPricing,
+  repriceSelection,
   snapshotSelectionQuotation,
-  syncLeadBudgetFromSelection,
+  loadQuoteTotals,
+  withQuoteTotals,
 } from '../lead-selection.service.js';
 import AppError from '../../utils/appError.js';
 
@@ -308,40 +310,151 @@ describe('recomputeSelectionPricing', () => {
   });
 });
 
-describe('syncLeadBudgetFromSelection', () => {
-  const withPricing = (primarySelectionId, pricing) => mockPrisma({
-    lead: { findUnique: vi.fn().mockResolvedValue({ primarySelectionId }), update: vi.fn() },
-    leadPricing: { findUnique: vi.fn().mockResolvedValue(pricing) },
+describe('repriceSelection', () => {
+  // A saved 1-day copy: lunch + dinner, one car at 65, one hotel night at 120.
+  const savedSelection = (overrides = {}) => ({
+    id: 'sel-1',
+    lead: { numberOfTravelers: 2 },
+    pricing: { currency: 'USD', marginType: null, marginValue: null, discountType: 'none', discountValue: 0, serviceChargeRate: 0 },
+    itineraryDays: [{
+      dayNumber: 1,
+      breakfastCount: 0, lunchCount: 1, dinnerCount: 1,
+      mealPriceOverride: null, breakfastPriceOverride: null, lunchPriceOverride: null, dinnerPriceOverride: null,
+      accommodation: { name: 'Lodge', totalAmount: 120 },
+      places: [], activities: [], images: [],
+      transports: [{ transportMode: 'CAR', pricingModel: 'PER_VEHICLE', unitCost: 65, distanceKm: null }],
+    }],
+    costLines: [],
+    ...overrides,
   });
 
-  it('writes a formatted budget from the primary selection total', async () => {
-    const prismaClient = withPricing('sel-1', { totalAmount: 4814, currency: 'USD' });
-    await syncLeadBudgetFromSelection('lead-1', 'sel-1', prismaClient);
-    expect(prismaClient.lead.update).toHaveBeenCalledWith({
-      where: { id: 'lead-1' },
-      data: { budget: 'USD 4,814' },
+  const repriceMock = (selection) => {
+    const findUnique = vi.fn()
+      .mockResolvedValueOnce(selection)
+      // recomputeSelectionPricing's own read
+      .mockResolvedValue({ ...selection, costLines: [] });
+    return mockPrisma({
+      leadPackageSelection: { findUnique, update: vi.fn() },
+      leadPricing: { update: vi.fn().mockResolvedValue({}) },
     });
+  };
+
+  it('rebuilds the meal line at the current Settings meal prices', async () => {
+    const { getLinePricing } = await import('../../config/pricingDefaults.js');
+    getLinePricing.mockResolvedValueOnce({ mealPrices: { breakfast: 25, lunch: 55, dinner: 85 } });
+    const stale = [{ category: 'food', description: 'Meals', basis: 'PER_PERSON', quantity: 1, estimatedUnitPrice: 30, source: 'AUTO' }];
+    const prismaClient = repriceMock(savedSelection({ costLines: stale }));
+
+    await expect(repriceSelection('sel-1', { prismaClient })).resolves.toBe(true);
+
+    const created = prismaClient.leadPackageSelection.update.mock.calls[0][0].data.costLines.create;
+    expect(created.find((l) => l.category === 'food').estimatedUnitPrice).toBe(140);
   });
 
-  it('adopts the selection when the lead has no primary yet', async () => {
-    const prismaClient = withPricing(null, { totalAmount: 1200, currency: 'INR' });
-    await syncLeadBudgetFromSelection('lead-1', 'sel-9', prismaClient);
-    expect(prismaClient.lead.update).toHaveBeenCalledWith({
-      where: { id: 'lead-1' },
-      data: { budget: 'INR 1,200' },
+  it('prices the saved car and hotel night for the party', async () => {
+    const prismaClient = repriceMock(savedSelection());
+
+    await repriceSelection('sel-1', { prismaClient });
+
+    const created = prismaClient.leadPackageSelection.update.mock.calls[0][0].data.costLines.create;
+    expect(created.filter((l) => l.category !== 'food').map((l) => [l.basis, l.quantity, l.estimatedUnitPrice]))
+      .toEqual([['PER_VEHICLE', 1, 65], ['PER_ROOM', 1, 120]]);
+  });
+
+  it('only deletes AUTO lines, so a rep\'s manual lines stay', async () => {
+    const prismaClient = repriceMock(savedSelection());
+
+    await repriceSelection('sel-1', { prismaClient });
+
+    expect(prismaClient.leadCostLine.deleteMany).toHaveBeenCalledWith({ where: { leadPackageSelectionId: 'sel-1', source: 'AUTO' } });
+  });
+
+  it('recomputes the totals after repricing', async () => {
+    const prismaClient = repriceMock(savedSelection());
+
+    await repriceSelection('sel-1', { prismaClient });
+
+    expect(prismaClient.leadPricing.update).toHaveBeenCalledWith(expect.objectContaining({ where: { leadPackageSelectionId: 'sel-1' } }));
+  });
+
+  it('writes nothing when the saved lines already match', async () => {
+    const current = [
+      { category: 'transportation', description: 'Transport 1', basis: 'PER_VEHICLE', quantity: 1, estimatedUnitPrice: 65, source: 'AUTO' },
+      { category: 'accommodation', description: 'Accommodation day 1', basis: 'PER_ROOM', quantity: 1, estimatedUnitPrice: 120, source: 'AUTO' },
+    ];
+    const prismaClient = repriceMock(savedSelection({ costLines: current }));
+
+    await expect(repriceSelection('sel-1', { prismaClient })).resolves.toBe(false);
+    expect(prismaClient.leadCostLine.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it('leaves a pristine selection (no saved itinerary) alone', async () => {
+    const prismaClient = repriceMock(savedSelection({ itineraryDays: [], pricing: null }));
+
+    await expect(repriceSelection('sel-1', { prismaClient })).resolves.toBe(false);
+    expect(prismaClient.$transaction).not.toHaveBeenCalled();
+  });
+});
+
+describe('loadQuoteTotals', () => {
+  const withSelections = (rows) => mockPrisma({
+    leadPackageSelection: { findMany: vi.fn().mockResolvedValue(rows) },
+  });
+  const priced = (id, leadId, totalAmount, currency = 'USD') => ({ id, leadId, pricing: { totalAmount, currency } });
+
+  it('reads the total of the lead primary package', async () => {
+    const prismaClient = withSelections([priced('sel-1', 'lead-1', 900), priced('sel-2', 'lead-1', 1500)]);
+    const totals = await loadQuoteTotals([{ id: 'lead-1', primarySelectionId: 'sel-2' }], prismaClient);
+    expect(totals.get('lead-1')).toEqual({ amount: 1500, currency: 'USD', selectionId: 'sel-2' });
+  });
+
+  it('falls back to the first priced package when the lead has no primary', async () => {
+    const prismaClient = withSelections([priced('sel-1', 'lead-1', 900), priced('sel-2', 'lead-1', 1500)]);
+    const totals = await loadQuoteTotals([{ id: 'lead-1', primarySelectionId: null }], prismaClient);
+    expect(totals.get('lead-1').selectionId).toBe('sel-1');
+  });
+
+  it('never shows another package when the primary is not priced yet', async () => {
+    const prismaClient = withSelections([priced('sel-1', 'lead-1', 900), { id: 'sel-2', leadId: 'lead-1', pricing: null }]);
+    const totals = await loadQuoteTotals([{ id: 'lead-1', primarySelectionId: 'sel-2' }], prismaClient);
+    expect(totals.has('lead-1')).toBe(false);
+  });
+
+  it('skips packages with a zero total', async () => {
+    const prismaClient = withSelections([priced('sel-1', 'lead-1', 0)]);
+    const totals = await loadQuoteTotals([{ id: 'lead-1' }], prismaClient);
+    expect(totals.has('lead-1')).toBe(false);
+  });
+
+  it('does not query when there are no leads', async () => {
+    const prismaClient = withSelections([]);
+    await loadQuoteTotals([], prismaClient);
+    expect(prismaClient.leadPackageSelection.findMany).not.toHaveBeenCalled();
+  });
+
+  it('never writes to the lead budget', async () => {
+    const prismaClient = mockPrisma({
+      leadPackageSelection: { findMany: vi.fn().mockResolvedValue([priced('sel-1', 'lead-1', 900)]) },
+      lead: { update: vi.fn() },
     });
-  });
-
-  it('does nothing when the selection is not the lead primary', async () => {
-    const prismaClient = withPricing('other-sel', { totalAmount: 999, currency: 'USD' });
-    await syncLeadBudgetFromSelection('lead-1', 'sel-1', prismaClient);
+    await loadQuoteTotals([{ id: 'lead-1', primarySelectionId: 'sel-1' }], prismaClient);
     expect(prismaClient.lead.update).not.toHaveBeenCalled();
   });
+});
 
-  it('does nothing when the selection has no pricing/total', async () => {
-    const prismaClient = withPricing('sel-1', null);
-    await syncLeadBudgetFromSelection('lead-1', 'sel-1', prismaClient);
-    expect(prismaClient.lead.update).not.toHaveBeenCalled();
+describe('withQuoteTotals', () => {
+  it('adds the quote total next to the customer budget', async () => {
+    const prismaClient = mockPrisma({
+      leadPackageSelection: { findMany: vi.fn().mockResolvedValue([{ id: 'sel-1', leadId: 'lead-1', pricing: { totalAmount: 3450, currency: 'USD' } }]) },
+    });
+    const [lead] = await withQuoteTotals([{ id: 'lead-1', primarySelectionId: 'sel-1', budget: '3000' }], prismaClient);
+    expect(lead).toMatchObject({ budget: '3000', quoteTotal: { amount: 3450, currency: 'USD' } });
+  });
+
+  it('sets the quote total to null when nothing is priced', async () => {
+    const prismaClient = mockPrisma({ leadPackageSelection: { findMany: vi.fn().mockResolvedValue([]) } });
+    const [lead] = await withQuoteTotals([{ id: 'lead-1' }], prismaClient);
+    expect(lead.quoteTotal).toBeNull();
   });
 });
 
@@ -444,8 +557,10 @@ describe('snapshotSelectionQuotation', () => {
   it('builds itineraryDays from the lead\'s own itinerary copy, carrying activities and only the first image per day', async () => {
     const prismaClient = mockPrisma({
       leadItineraryDay: { count: vi.fn().mockResolvedValue(1) },
-      leadPricing: { findUnique: vi.fn().mockResolvedValue({ id: 'pr-1' }) },
+      // The day's activities have no saved AUTO lines yet, so quoting reprices first.
+      leadPricing: { findUnique: vi.fn().mockResolvedValue({ id: 'pr-1' }), update: vi.fn().mockResolvedValue({}) },
       leadPackageSelection: {
+        update: vi.fn(),
         findUnique: vi.fn().mockResolvedValue({
           id: 'sel-1',
           isManual: false,

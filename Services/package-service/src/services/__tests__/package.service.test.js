@@ -5,7 +5,8 @@ import {
   buildCreateData,
   buildUpdateData,
   assembleWhere,
-  recomputeBasePrice,
+  priceItinerary,
+  readActivityCatalogCosts,
   buildInclude,
   buildListOrderBy,
   destinationSlugSet,
@@ -17,21 +18,7 @@ vi.mock('../../db/client.js', () => ({
   default: { package: { findMany: vi.fn() } },
 }));
 
-// Mock the shared pricing engine
-vi.mock('../../../../shared/pricing-engine/src/index.js', () => ({
-  calculateBasePrice: vi.fn(({ days, activities, transports }) => ({
-    basePrice: 560,
-    breakdown: { meals: { total: 60 }, activities: { total: 200 }, transports: { total: 300 } },
-  })),
-  computeMargin: vi.fn((basePrice, marginType, marginValue) => {
-    const marginAmount = marginType === 'FIXED' ? marginValue : basePrice * (marginValue / 100);
-    return {
-      basePrice,
-      marginAmount: Math.round(marginAmount * 100) / 100,
-      sellPrice: Math.round((basePrice + marginAmount) * 100) / 100,
-    };
-  }),
-}));
+
 
 const mockPkg = {
   id: 'pkg-1',
@@ -102,6 +89,20 @@ describe('serializePackage', () => {
       { url: 'https://example.com/day1.jpg', publicId: 'travel-crm/itineraries/day1' },
     ]);
     expect(result.reviews).toHaveLength(1);
+  });
+
+  it('includes the single supplement: half the car plus the percentage margin on it', () => {
+    // half of the $80 car = 40, + 20% margin = 48
+    expect(serializePackage(mockPkg).singleSupplement).toBe(48);
+  });
+
+  it('adds half of each room to the single supplement', () => {
+    const result = serializePackage({
+      ...mockPkg,
+      defaultMarginType: 'FIXED',
+      itineraryDays: [{ ...mockPkg.itineraryDays[0], accommodation: { name: 'Lodge', totalAmount: 200 } }],
+    });
+    expect(result.singleSupplement).toBe(140);
   });
 
   it('defaults itinerary day images to an empty array when absent', () => {
@@ -483,22 +484,48 @@ describe('buildInclude', () => {
   });
 });
 
-describe('recomputeBasePrice', () => {
-  it('calls shared pricing engine and returns result', () => {
-    const result = recomputeBasePrice(
-      [{ breakfastCount: 2, lunchCount: 1 }],
-      [{ defaultCost: 100 }],
-      [{ pricingModel: 'PER_VEHICLE', unitCost: 300 }],
-    );
-    expect(result.basePrice).toBe(560);
+describe('priceItinerary', () => {
+  // One night in a $100 room and a $50 tour each → (100 + 2 × 50) / 2 = 100 per person.
+  const days = [{
+    dayNumber: 1,
+    accommodation: { name: 'Hotel', totalAmount: 100 },
+    activities: [{ activityId: 'act-1', name: 'City Tour', defaultCost: 50 }],
+    transports: [],
+  }];
+
+  it('prices per person for two sharing, hotel included', () => {
+    expect(priceItinerary(days).perPerson).toBe(100);
   });
 
-  it('handles null costOverride by falling back to defaultCost', () => {
-    const result = recomputeBasePrice(
-      [{ breakfastCount: 0 }],
-      [{ defaultCost: 200, costOverride: null }],
-      [],
-    );
-    expect(result.basePrice).toBe(560);
+  it('uses the catalog cost of an activity over the editor copy', () => {
+    // catalog now says 60 → (100 + 2 × 60) / 2
+    expect(priceItinerary(days, () => 60).perPerson).toBe(110);
+  });
+
+  it('keeps the editor cost for an activity not in the catalog yet', () => {
+    expect(priceItinerary(days, () => undefined).perPerson).toBe(100);
+  });
+
+  it('lets a per-package cost override win over the catalog', () => {
+    const withOverride = [{ ...days[0], activities: [{ activityId: 'act-1', defaultCost: 50, costOverride: 80 }] }];
+    expect(priceItinerary(withOverride, () => 60).perPerson).toBe(130);
+  });
+
+  it('returns the breakdown lines behind the total', () => {
+    expect(priceItinerary(days, () => 60).rows.activities[0]).toMatchObject({ name: 'City Tour', costPerPerson: 60 });
+  });
+});
+
+describe('readActivityCatalogCosts', () => {
+  it('looks costs up by id and by name without creating anything', async () => {
+    prisma.activityCatalog = {
+      findMany: vi.fn()
+        .mockResolvedValueOnce([{ id: 'act-1', name: 'City Tour', defaultCost: '60.00' }])
+        .mockResolvedValueOnce([{ id: 'act-2', name: 'Boat Ride', defaultCost: '25.00' }]),
+      create: vi.fn(),
+    };
+    const cost = await readActivityCatalogCosts([{ activities: [{ activityId: 'act-1' }, { name: 'Boat Ride' }, { name: 'New Thing' }] }]);
+    expect([cost({ activityId: 'act-1' }), cost({ name: 'Boat Ride' }), cost({ name: 'New Thing' })]).toEqual([60, 25, undefined]);
+    expect(prisma.activityCatalog.create).not.toHaveBeenCalled();
   });
 });

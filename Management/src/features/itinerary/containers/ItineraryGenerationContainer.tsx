@@ -3,18 +3,18 @@
  * Sidebar navigation layout for package management
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'wouter';
 import { useSearchParams } from 'react-router-dom';
 import Swal from 'sweetalert2';
 import {
   Package, Plus, Sparkles, MapPin,
   Calendar, Eye, Edit, Download, Copy, Trash2,
-  Image as ImageIcon, Grid, List, LayoutGrid
+  Image as ImageIcon, Grid, List, LayoutGrid, Loader2
 } from 'lucide-react';
 
 // Hooks
-import { usePackageState, useItineraryForm, useImageUpload } from '../hooks';
+import { usePackageState, useItineraryForm, useImageUpload, loadPricingDefaults } from '../hooks';
 import { useAuth } from '../../../contexts/AuthContext';
 import { usePermission } from '../../../contexts/PermissionContext';
 
@@ -43,8 +43,6 @@ import {
 import { VALIDATION_MESSAGES } from '../utils/constants';
 import { createDefaultPackage } from '../types';
 
-// Sample data
-import { SAMPLE_PACKAGES } from './sampleData';
 import { apiErrorMessage, apiFieldErrors } from '@/lib/apiErrorMessage';
 import { describeFieldError, escapeHtml } from '../utils/packageSaveErrors';
 import PageHeader from '../../../components/PageHeader';
@@ -80,6 +78,9 @@ function toEditorDays(apiDays: any[] = []) {
     lunchCount: apiDay.lunchCount ?? 0,
     dinnerCount: apiDay.dinnerCount ?? 0,
     mealPriceOverride: apiDay.mealPriceOverride,
+    breakfastPriceOverride: apiDay.breakfastPriceOverride ?? null,
+    lunchPriceOverride: apiDay.lunchPriceOverride ?? null,
+    dinnerPriceOverride: apiDay.dinnerPriceOverride ?? null,
     locations: (apiDay.places || []).map((p: any) => p.place?.name || p.customName).filter(Boolean),
     activities: (apiDay.activities || []).map((a: any) => a.activity?.name || '').filter(Boolean),
     places: (apiDay.places || []).map((p: any) => ({
@@ -111,6 +112,15 @@ const ItineraryGenerationContainer = () => {
   const [showNewPackageDialog, setShowNewPackageDialog] = useState(false);
   const [showEditPackageDialog, setShowEditPackageDialog] = useState(false);
   const [editPackageData, setEditPackageData] = useState<any>(null);
+  // View opens instantly with the card's summary; the full package (itinerary days,
+  // all images) arrives afterwards. Edit needs the full package before its form can
+  // initialise, so it shows a loading dialog in the meantime.
+  const [isLoadingDetails, setIsLoadingDetails] = useState(false);
+  const [editLoadingId, setEditLoadingId] = useState<string | null>(null);
+  const editLoadingIdRef = useRef<string | null>(null);
+  // In-flight/settled full-package fetches by id, so hovering View/Edit can start the
+  // request early and re-opening the same package doesn't refetch.
+  const detailsCacheRef = useRef(new Map<string, Promise<any>>());
   const [showAIPackageDialog, setShowAIPackageDialog] = useState(false);
   const [isUploadingImages, setIsUploadingImages] = useState(false);
   const [pdfPreviewData, setPdfPreviewData] = useState<{ isOpen: boolean; blob: Blob | null; fileName: string; packageData: any }>({
@@ -143,7 +153,7 @@ const ItineraryGenerationContainer = () => {
     (user?.role === 'salesRep' && hasPermission('manage_packages'));
 
   // Use custom hooks
-  const { packages, setPackages, updatePackage, deletePackage } = usePackageState(SAMPLE_PACKAGES);
+  const { packages, setPackages, updatePackage, deletePackage } = usePackageState([]);
   // Was previously passed as the first arg (packageId: string|null), not the second
   // (initialData) - only ever type-checked because of an `as any` cast, which is what
   // surfaced this. formData/newFormData initialized to a generic empty shape instead
@@ -151,6 +161,9 @@ const ItineraryGenerationContainer = () => {
   // overwrote it - fixed at the source rather than left masked.
   const { formData: newFormData, setFormData: setNewFormData } = useItineraryForm(null, createDefaultPackage());
   const { images, setImages, handleUpload: handleImageUploadHook, removeImage, deletingIndexes } = useImageUpload();
+
+  // Load the Settings rates now, so the editor has them the moment a package opens.
+  useEffect(() => { void loadPricingDefaults(); }, []);
 
   useEffect(() => {
     if (!linkedPackageIds) return;
@@ -230,12 +243,21 @@ const ItineraryGenerationContainer = () => {
   }, [linkedPackageIds, recommendationFocus, isLoadingPackages, packages]);
 
   // Handlers
-  const handleNewPackageDialogOpen = () => {
+  // A new package starts with the agency's Settings margin; the form can still change it.
+  const newPackageWithDefaults = async () => {
+    const { margin } = await loadPricingDefaults();
+    return createDefaultPackage({
+      defaultMarginType: margin.type,
+      defaultMarginInput: margin.type === 'FIXED' ? margin.fixed : margin.percentage,
+    });
+  };
+
+  const handleNewPackageDialogOpen = async () => {
     if (isSalesRep && !hasPermission('manage_packages')) {
       Swal.fire('Access Denied', 'Sales Representatives do not have permission to create packages.', 'info');
       return;
     }
-    setNewFormData(createDefaultPackage());
+    setNewFormData(await newPackageWithDefaults());
     setImages([]);
     setShowNewPackageDialog(true);
   };
@@ -270,19 +292,52 @@ const ItineraryGenerationContainer = () => {
     setShowEditPackageDialog(true);
   };
 
+  const fetchFullPackage = (packageId: string): Promise<any> => {
+    const cache = detailsCacheRef.current;
+    const cached = cache.get(packageId);
+    if (cached) return cached;
+    const request = ApiService.getPackage(packageId).then((response: any) => {
+      if (!response.success || !response.data) throw new Error('Failed to fetch package details');
+      return response.data;
+    });
+    cache.set(packageId, request);
+    // A failed fetch must not be served from the cache on the next open.
+    request.catch(() => {
+      if (cache.get(packageId) === request) cache.delete(packageId);
+    });
+    return request;
+  };
+
+  const prefetchPackage = (pkg: any) => {
+    const packageId = pkg?._id || pkg?.id;
+    if (packageId) fetchFullPackage(packageId).catch(() => {});
+  };
+
+  // Any change to the list (save, delete, cover change, reload) may have changed a
+  // package's details — drop cached copies rather than show stale data.
+  useEffect(() => {
+    detailsCacheRef.current.clear();
+  }, [packages]);
+
   const handleViewPackage = async (pkg: any) => {
+    const packageId = pkg._id || pkg.id;
+    setSelectedPackage(pkg);
+    setIsLoadingDetails(true);
     try {
-      const packageId = pkg._id || pkg.id;
-      const response = await ApiService.getPackage(packageId);
-      if (response.success && response.data) {
-        setSelectedPackage(response.data);
-      } else {
-        setSelectedPackage(pkg);
-      }
+      const fullPackage = await fetchFullPackage(packageId);
+      setSelectedPackage((current: any) =>
+        current && (current._id || current.id) === packageId ? fullPackage : current,
+      );
     } catch (error) {
       console.error('Error fetching package details:', error);
-      setSelectedPackage(pkg);
+    } finally {
+      setIsLoadingDetails(false);
     }
+  };
+
+  const cancelEditLoading = () => {
+    editLoadingIdRef.current = null;
+    setEditLoadingId(null);
   };
 
   const handleEditPackage = async (pkg: any) => {
@@ -291,15 +346,22 @@ const ItineraryGenerationContainer = () => {
       return;
     }
 
+    const packageId = pkg._id || pkg.id;
+    editLoadingIdRef.current = packageId;
+    setEditLoadingId(packageId);
+    // Open the popup right away with the card's summary; the form shows per-section
+    // spinners until the full package arrives.
+    setImages([]);
+    setEditPackageData(pkg);
+    setShowEditPackageDialog(true);
+
     try {
-      const packageId = pkg._id || pkg.id;
-      const response = await ApiService.getPackage(packageId);
-
-      if (!response.success || !response.data) {
-        throw new Error('Failed to fetch package details');
-      }
-
-      const fullPackage = response.data;
+      const fullPackage = await fetchFullPackage(packageId);
+      // The user closed the popup (or opened another package) meanwhile.
+      if (editLoadingIdRef.current !== packageId) return;
+      // The edit form deletes/uploads images directly against the server, so the
+      // cached copy can't be trusted after this point.
+      detailsCacheRef.current.delete(packageId);
       const days = toEditorDays(fullPackage.itineraryDays);
 
       const formattedImages = (fullPackage.images || []).map((img: any) => {
@@ -312,11 +374,14 @@ const ItineraryGenerationContainer = () => {
 
       const editData = { ...fullPackage, days: [...days], images: [...formattedImages] };
       setEditPackageData(editData);
-      setShowEditPackageDialog(true);
       setImages(formattedImages);
     } catch (error) {
+      if (editLoadingIdRef.current !== packageId) return;
+      setShowEditPackageDialog(false);
       console.error('Failed to fetch package for editing:', error);
       Swal.fire('Error', 'Failed to load package details for editing. Please try again.', 'error');
+    } finally {
+      if (editLoadingIdRef.current === packageId) cancelEditLoading();
     }
   };
 
@@ -684,7 +749,12 @@ const ItineraryGenerationContainer = () => {
             onClearLinkedFilter={() => setSearchParams({})}
           />
 
-          {filteredPackages.length === 0 ? (
+          {isLoadingPackages ? (
+            <div className="flex flex-col items-center justify-center py-20 bg-card rounded-xl border border-border">
+              <Loader2 className="w-8 h-8 text-primary animate-spin" />
+              <p className="mt-3 text-muted-foreground">Loading packages...</p>
+            </div>
+          ) : filteredPackages.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
               <Package className="w-16 h-16 mb-4 opacity-50" />
               <p className="text-lg font-medium text-foreground">No packages found</p>
@@ -698,6 +768,7 @@ const ItineraryGenerationContainer = () => {
                   pkg={pkg}
                   onView={handleViewPackage}
                   onEdit={handleEditPackage}
+                  onPrefetch={prefetchPackage}
                   onDownload={handleDownloadPackage}
                   onDelete={handleDeletePackage}
                   onDuplicate={handleDuplicatePackage}
@@ -719,8 +790,15 @@ const ItineraryGenerationContainer = () => {
       </div>
 
       {/* Modals */}
-      <PackageDetailsModal pkg={selectedPackage} onClose={() => setSelectedPackage(null)} />
-
+      <PackageDetailsModal
+        pkg={selectedPackage}
+        isLoadingDetails={isLoadingDetails}
+        onClose={() => setSelectedPackage(null)}
+        onEdit={(pkg) => {
+          setSelectedPackage(null);
+          void handleEditPackage(pkg);
+        }}
+      />
       <NewEditPackageForm
         isOpen={showNewPackageDialog}
         title="Create New Travel Package"
@@ -738,10 +816,21 @@ const ItineraryGenerationContainer = () => {
 
       {editPackageData && (
         <NewEditPackageForm
+          // Fresh form state per package — the form reads its data on mount.
+          key={editPackageData.id || editPackageData._id}
           isOpen={showEditPackageDialog}
+          isLoading={editLoadingId !== null}
           title="Edit Travel Package"
           subtitle="Update package details and itinerary"
-          onClose={() => setShowEditPackageDialog(false)}
+          onClose={() => {
+            cancelEditLoading();
+            setShowEditPackageDialog(false);
+          }}
+          onViewDetails={(pkg) => {
+            cancelEditLoading();
+            setShowEditPackageDialog(false);
+            void handleViewPackage(pkg);
+          }}
           formData={editPackageData}
           setFormData={setEditPackageData}
           onSave={(updatedData: any) => handleSaveEditPackage(updatedData || editPackageData)}

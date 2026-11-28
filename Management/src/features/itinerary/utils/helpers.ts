@@ -88,12 +88,14 @@ export const getMealCounts = (day: any) => {
     breakfastCount: day?.breakfastCount ?? (booleans ? (booleans.breakfast ? 1 : 0) : 0),
     lunchCount: day?.lunchCount ?? (booleans ? (booleans.lunch ? 1 : 0) : 0),
     dinnerCount: day?.dinnerCount ?? (booleans ? (booleans.dinner ? 1 : 0) : 0),
-    mealPriceOverride:
-      day?.mealPriceOverride == null || day.mealPriceOverride === ''
-        ? null
-        : Number(day.mealPriceOverride),
+    mealPriceOverride: optionalPrice(day?.mealPriceOverride),
+    breakfastPriceOverride: optionalPrice(day?.breakfastPriceOverride),
+    lunchPriceOverride: optionalPrice(day?.lunchPriceOverride),
+    dinnerPriceOverride: optionalPrice(day?.dinnerPriceOverride),
   };
 };
+
+const optionalPrice = (value: unknown) => (value == null || value === '' ? null : Number(value));
 
 /**
  * Resolve a day's activities into [{ name, defaultCost, costOverride }].

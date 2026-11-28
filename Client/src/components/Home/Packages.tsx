@@ -5,6 +5,7 @@ import { fetchPackages } from '@/services/api/packages';
 import type { NormalizedPackage } from '@/services/api/packages.transform';
 import { apiErrorMessage } from '@/services/http/apiErrorMessage';
 import { formatCurrency } from '@/lib/currency';
+import { PRICE_BASIS_SHORT } from '@/utils/priceBasis';
 
 const PAGE_SIZE = 100;
 const AUTOPLAY_INTERVAL_MS = 4_000;
@@ -240,7 +241,7 @@ const PopularPackages = () => {
                       </div>
                       <div className="mt-auto flex items-center justify-between border-t-2 border-slate-200 pt-4">
                         <div className="text-xs text-gray-500">
-                          From <span className="ml-1 text-lg font-bold text-slate-800">{formatCurrency(pkg.price_from)}</span> / person
+                          From <span className="ml-1 text-lg font-bold text-slate-800">{formatCurrency(pkg.price_from)}</span> {PRICE_BASIS_SHORT}
                         </div>
                         <span className="rounded-full p-1.5 text-[#16a34a] transition-colors group-hover:bg-[#16a34a]/10">
                           <ArrowRight className="h-5 w-5" />

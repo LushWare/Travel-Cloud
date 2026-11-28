@@ -7,7 +7,43 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 
+import Swal from 'sweetalert2';
 import PageHeader from '../components/PageHeader';
+import PricingDefaultsSection, { pricingToForm, pricingFormToPayload, type PricingForm } from '../components/PricingDefaultsSection';
+import { invalidatePricingDefaults } from '@/features/itinerary/hooks/usePricingDefaults';
+import { escapeHtml } from '@/features/itinerary/utils/packageSaveErrors';
+import { formatCurrency } from '@/utils/currency.js';
+
+const mealPricesKey = (pricingDefaults: any) => JSON.stringify(pricingToForm(pricingDefaults).meals);
+
+/** Meal prices changed: show which package prices move, and apply only if the admin approves. */
+async function offerPackageReprice() {
+  const preview = await adminAPI.repricePackages(false);
+  const changed = preview?.data?.packages || [];
+  if (changed.length === 0) {
+    toast.success('Meal prices saved. No package prices needed to change.');
+    return;
+  }
+  const rows = changed.slice(0, 20).map((pkg: any) =>
+    `<tr><td style="text-align:left;padding:2px 8px">${escapeHtml(pkg.title)}</td>` +
+    `<td style="text-align:right;padding:2px 8px">${escapeHtml(formatCurrency(pkg.oldPrice))}</td>` +
+    `<td style="text-align:right;padding:2px 8px">${escapeHtml(formatCurrency(pkg.newPrice))}</td></tr>`).join('');
+  const more = changed.length > 20 ? `<p style="margin-top:8px">and ${changed.length - 20} more</p>` : '';
+  const result = await Swal.fire({
+    title: `Update ${changed.length} package price${changed.length === 1 ? '' : 's'}?`,
+    html: `<p style="margin-bottom:8px">These website prices change with the new meal prices. Quotes already sent to customers do not change.</p>` +
+      `<table style="width:100%;font-size:13px"><tr><th style="text-align:left;padding:2px 8px">Package</th><th style="text-align:right;padding:2px 8px">Now</th><th style="text-align:right;padding:2px 8px">New</th></tr>${rows}</table>${more}`,
+    showCancelButton: true,
+    confirmButtonText: 'Update prices',
+    cancelButtonText: 'Not now',
+  });
+  if (!result.isConfirmed) {
+    toast('Package prices were not changed. Each package updates when it is next saved.', { type: 'info' });
+    return;
+  }
+  const applied = await adminAPI.repricePackages(true);
+  toast.success(`Updated ${applied?.data?.changed ?? changed.length} package price(s)`);
+}
 
 interface SettingsForm {
   companyName: string;
@@ -202,6 +238,8 @@ const OrganizationSettings = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [pricing, setPricing] = useState<PricingForm>(() => pricingToForm(null));
+  const [savedMealPrices, setSavedMealPrices] = useState(() => mealPricesKey(null));
 
   useEffect(() => {
     (async () => {
@@ -209,6 +247,8 @@ const OrganizationSettings = () => {
         const response = await adminAPI.getSettings();
         if (response.status === 'success' && response.data?.settings) {
           setForm(settingsToForm(response.data.settings));
+          setPricing(pricingToForm(response.data.settings.pricingDefaults));
+          setSavedMealPrices(mealPricesKey(response.data.settings.pricingDefaults));
         }
       } catch (err) {
         toast.error((err as Error)?.message || 'Failed to load organization settings');
@@ -246,12 +286,25 @@ const OrganizationSettings = () => {
       toast.error('Company name is required');
       return;
     }
+    const pricingPayload = pricingFormToPayload(pricing);
+    if (pricingPayload.error) {
+      toast.error(pricingPayload.error);
+      return;
+    }
     setSaving(true);
     try {
-      const response = await adminAPI.updateSettings(formToPayload(form));
+      const response = await adminAPI.updateSettings({ ...formToPayload(form), pricingDefaults: pricingPayload.value });
       if (response.status === 'success' && response.data?.settings) {
-        setForm(settingsToForm(response.data.settings));
+        const saved = response.data.settings;
+        setForm(settingsToForm(saved));
+        setPricing(pricingToForm(saved.pricingDefaults));
+        invalidatePricingDefaults();
         toast.success('Organization settings saved');
+        const nextMealPrices = mealPricesKey(saved.pricingDefaults);
+        if (nextMealPrices !== savedMealPrices) {
+          setSavedMealPrices(nextMealPrices);
+          await offerPackageReprice().catch((err) => toast.error((err as Error)?.message || 'Could not update package prices'));
+        }
       } else {
         toast.error(response.message || 'Failed to save settings');
       }
@@ -414,6 +467,8 @@ const OrganizationSettings = () => {
             />
           </div>
         </Section>
+
+        <PricingDefaultsSection form={pricing} onChange={setPricing} currency={form.defaultCurrency} />
 
         <Section
           title="Document Number Prefixes"

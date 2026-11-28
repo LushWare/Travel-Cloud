@@ -13,17 +13,20 @@ import {
   materializeSelection,
   refreshSelection,
   recomputeSelectionPricing,
+  repriceSelection,
   snapshotSelectionQuotation,
   sendVoiceQuotation,
-  syncLeadBudgetFromSelection,
 } from '../services/lead-selection.service.js';
 import {
   applyLeadSelectionItinerary,
   serializeLeadDays,
   buildAutoCostLines,
+  flatPackageLine,
   EDIT_BLOCKED_STATUSES,
 } from '../services/lead-itinerary.service.js';
 import { computePricing, toLineDescriptor } from '../services/pricing.service.js';
+import { getLinePricing } from '../config/pricingDefaults.js';
+import { parseTaxRate, resolveTaxRate } from '../services/taxRate.service.js';
 
 const FULL_SELECTION_INCLUDE = {
   pricing: true,
@@ -66,6 +69,7 @@ async function presentSelection(selection) {
       currency: derived.pricing.currency,
       marginType: derived.pricing.marginType,
       marginValue: derived.pricing.marginValue,
+      taxRate: await resolveTaxRate(derived.pricing),
     });
     return {
       ...selection,
@@ -83,22 +87,44 @@ async function presentSelection(selection) {
 
 // ─── Selection CRUD ─────────────────────────────────────────────
 
+/**
+ * Until a lead is quoted, its saved packages follow today's Settings prices
+ * (meals, seats, rooms) — a Settings change must not leave open leads priced at
+ * old rates. Once quoted the prices stay what the customer was sent.
+ */
+async function repriceOpenSelections(lead, selections) {
+  if (EDIT_BLOCKED_STATUSES.includes(lead.lifecycleStatus)) return false;
+  let changed = false;
+  for (const selection of selections) {
+    // Pristine selections are derived from the live package on every read already.
+    if (!selection.itineraryDays?.length) continue;
+    if (await repriceSelection(selection.id)) changed = true;
+  }
+  return changed;
+}
+
 export const listPackageSelections = asyncHandler(async (req, res) => {
   const lead = await prisma.lead.findUnique({ where: { id: req.params.id } });
   if (!lead) throw new AppError('Lead not found', 404);
 
-  const selections = await prisma.leadPackageSelection.findMany({
+  const load = () => prisma.leadPackageSelection.findMany({
     where: { leadId: lead.id },
     orderBy: { createdAt: 'asc' },
     include: FULL_SELECTION_INCLUDE,
   });
+  let selections = await load();
+  if (await repriceOpenSelections(lead, selections)) selections = await load();
 
   const results = await Promise.all(selections.map(presentSelection));
   res.json({ success: true, data: results });
 });
 
 export const getPackageSelection = asyncHandler(async (req, res) => {
-  const selection = await loadOwnedSelection(req.params.id, req.params.selectionId, FULL_SELECTION_INCLUDE);
+  let selection = await loadOwnedSelection(req.params.id, req.params.selectionId, FULL_SELECTION_INCLUDE);
+  const lead = await prisma.lead.findUnique({ where: { id: req.params.id }, select: { lifecycleStatus: true } });
+  if (lead && await repriceOpenSelections(lead, [selection])) {
+    selection = await loadOwnedSelection(req.params.id, req.params.selectionId, FULL_SELECTION_INCLUDE);
+  }
   res.json({ success: true, data: await presentSelection(selection) });
 });
 
@@ -192,7 +218,6 @@ export const updateSelectionItinerary = asyncHandler(async (req, res) => {
     pricingSettings: pricing || {},
     actorId: req.user.id,
   });
-  await syncLeadBudgetFromSelection(req.params.id, req.params.selectionId, prisma);
 
   const selection = await prisma.leadPackageSelection.findUnique({
     where: { id: req.params.selectionId },
@@ -284,8 +309,6 @@ export const quotePackageSelection = asyncHandler(async (req, res) => {
     where: { id: lead.id },
     data: leadUpdateData,
   });
-  // This selection is now the primary — reflect its total on the lead budget.
-  await syncLeadBudgetFromSelection(lead.id, selection.id, prisma);
   const updatedLead = await prisma.lead.findUnique({
     where: { id: lead.id },
     include: { statusHistory: { orderBy: { changedAt: 'desc' } } },
@@ -413,7 +436,6 @@ export const autoQuoteVoiceBooking = asyncHandler(async (req, res) => {
         ...(statusHistory.length ? { statusHistory: { create: statusHistory } } : {}),
       },
     });
-    await syncLeadBudgetFromSelection(leadId, selection.id);
     return res.json({ success: true, data: { issued: true, quotationId, delivery } });
   } catch (err) {
     req.log?.error({ err, leadId, bookingId }, 'Automatic voice quotation failed');
@@ -444,7 +466,7 @@ export const calculateSelectionPricing = asyncHandler(async (req, res) => {
   if (Array.isArray(lines)) {
     resolvedLines = lines;
   } else {
-    let autoLines = buildAutoCostLines(days);
+    let autoLines = buildAutoCostLines(days, travelers, await getLinePricing());
     const manualLines = await prisma.leadCostLine.findMany({
       where: { leadPackageSelectionId: req.params.selectionId, source: 'MANUAL' },
       orderBy: { orderIndex: 'asc' },
@@ -454,27 +476,15 @@ export const calculateSelectionPricing = asyncHandler(async (req, res) => {
     if (autoLines.length === 0 && manualLines.length === 0 && selection.packageId) {
       try {
         const blueprint = await fetchPackage(selection.packageId);
-        if (Number(blueprint?.basePrice) > 0) {
-          autoLines = [{
-            category: 'package',
-            description: blueprint.title || 'Package price',
-            basis: 'FIXED',
-            quantity: 1,
-            estimatedUnitPrice: Number(blueprint.basePrice),
-            actualUnitPrice: null,
-            marginType: null,
-            marginValue: null,
-            source: 'AUTO',
-            orderIndex: 0,
-          }];
-        }
+        if (Number(blueprint?.basePrice) > 0) autoLines = [flatPackageLine(blueprint)];
       } catch {
         // package-service unreachable — preview with whatever lines exist
       }
     }
     resolvedLines = [...autoLines.map(toLineDescriptor), ...manualLines.map(toLineDescriptor)];
   }
-  const computed = computePricing({ lines: resolvedLines, travelers, ...settings });
+  const { taxRate, ...rest } = settings;
+  const computed = computePricing({ lines: resolvedLines, travelers, ...rest, taxRate: await resolveTaxRate({ taxRate }) });
   res.json({ success: true, data: { financials: computed } });
 });
 
@@ -524,12 +534,13 @@ export const applySelectionPricing = asyncHandler(async (req, res) => {
         discountType: settings.discountType,
         discountValue: settings.discountValue,
         serviceChargeRate: settings.serviceChargeRate,
+        // Only touched when sent; blank clears it back to the Settings default.
+        ...('taxRate' in settings ? { taxRate: parseTaxRate(settings.taxRate) } : {}),
       },
     });
   }
 
   const pricing = await recomputeSelectionPricing(selection.id, verifiedPaymentTotal);
-  await syncLeadBudgetFromSelection(req.params.id, selection.id, prisma);
   res.json({ success: true, data: { pricing } });
 });
 
@@ -609,7 +620,6 @@ export const addSelectionFlight = asyncHandler(async (req, res) => {
   });
 
   await recomputeSelectionPricing(selection.id);
-  await syncLeadBudgetFromSelection(req.params.id, selection.id, prisma);
   res.status(201).json({ success: true, data: flight });
 });
 
@@ -624,6 +634,5 @@ export const deleteSelectionFlight = asyncHandler(async (req, res) => {
     prisma.leadOptionalFlight.delete({ where: { id: flightId } }),
   ]);
   await recomputeSelectionPricing(selection.id);
-  await syncLeadBudgetFromSelection(id, selection.id, prisma);
   res.json({ success: true, data: {} });
 });

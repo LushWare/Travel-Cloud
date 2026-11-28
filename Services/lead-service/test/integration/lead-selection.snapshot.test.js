@@ -84,8 +84,11 @@ describe('snapshotSelectionQuotation — outgoing payload contract', () => {
 
     const prismaClient = {
       leadItineraryDay: { count: vi.fn().mockResolvedValue(1) },
-      leadPricing: { findUnique: vi.fn().mockResolvedValue({ id: 'pr-1' }) },
-      leadPackageSelection: { findUnique: vi.fn().mockResolvedValue(selectionRow) },
+      // The day's activity has no saved AUTO line yet, so quoting reprices first.
+      leadPricing: { findUnique: vi.fn().mockResolvedValue({ id: 'pr-1' }), update: vi.fn().mockResolvedValue({}) },
+      leadCostLine: { deleteMany: vi.fn() },
+      leadPackageSelection: { findUnique: vi.fn().mockResolvedValue(selectionRow), update: vi.fn() },
+      $transaction: vi.fn().mockImplementation(async (ops) => Promise.all(ops)),
     };
 
     let capturedBody = null;

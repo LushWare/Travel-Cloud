@@ -6,8 +6,9 @@
 import {
   MapPin, Activity, Utensils, Car, Building2,
   StickyNote, Image as ImageIcon, Coffee, UtensilsCrossed,
-  Moon, Star, Phone, MapPinned, Clock, Calendar
+  Moon, Star, Phone, MapPinned, Clock, Calendar, BedDouble
 } from 'lucide-react';
+import { useId, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { formatRating } from '@/utils/number';
 
@@ -40,7 +41,11 @@ const Section = ({ label, icon: Icon, children }: { label: string; icon?: any; c
 );
 
 const ItineraryDisplay = ({ days = [] }: ItineraryDisplayProps) => {
-  if (!days || days.length === 0) {
+  const validDays = days.filter(Boolean);
+  const [activeDayIndex, setActiveDayIndex] = useState(0);
+  const tabPrefix = useId();
+
+  if (validDays.length === 0) {
     return (
       <div className="bg-muted rounded-xl border-2 border-dashed border-border p-12 text-center">
         <div className="w-16 h-16 bg-secondary rounded-xl flex items-center justify-center mx-auto mb-4">
@@ -51,13 +56,48 @@ const ItineraryDisplay = ({ days = [] }: ItineraryDisplayProps) => {
     );
   }
 
+  const selectedIndex = Math.min(activeDayIndex, validDays.length - 1);
+  const activeDay = validDays[selectedIndex];
+
   return (
-    <div className="space-y-4">
-      {(days || []).filter(Boolean).map((day) => {
+    <div className="space-y-6">
+      <div role="tablist" aria-label="Itinerary days" className="flex gap-2 overflow-x-auto pb-2">
+        {validDays.map((day, index) => {
+          const isActive = index === selectedIndex;
+          return (
+            <button
+              key={day.dayNumber ?? index}
+              type="button"
+              role="tab"
+              id={`${tabPrefix}-day-${day.dayNumber ?? index}-tab`}
+              aria-label={`Day ${day.dayNumber}${day.title ? `: ${day.title}` : ''}`}
+              aria-selected={isActive}
+              aria-controls={`${tabPrefix}-day-${day.dayNumber ?? index}-panel`}
+              onClick={() => setActiveDayIndex(index)}
+              className={cn(
+                'flex min-h-14 w-40 shrink-0 flex-col items-start justify-center gap-1 rounded-xl border-2 px-3 py-2 text-left transition-colors',
+                isActive
+                  ? 'border-primary bg-primary text-primary-foreground shadow-sm'
+                  : 'border-border bg-card text-foreground hover:border-primary/40'
+              )}
+            >
+              <span className={cn('text-xs font-semibold uppercase', isActive ? 'text-primary-foreground/75' : 'text-muted-foreground')}>
+                Day {day.dayNumber}
+              </span>
+              <span className="w-full truncate text-sm font-semibold">{day.title || `Day ${day.dayNumber}`}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {activeDay && (() => {
+        const day = activeDay;
+        const dayPanelId = `${tabPrefix}-day-${day.dayNumber ?? selectedIndex}-panel`;
+        const dayTabId = `${tabPrefix}-day-${day.dayNumber ?? selectedIndex}-tab`;
         const locations = Array.isArray(day.locations) ? day.locations : [];
         const activities = Array.isArray(day.activities) ? day.activities : [];
         return (
-        <div key={day.dayNumber} className="bg-card rounded-xl border border-border overflow-hidden shadow-card">
+        <div key={day.dayNumber ?? selectedIndex} id={dayPanelId} role="tabpanel" aria-labelledby={dayTabId} className="bg-card rounded-xl border border-border overflow-hidden shadow-card">
           {/* Day Header */}
           <div className="bg-primary text-primary-foreground px-6 py-4">
             <div className="flex items-center gap-4">
@@ -150,51 +190,6 @@ const ItineraryDisplay = ({ days = [] }: ItineraryDisplayProps) => {
               )}
             </div>
 
-            {/* Accommodation */}
-            {day.accommodation && day.accommodation.name && (
-              <Section label="Accommodation" icon={Building2}>
-                <div className="bg-muted rounded-lg p-4 border border-border">
-                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-                    <div>
-                      <h5 className="font-semibold text-foreground text-base">{day.accommodation.name}</h5>
-                      {day.accommodation.type && (
-                        <span className="inline-block mt-1 px-2 py-0.5 bg-primary/10 text-primary text-xs rounded-md capitalize">
-                          {day.accommodation.type === 'hotel' && '🏨 '}
-                          {day.accommodation.type === 'resort' && '🌴 '}
-                          {day.accommodation.type === 'guesthouse' && '🏡 '}
-                          {day.accommodation.type === 'homestay' && '🏠 '}
-                          {day.accommodation.type === 'camp' && '⛺ '}
-                          {day.accommodation.type}
-                        </span>
-                      )}
-                    </div>
-                    {day.accommodation.rating > 0 && (
-                      <div className="flex items-center gap-1 bg-warning/10 text-warning px-3 py-1 rounded-lg">
-                        <Star className="w-4 h-4 fill-warning text-warning" />
-                        <span className="font-semibold">{formatRating(day.accommodation.rating)}</span>
-                        <span className="text-xs">/5</span>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="mt-3 space-y-1.5">
-                    {day.accommodation.address && (
-                      <p className="text-muted-foreground text-sm flex items-center gap-2">
-                        <MapPin className="w-3.5 h-3.5" />
-                        {day.accommodation.address}
-                      </p>
-                    )}
-                    {day.accommodation.contactNumber && (
-                      <p className="text-muted-foreground text-sm flex items-center gap-2">
-                        <Phone className="w-3.5 h-3.5" />
-                        {day.accommodation.contactNumber}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </Section>
-            )}
-
             {/* Places */}
             {Array.isArray(day.places) && day.places.length > 0 && (
               <Section label="Places to Visit" icon={MapPin}>
@@ -248,10 +243,81 @@ const ItineraryDisplay = ({ days = [] }: ItineraryDisplayProps) => {
                 </div>
               </Section>
             )}
+
+            {/* Accommodation */}
+            {day.accommodation && day.accommodation.name && (
+              <Section label="Accommodation" icon={Building2}>
+                <div className="bg-muted rounded-lg p-4 border border-border flex flex-col sm:flex-row gap-4">
+                  {day.accommodation.hotelImage && (
+                    <img
+                      src={day.accommodation.hotelImage}
+                      alt={day.accommodation.name}
+                      className="w-full sm:w-40 h-32 rounded-lg object-cover shrink-0"
+                    />
+                  )}
+                  <div className="flex-1 min-w-0">
+                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                    <div>
+                      <h5 className="font-semibold text-foreground text-base">{day.accommodation.name}</h5>
+                      {day.accommodation.type && (
+                        <span className="inline-block mt-1 px-2 py-0.5 bg-primary/10 text-primary text-xs rounded-md capitalize">
+                          {day.accommodation.type === 'hotel' && '🏨 '}
+                          {day.accommodation.type === 'resort' && '🌴 '}
+                          {day.accommodation.type === 'guesthouse' && '🏡 '}
+                          {day.accommodation.type === 'homestay' && '🏠 '}
+                          {day.accommodation.type === 'camp' && '⛺ '}
+                          {day.accommodation.type}
+                        </span>
+                      )}
+                    </div>
+                    {day.accommodation.rating > 0 && (
+                      <div className="flex items-center gap-1 bg-warning/10 text-warning px-3 py-1 rounded-lg">
+                        <Star className="w-4 h-4 fill-warning text-warning" />
+                        <span className="font-semibold">{formatRating(day.accommodation.rating)}</span>
+                        <span className="text-xs">/5</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mt-3 space-y-1.5">
+                    {day.accommodation.address && (
+                      <p className="text-muted-foreground text-sm flex items-center gap-2">
+                        <MapPin className="w-3.5 h-3.5" />
+                        {day.accommodation.address}
+                      </p>
+                    )}
+                    {day.accommodation.contactNumber && (
+                      <p className="text-muted-foreground text-sm flex items-center gap-2">
+                        <Phone className="w-3.5 h-3.5" />
+                        {day.accommodation.contactNumber}
+                      </p>
+                    )}
+                  </div>
+
+                  {(day.accommodation.roomType || day.accommodation.boardType || Number(day.accommodation.totalAmount) > 0) && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {day.accommodation.roomType && (
+                        <InfoBadge icon={BedDouble} variant="primary">{day.accommodation.roomType}</InfoBadge>
+                      )}
+                      {day.accommodation.boardType && (
+                        <InfoBadge icon={Utensils}>{day.accommodation.boardType}</InfoBadge>
+                      )}
+                      {Number(day.accommodation.totalAmount) > 0 && (
+                        <InfoBadge variant="warning">
+                          {new Intl.NumberFormat(undefined, { style: 'currency', currency: day.accommodation.currency || 'USD' })
+                            .format(Number(day.accommodation.totalAmount))} / room / night
+                        </InfoBadge>
+                      )}
+                    </div>
+                  )}
+                  </div>
+                </div>
+              </Section>
+            )}
           </div>
         </div>
         );
-      })}
+      })()}
     </div>
   );
 };

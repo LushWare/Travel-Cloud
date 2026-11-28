@@ -17,7 +17,7 @@ vi.mock('../../db/client.js', () => ({
 }));
 
 import {
-  getSettings, updateSettings, getInternalOrganizationSettings, getOrganizationBranding,
+  getSettings, updateSettings, getInternalOrganizationSettings, getOrganizationBranding, getPricingDefaults,
 } from '../admin.controller.js';
 
 function buildReqRes({ body = {}, user = { id: 'user-1', role: 'admin' } } = {}) {
@@ -45,6 +45,27 @@ describe('getSettings', () => {
       status: 'success',
       data: { settings: { id: 'org-1', companyName: 'Lush Travel' } },
     });
+  });
+});
+
+describe('getPricingDefaults', () => {
+  it('returns the saved pricing defaults with the agency currency', async () => {
+    const pricingDefaults = { mealPrices: { breakfast: 8, lunch: 15, dinner: 20 } };
+    mockFindFirst.mockResolvedValue({ id: 'org-1', pricingDefaults, defaultCurrency: 'USD', bankAccountNumber: '123' });
+    const { req, res, next } = buildReqRes({ user: { id: 'rep-1', role: 'salesRep' } });
+
+    await getPricingDefaults(req, res, next);
+
+    expect(res.json).toHaveBeenCalledWith({ status: 'success', data: { pricingDefaults, currency: 'USD' } });
+  });
+
+  it('returns empty defaults when none were saved', async () => {
+    mockFindFirst.mockResolvedValue({ id: 'org-1', pricingDefaults: null, defaultCurrency: 'USD' });
+    const { req, res, next } = buildReqRes();
+
+    await getPricingDefaults(req, res, next);
+
+    expect(res.json.mock.calls[0][0].data.pricingDefaults).toEqual({});
   });
 });
 

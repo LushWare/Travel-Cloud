@@ -103,6 +103,48 @@ describe('OrganizationSettingsUpdate', () => {
     expect(parsed.companyGstNumber).toBe('07BGTPT9665E1ZH');
   });
 
+  it('accepts pricing defaults with meal prices, both margin values and transport rates', () => {
+    const parsed = OrganizationSettingsUpdate.parse({
+      pricingDefaults: {
+        mealPrices: { breakfast: 8, lunch: 15, dinner: 20 },
+        margin: { type: 'FIXED', percentage: 20, fixed: 100 },
+        transportRates: { CAR: { pricingModel: 'PER_VEHICLE', PER_VEHICLE: 50, PER_KM: 0.6 } },
+      },
+    });
+    expect(parsed.pricingDefaults.margin).toEqual({ type: 'FIXED', percentage: 20, fixed: 100 });
+  });
+
+  it('accepts seats per vehicle and people per room', () => {
+    const parsed = OrganizationSettingsUpdate.parse({
+      pricingDefaults: { transportRates: { CAR: { pricingModel: 'PER_VEHICLE', seats: 4 } }, peoplePerRoom: 3 },
+    });
+    expect(parsed.pricingDefaults).toMatchObject({ transportRates: { CAR: { seats: 4 } }, peoplePerRoom: 3 });
+  });
+
+  it('rejects a vehicle with zero seats', () => {
+    expect(() => OrganizationSettingsUpdate.parse({
+      pricingDefaults: { transportRates: { CAR: { pricingModel: 'PER_VEHICLE', seats: 0 } } },
+    })).toThrow();
+  });
+
+  it('rejects a percentage margin above 1000', () => {
+    expect(() => OrganizationSettingsUpdate.parse({
+      pricingDefaults: { margin: { type: 'PERCENTAGE', percentage: 1001, fixed: 0 } },
+    })).toThrow();
+  });
+
+  it('rejects a negative meal price', () => {
+    expect(() => OrganizationSettingsUpdate.parse({
+      pricingDefaults: { mealPrices: { breakfast: -1, lunch: 15, dinner: 20 } },
+    })).toThrow();
+  });
+
+  it('rejects a transport rate for a mode without a default rate', () => {
+    expect(() => OrganizationSettingsUpdate.parse({
+      pricingDefaults: { transportRates: { FLIGHT: { pricingModel: 'PER_PERSON', PER_PERSON: 300 } } },
+    })).toThrow();
+  });
+
   it('accepts an explicit null to clear the new nullable fields', () => {
     const parsed = OrganizationSettingsUpdate.parse({ companyAddress: null, invoicePaymentTerms: null });
     expect(parsed.companyAddress).toBeNull();

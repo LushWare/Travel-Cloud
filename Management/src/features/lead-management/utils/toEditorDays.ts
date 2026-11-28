@@ -43,6 +43,9 @@ export function toEditorDays(days: any[] | null | undefined): ItineraryDay[] {
       lunchCount: day.lunchCount || 0,
       dinnerCount: day.dinnerCount || 0,
       mealPriceOverride: day.mealPriceOverride ?? null,
+      breakfastPriceOverride: day.breakfastPriceOverride ?? null,
+      lunchPriceOverride: day.lunchPriceOverride ?? null,
+      dinnerPriceOverride: day.dinnerPriceOverride ?? null,
       meals: day.meals || {
         breakfast: !!day.breakfastCount,
         lunch: !!day.lunchCount,

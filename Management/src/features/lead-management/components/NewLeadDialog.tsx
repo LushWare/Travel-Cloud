@@ -536,6 +536,7 @@ const NewLeadDialog = ({ isOpen, onClose, salesReps, onSuccess }: NewLeadDialogP
                 </h4>
                 <ItineraryEditor
                   days={itineraryDays}
+                  travelers={Number(formData.numberOfTravelers) || 1}
                   onDayChange={(dayNumber: number, dayData: any) => {
                     setItineraryDays((prev) =>
                       (prev || []).filter(Boolean).map((day) =>

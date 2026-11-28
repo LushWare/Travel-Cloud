@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import PackageCard from '../../../components/shared/PackageCard';
+import { PRICE_BASIS_SHORT } from '../../../utils/priceBasis';
 
 interface FeaturedPackagesProps {
   packages: NormalizedPackage[];
@@ -77,6 +78,7 @@ export default function FeaturedPackages({ packages }: FeaturedPackagesProps) {
                   fallbackImage={categoryImage(pkg.category)}
                   title={pkg.name}
                   price={formatCurrency(pkg.price_from)}
+                  priceNote={PRICE_BASIS_SHORT}
                   description={pkg.description}
                   badge={
                     <Badge className="h-auto rounded-full border-0 bg-brand-accent-500/95 px-3 py-1 text-xs font-bold uppercase tracking-wide text-brand-accent-950">

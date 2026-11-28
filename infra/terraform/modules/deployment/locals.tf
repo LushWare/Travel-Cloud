@@ -73,7 +73,7 @@ locals {
       name                  = "${var.env}-lead-service"
       memory                = "512Mi"
       cpu                   = "1"
-      secrets               = ["${var.env}-database-url", "${var.env}-direct-url", "${var.env}-internal-events-token"]
+      secrets               = ["${var.env}-database-url", "${var.env}-direct-url", "${var.env}-internal-events-token", "${var.env}-internal-service-key"]
       plain_env             = { NODE_ENV = "production" }
       allow_unauthenticated = false
     }
@@ -154,7 +154,6 @@ locals {
         NODE_ENV             = "production"
         CLIENT_URL           = local.client_url
         MANAGEMENT_URL       = local.management_url
-        TRAVELPORT_MOCK_MODE = "true"
         # Card checkout via Duffel is opt-in per deployment.
         DUFFEL_CARD_CHECKOUT_ENABLED = var.duffel_card_checkout_enabled
       }

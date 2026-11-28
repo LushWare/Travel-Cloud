@@ -11,6 +11,8 @@ import {
 import { attachPackageToLead } from '../services/lead-selection.service.js';
 import { computePricing, toLineDescriptor } from '../services/pricing.service.js';
 import { fetchPackage } from '../services/lead-draft.service.js';
+import { getLinePricing } from '../config/pricingDefaults.js';
+import { resolveTaxRate } from '../services/taxRate.service.js';
 
 const BLOCKED_MESSAGE = 'This lead is already being processed and cannot be changed by the voice agent — a specialist needs to review it.';
 
@@ -343,7 +345,8 @@ export const previewPricingForVoice = asyncHandler(async (req, res) => {
       const pkg = await fetchPackage(selection.packageId);
       if (Number(pkg?.basePrice) > 0) {
         lines = [toLineDescriptor({
-          category: 'package', description: pkg.title || 'Package price', basis: 'FIXED',
+          // basePrice is the cost per person, so it scales with the party.
+          category: 'package', description: pkg.title || 'Package price', basis: 'PER_PERSON',
           quantity: 1, estimatedUnitPrice: Number(pkg.basePrice), actualUnitPrice: null,
           marginType: null, marginValue: null, source: 'AUTO', orderIndex: 0,
         })];
@@ -356,6 +359,7 @@ export const previewPricingForVoice = asyncHandler(async (req, res) => {
   const pricing = await prisma.leadPricing.findUnique({ where: { leadPackageSelectionId: selection.id } });
   const computed = computePricing({
     lines,
+    taxRate: await resolveTaxRate(pricing),
     travelers: lead.numberOfTravelers || 1,
     currency: pricing?.currency || 'USD',
     marginType: pricing?.marginType || null,

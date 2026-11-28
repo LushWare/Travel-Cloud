@@ -75,6 +75,8 @@ vi.mock('../../db/client.js', () => ({
       count: mockLeadPackageSelectionCount,
       findFirst: mockLeadPackageSelectionFindFirst,
       create: mockLeadPackageSelectionCreate,
+      // Quote totals for lead reads — no priced packages in these tests.
+      findMany: vi.fn().mockResolvedValue([]),
     },
     settings: { upsert: mockSettingsUpsert, update: mockSettingsUpdate },
     $transaction: mockTransaction,

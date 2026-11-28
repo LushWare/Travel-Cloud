@@ -18,6 +18,9 @@ vi.mock('../../ai/geminiClient.js', () => ({
 // PrismaClient at import time; mock it so this suite doesn't need DATABASE_URL.
 vi.mock('../../db/client.js', () => ({ default: mockPrisma }));
 
+const { mockGetPricingDefaults } = vi.hoisted(() => ({ mockGetPricingDefaults: vi.fn() }));
+vi.mock('../../config/orgSettings.js', () => ({ getPricingDefaults: mockGetPricingDefaults, getOrgSettings: vi.fn().mockResolvedValue({}) }));
+
 const { default: app } = await import('../../app.js');
 
 function authHeaders() {
@@ -92,6 +95,7 @@ function mockedCreatedPackage(overrides = {}) {
 describe('POST /api/v1/packages/generate-ai', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGetPricingDefaults.mockResolvedValue({});
     mockPrisma.activityCatalog.findUnique.mockResolvedValue(null);
     mockPrisma.activityCatalog.create.mockImplementation(({ data }) =>
       Promise.resolve({ id: `act-${data.name}`, name: data.name, defaultCost: data.defaultCost ?? 0 })
@@ -120,6 +124,29 @@ describe('POST /api/v1/packages/generate-ai', () => {
     const createArg = mockPrisma.package.create.mock.calls[0][0];
     const day1Activities = createArg.data.itineraryDays.create[0].activities.create;
     expect(day1Activities[0]).toEqual({ activityId: 'act-Beach Walk', costOverride: null, orderIndex: 0 });
+  });
+
+  it('prices the package from its itinerary rather than the AI-guessed price', async () => {
+    mockGetPricingDefaults.mockResolvedValue({ mealPrices: { breakfast: 8, lunch: 15, dinner: 20 } });
+    mockGenerateStructured.mockResolvedValue(generatedPackage);
+    mockPrisma.package.create.mockResolvedValue(mockedCreatedPackage());
+
+    await request(app).post('/api/v1/packages/generate-ai').set(authHeaders())
+      .send({ destination: 'Bali', duration: 2, category: 'family' });
+
+    // 1 dinner (20) + 1 breakfast (8) per person; no priced activities, transport or hotel.
+    expect(mockPrisma.package.create.mock.calls[0][0].data.basePrice).toBe(28);
+  });
+
+  it('starts the package at the Settings default margin', async () => {
+    mockGetPricingDefaults.mockResolvedValue({ margin: { type: 'FIXED', percentage: 20, fixed: 100 } });
+    mockGenerateStructured.mockResolvedValue(generatedPackage);
+    mockPrisma.package.create.mockResolvedValue(mockedCreatedPackage());
+
+    await request(app).post('/api/v1/packages/generate-ai').set(authHeaders())
+      .send({ destination: 'Bali', duration: 2, category: 'family' });
+
+    expect(mockPrisma.package.create.mock.calls[0][0].data).toMatchObject({ defaultMarginType: 'FIXED', defaultMarginInput: 100 });
   });
 
   it('scales the token budget with duration instead of using a fixed cap that truncates long itineraries', async () => {

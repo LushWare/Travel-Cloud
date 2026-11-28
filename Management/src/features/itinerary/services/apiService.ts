@@ -3,7 +3,7 @@
  * Handles all communication with the package-service backend.
  */
 
-import { reconcileFlightsForSave } from '../utils/flightSync';
+import { buildItineraryDaysPayload } from '../utils/packagePayload';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://api.lushtravelcloud.com/api/v1';
 
@@ -93,7 +93,7 @@ class ApiService {
       termsAndConditions: packageData.termsAndConditions || (packageData.terms || []).join('. '),
       basePrice: packageData.basePrice ?? packageData.price,
       defaultMarginType: packageData.defaultMarginType || 'PERCENTAGE',
-      defaultMarginInput: packageData.defaultMarginInput ?? 20,
+      defaultMarginInput: packageData.defaultMarginInput ?? 0,
       currency: packageData.currency || 'USD',
       isActive: isActiveFor(packageData),
       isFeatured: packageData.isFeatured ?? false,
@@ -251,104 +251,5 @@ export function isActiveFor(packageData: any): boolean {
   return packageData.isActive ?? false;
 }
 
-/**
- * Normalize editor/API day objects into the relational `itineraryDays` payload
- * the package-service persists. Meal toggles in the editor live on
- * `day.meals` booleans, so those win over stale `breakfastCount`/`lunchCount`/
- * `dinnerCount` values copied from the API response.
- */
-function buildItineraryDaysPayload(days: any[]) {
-  return (days || []).filter(Boolean).map((day) => {
-    const dayPlaces = Array.isArray(day.places) && day.places.length > 0
-      ? day.places
-      : (Array.isArray(day.locations) ? day.locations : []);
-
-    const editorActivities = Array.isArray(day.activities)
-      ? day.activities
-      : (typeof day.activities === 'string'
-        ? day.activities.split(',').map((s: string) => s.trim()).filter(Boolean)
-        : []);
-    // The editor maps relational day activities to plain display names, which
-    // loses the activityId. Prefer the raw relational rows (kept in
-    // _relational.activities) so IDs and catalog costs survive an edit-save.
-    const relationalActivities = Array.isArray(day._relational?.activities) ? day._relational.activities : [];
-    const activities = editorActivities.length > 0 && editorActivities.every((a: any) => typeof a === 'string') && relationalActivities.length > 0
-      ? relationalActivities
-      : editorActivities;
-
-    const rawTransports = Array.isArray(day.transports) && day.transports.length > 0
-      ? day.transports
-      : (Array.isArray(day._relational?.transports) && day._relational.transports.length > 0
-        ? day._relational.transports
-        : []);
-
-    const flights = Array.isArray(day.flights) ? day.flights : [];
-    // Flight price wins on save when real (>0); while totalAmount is the
-    // placeholder 0, manual FLIGHT row costs are preserved.
-    const transports = reconcileFlightsForSave({ flights, transports: rawTransports });
-
-    const meals = (day.meals && typeof day.meals === 'object') ? day.meals : null;
-    const activityCosts = (day.activityCosts && typeof day.activityCosts === 'object') ? day.activityCosts : {};
-
-    return {
-      dayNumber: day.dayNumber,
-      title: day.title || '',
-      description: day.description || '',
-      // Explicit count fields (Costs & Pricing subsection) win over the legacy
-      // boolean toggles; loaded days without counts fall back to the booleans.
-      breakfastCount: day.breakfastCount ?? (meals ? (meals.breakfast ? 1 : 0) : 0),
-      lunchCount: day.lunchCount ?? (meals ? (meals.lunch ? 1 : 0) : 0),
-      dinnerCount: day.dinnerCount ?? (meals ? (meals.dinner ? 1 : 0) : 0),
-      mealPriceOverride: day.mealPriceOverride ?? null,
-      accommodation: day.accommodation ?? null,
-      flights,
-      images: Array.isArray(day.images)
-        ? day.images.map((img: any) => ({
-            url: img.url || img,
-            publicId: img.publicId || img.public_id,
-            altText: img.altText || img.alt_text,
-          }))
-        : [],
-      places: dayPlaces.map((p: any, i: number) => {
-        if (typeof p === 'string') return { customName: p, orderIndex: i };
-        return {
-          placeId: p.placeId || p.place?.id || undefined,
-          customName: p.customName || p.name || undefined,
-          orderIndex: p.orderIndex ?? i,
-        };
-      }),
-      activities: activities.map((a: any, i: number) => {
-        const isObj = a && typeof a === 'object';
-        const name = isObj ? (a.name || a.activity?.name || '') : (a || '');
-        const cost: any = name ? activityCosts[name] : null;
-        const relationalRow: any = Array.isArray(day._relational?.activities)
-          ? day._relational.activities.find((row: any) =>
-              (row.activity?.name || row.name) === name ||
-              (isObj && a.activityId && row.activityId === a.activityId)
-            )
-          : null;
-        return {
-          activityId: isObj ? (a.activityId || a.activity?.id || undefined) : undefined,
-          name: name || undefined,
-          defaultCost:
-            cost?.defaultCost ??
-            (isObj ? (a.defaultCost ?? a.activity?.defaultCost) : undefined) ??
-            relationalRow?.activity?.defaultCost,
-          costOverride: cost?.costOverride ?? (isObj ? (a.costOverride ?? null) : null),
-          orderIndex: isObj ? (a.orderIndex ?? i) : i,
-        };
-      }),
-      transports: transports.map((t: any) => ({
-        routeType: t.routeType || 'DAILY_ROUTING',
-        transportMode: t.transportMode || String(t.transport || day.transport || 'CAR').toUpperCase(),
-        pricingModel: t.pricingModel || 'PER_VEHICLE',
-        unitCost: t.unitCost ?? 0,
-        distanceKm: t.distanceKm ?? null,
-        originPlaceId: t.originPlaceId ?? null,
-        destinationPlaceId: t.destinationPlaceId ?? null,
-      })),
-    };
-  });
-}
 
 export default ApiService;

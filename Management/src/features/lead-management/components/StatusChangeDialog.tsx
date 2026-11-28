@@ -15,28 +15,8 @@ const STATUS_CHANGE_OPTIONS: { status: LifecycleStatus; label: string }[] = [
   { status: 'BOOKING_IN_PROGRESS', label: 'Booking' },
   { status: 'CONFIRMED', label: 'Confirmed' },
   { status: 'CLOSED_LOST', label: 'Lost' },
+  { status: 'CANCELLED', label: 'Cancelled' },
 ];
-
-const ALLOWED_STATUS_TRANSITIONS: Record<LifecycleStatus, LifecycleStatus[]> = {
-  PENDING_VERIFICATION: ['NEW', 'CLOSED_LOST'],
-  NEW: ['DRAFTING', 'CLOSED_LOST'],
-  DRAFTING: ['QUOTED', 'CLOSED_LOST'],
-  QUOTED: ['REVISION', 'APPROVED', 'CLOSED_LOST'],
-  REVISION: ['DRAFTING', 'QUOTED', 'APPROVED', 'CLOSED_LOST'],
-  APPROVED: ['BOOKING_IN_PROGRESS', 'CLOSED_LOST'],
-  BOOKING_IN_PROGRESS: ['CONFIRMED', 'BOOKING_FAILED'],
-  CONFIRMED: ['CANCELLED'],
-  CLOSED_LOST: [],
-  BOOKING_FAILED: ['BOOKING_IN_PROGRESS', 'REVISION', 'CLOSED_LOST'],
-  CANCELLED: [],
-};
-
-const TRANSITION_REQUIREMENTS: Partial<Record<LifecycleStatus, string>> = {
-  QUOTED: 'Requires a selling price greater than zero.',
-  APPROVED: 'Requires a verified payment covering the deposit.',
-  CONFIRMED: 'Requires actual flight and hotel costs.',
-  CLOSED_LOST: 'Requires a loss reason.',
-};
 
 interface StatusChangeDialogProps {
   isOpen: boolean;
@@ -84,22 +64,9 @@ const StatusChangeDialog = ({ isOpen, onClose, lead, onStatusChange }: StatusCha
   const currentStatus = lead.lifecycleStatus || 'NEW';
   const currentLabel = LIFECYCLE_STATUS_LABELS[currentStatus] || currentStatus;
 
-  const getRestrictionReason = (status: LifecycleStatus) => {
-    if (status === currentStatus) return 'This is the current status.';
-    if (status === 'PENDING_VERIFICATION') {
-      return 'Intake-only status; claim the lead to move it to New.';
-    }
-    if (currentStatus === 'CLOSED_LOST') return 'Closed Lost is a final status.';
-    if (currentStatus === 'CANCELLED') return 'Cancelled is a final status.';
-    if (!ALLOWED_STATUS_TRANSITIONS[currentStatus]?.includes(status)) {
-      return `Cannot move from ${currentLabel} to ${LIFECYCLE_STATUS_LABELS[status]} directly.`;
-    }
-    return undefined;
-  };
-
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-h-[90dvh] max-w-xl overflow-y-auto sm:max-w-xl">
+      <DialogContent className="max-h-[90dvh] max-w-md overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Update Status</DialogTitle>
           <DialogDescription>{lead.name}</DialogDescription>
@@ -133,28 +100,22 @@ const StatusChangeDialog = ({ isOpen, onClose, lead, onStatusChange }: StatusCha
         ) : (
           <div className="grid grid-cols-2 gap-2">
             {STATUS_CHANGE_OPTIONS.map(({ status, label }) => {
-              const restrictionReason = getRestrictionReason(status);
-              const disabled = Boolean(restrictionReason);
-              const requirement = !disabled && TRANSITION_REQUIREMENTS[status];
+              const isCurrent = currentStatus === status;
 
               return (
                 <button
                   key={status}
                   onClick={() => handleChange(status)}
-                  disabled={disabled}
-                  className={`min-h-[76px] w-full rounded-lg border-2 px-2.5 py-2 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-70 sm:px-3 ${
-                    currentStatus === status
-                      ? 'border-primary bg-primary/10 text-primary'
-                      : disabled
-                        ? 'border-border bg-muted/40 text-muted-foreground'
-                        : 'border-border text-foreground hover:border-ring hover:bg-muted'
+                  disabled={isCurrent}
+                  className={`flex min-h-11 w-full items-center justify-between rounded-md border px-2.5 text-left text-sm transition-colors disabled:cursor-default ${
+                    isCurrent
+                      ? 'border-primary/50 bg-primary/10 text-primary'
+                      : 'border-border text-foreground hover:border-ring hover:bg-muted'
                   }`}
                 >
-                  <span className="block font-medium">{label}</span>
-                  {(restrictionReason || requirement) && (
-                    <span className="mt-0.5 block text-xs font-normal text-muted-foreground">
-                      {restrictionReason || requirement}
-                    </span>
+                  <span className="font-medium">{label}</span>
+                  {isCurrent && (
+                    <span className="text-[11px] text-muted-foreground">Current</span>
                   )}
                 </button>
               );
@@ -162,27 +123,21 @@ const StatusChangeDialog = ({ isOpen, onClose, lead, onStatusChange }: StatusCha
           </div>
         )}
 
-        <DialogFooter>
-          {pendingStatus ? (
-            <>
-              <Button variant="outline" onClick={handleCancelChange} className="w-full">
-                Cancel
-              </Button>
-              <Button
-                variant={pendingStatus === 'CLOSED_LOST' ? 'destructive' : 'default'}
-                onClick={handleConfirmChange}
-                disabled={pendingStatus === 'CLOSED_LOST' && !lostReason.trim()}
-                className="w-full"
-              >
-                {pendingStatus === 'CLOSED_LOST' ? 'Confirm Closed Lost' : 'Confirm'}
-              </Button>
-            </>
-          ) : (
-            <Button variant="outline" onClick={() => handleOpenChange(false)} className="w-full">
+        {pendingStatus && (
+          <DialogFooter>
+            <Button variant="outline" onClick={handleCancelChange} className="w-full">
               Cancel
             </Button>
-          )}
-        </DialogFooter>
+            <Button
+              variant={pendingStatus === 'CLOSED_LOST' ? 'destructive' : 'default'}
+              onClick={handleConfirmChange}
+              disabled={pendingStatus === 'CLOSED_LOST' && !lostReason.trim()}
+              className="w-full"
+            >
+              {pendingStatus === 'CLOSED_LOST' ? 'Confirm Closed Lost' : 'Confirm'}
+            </Button>
+          </DialogFooter>
+        )}
       </DialogContent>
     </Dialog>
   );
